@@ -1,0 +1,18 @@
+# Variante B mit vorhandenem Traefik: als docker-compose.override.yml neben docker-compose.yml legen.
+# Annahme: Traefik läuft im externen Netz "traefik" mit Entrypoint "websecure" und Resolver "letsencrypt".
+# In config.yaml: instance.trusted_proxies auf die Adresse bzw. das Subnetz von Traefik setzen.
+services:
+  server:
+    ports: !reset []        # kein Host-Port nötig
+    networks: [atrium, traefik]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.atrium.rule=Host(`knowledge.example.com`)
+      - traefik.http.routers.atrium.entrypoints=websecure
+      - traefik.http.routers.atrium.tls.certresolver=letsencrypt
+      - traefik.http.services.atrium.loadbalancer.server.port=8080
+
+networks:
+  traefik:
+    external: true

@@ -1,0 +1,26 @@
+# Beispiel: Ressourcen-Limits für einen geteilten Server, auf dem schon andere Container laufen
+# (gedacht für etwa 4 vCPU und 8 GB RAM). Nicht Teil der Standardkonfiguration.
+#
+# Verwendung, im Projektordner:
+#   docker compose -f docker-compose.yml -f deploy/examples/docker-compose.limits.yml up -d
+# Mit mitgeliefertem nginx zusätzlich --profile proxy, ohne eigenen TEI siehe docker-compose.api.yml.
+#
+# Dazu in .env die sparsamen Startargumente für TEI setzen (sonst braucht TEI rund 12 GB):
+#   TEI_ARGS=--model-id BAAI/bge-m3 --max-batch-tokens 1024 --auto-truncate
+#
+# Die Werte sind Ausgangspunkte aus Messungen mit bge-m3 (docs/embedding.md):
+#   2 Kerne: rund 1,7 GB RAM, etwa 2,5 s je Abschnitt
+#   4 Kerne: rund 2,1 GB RAM, etwa 1 s je Abschnitt
+# Auf den eigenen Server anpassen und nach dem Start mit `docker stats` prüfen.
+services:
+  tei-embed:
+    # Weniger Kerne = langsamere Indexierung, aber die anderen Container bleiben bedienbar.
+    cpus: 2
+    mem_limit: 2500m
+    # Etwas Swap als Puffer; bei gleichem Wert wie mem_limit gäbe es stattdessen einen
+    # Neustart durch restart: unless-stopped, sobald TEI das Limit erreicht.
+    memswap_limit: 3g
+  postgres:
+    mem_limit: 512m
+  server:
+    mem_limit: 256m

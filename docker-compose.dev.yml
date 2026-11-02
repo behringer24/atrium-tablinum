@@ -1,0 +1,27 @@
+# Entwicklung: Server läuft lokal per `go run ./cmd/server`, Compose liefert nur Postgres + TEI.
+# Kein nginx/certbot. Für Tests mit claude.ai/ChatGPT: Tunnel-Agent separat starten (siehe docs/deployment.md, Variante C).
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg17
+    environment:
+      POSTGRES_DB: knowledge
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: knowledge
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge"]
+      interval: 5s
+      retries: 10
+
+  tei-embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    command: --model-id BAAI/bge-m3 --max-batch-tokens 8192
+    ports: ["8081:80"]
+    volumes:
+      - teidata-dev:/data
+
+volumes:
+  pgdata-dev:
+  teidata-dev:

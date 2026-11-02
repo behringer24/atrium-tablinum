@@ -1,0 +1,105 @@
+# Produktion. Varianten (siehe docs/deployment.md):
+#   A  eigener nginx + Let's Encrypt:  docker compose --profile proxy up -d
+#   B/C vorhandener Proxy bzw. Tunnel: docker compose up -d
+# Konfiguration: .env (siehe .env.example) und config.yaml (siehe config.example.yaml).
+name: atrium-tablinum
+services:
+  server:
+    build: .
+    image: atrium-tablinum:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://knowledge:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}@postgres:5432/knowledge
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
+      ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      # Bedrock: auf ECS/EC2 genügt die IAM-Rolle, sonst Schlüssel eines eingeschränkten IAM-Benutzers.
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    volumes:
+      - ${CONFIG_FILE:-./config.yaml}:/etc/atrium-tablinum/config.yaml:ro
+    # Variante A braucht keine Veröffentlichung (nginx erreicht den Server im Compose-Netz).
+    # Variante B/C: SERVER_BIND auf die Schnittstelle setzen, die der Proxy erreicht.
+    ports:
+      - "${SERVER_BIND:-127.0.0.1:8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      tei-embed:
+        condition: service_started
+    networks: [atrium]
+
+  postgres:
+    image: pgvector/pgvector:0.8.0-pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: knowledge
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge"]
+      interval: 5s
+      retries: 10
+    networks: [atrium]
+
+  tei-embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    restart: unless-stopped
+    # Auf kleinen Servern TEI_ARGS in .env setzen, siehe docs/embedding.md (Speicherbedarf).
+    # Ohne eigenen Embedding-Server (openai, bedrock): docker-compose.api.yml dazunehmen.
+    command: ${TEI_ARGS:---model-id BAAI/bge-m3 --max-batch-tokens 8192}
+    volumes:
+      - teidata:/data
+    networks: [atrium]
+
+  # --- nur Variante A (--profile proxy) ---
+  nginx:
+    profiles: ["proxy"]
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/knowledge.conf.template:/etc/nginx/templates/knowledge.conf.template:ro
+      - certbot-www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    # Zertifikate nach Erneuerung alle 6 Stunden neu laden.
+    command: >
+      /bin/sh -c "while :; do sleep 6h; nginx -s reload; done &
+      exec /docker-entrypoint.sh nginx -g 'daemon off;'"
+    depends_on: [server]
+    networks: [atrium]
+
+  certbot:
+    profiles: ["proxy"]
+    image: certbot/certbot:v4.1.1
+    restart: unless-stopped
+    entrypoint: >
+      /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    volumes:
+      - certbot-www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+    networks: [atrium]
+
+networks:
+  atrium:
+    ipam:
+      config:
+        # fest, damit instance.trusted_proxies für den mitgelieferten nginx stabil bleibt
+        - subnet: 172.30.0.0/24
+
+volumes:
+  pgdata:
+  teidata:
+  certbot-www:
+  letsencrypt:

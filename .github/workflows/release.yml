@@ -1,0 +1,87 @@
+# Release: Wird ein Tag der Form vX.Y.Z (oder vX.Y.Z-rc1) gepusht, laufen erst die Tests, danach
+# entsteht das Server-Image für linux/amd64 und linux/arm64 in der GitHub Container Registry
+# (ghcr.io/<owner>/<repo>). Beschreibung: docs/release.md
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg17
+        env:
+          POSTGRES_DB: knowledge
+          POSTGRES_USER: knowledge
+          POSTGRES_PASSWORD: knowledge
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U knowledge -d knowledge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ATRIUM_TEST_DATABASE_URL: postgres://knowledge:knowledge@localhost:5432/knowledge
+    steps:
+      - name: Tag prüfen
+        run: |
+          case "$GITHUB_REF_NAME" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "Tag $GITHUB_REF_NAME hat nicht die Form vX.Y.Z" >&2; exit 1 ;;
+          esac
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then echo "Nicht formatiert:"; echo "$unformatted"; exit 1; fi
+      - run: go vet ./...
+      - run: go test ./...
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      # QEMU wird nur für die Schritte der arm64-Laufzeitstufe gebraucht (apk, adduser);
+      # der Go-Compiler läuft nativ und kompiliert für arm64 (siehe Dockerfile).
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # v1.2.3 ergibt 1.2.3, 1.2 und (ab 1.0) 1 sowie latest. Vorabversionen bekommen kein latest.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0.') }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

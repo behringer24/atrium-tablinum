@@ -1,0 +1,103 @@
+# Beispielkonfiguration. Secrets nur über Umgebungsvariablen (${VAR}).
+instance:
+  product_name: "Atrium Tablinum"
+  short_name: "Atrium"                  # so sagen Nutzer es im Chat
+  organization_name: "Example Corp"          # erscheint in Tool-Beschreibungen
+  base_url: "https://knowledge.example.com"   # öffentliche Adresse, egal welcher Proxy davor steht
+  listen: ":8080"
+  dev_mode: false                         # nur lokal; erlaubt statisches Test-Token und http://localhost
+  # Proxys, deren X-Forwarded-*-Header vertraut wird (IP oder CIDR).
+  # Leer lassen, wenn der Server direkt erreichbar ist.
+  # Bundled nginx im Compose-Netz: ["172.30.0.0/24"]; eigener Proxy: dessen IP.
+  trusted_proxies: []
+
+auth:
+  providers:
+    - id: google
+      type: google
+      client_id: "${GOOGLE_CLIENT_ID}"
+      client_secret: "${GOOGLE_CLIENT_SECRET}"
+      allowed_domains: ["example.com"]
+      # allowed_emails: ["me@gmail.com"]   # einzelne Adressen, z. B. private Gmail-Konten (kein hd-Claim)
+    # - id: entra
+    #   type: entra
+    #   client_id: "${ENTRA_CLIENT_ID}"
+    #   client_secret: "${ENTRA_CLIENT_SECRET}"
+    #   allowed_tenants: ["<tenant-guid>"]
+    #   allowed_domains: ["example.com"]
+    #   groups_claim: true
+    # - id: keycloak
+    #   type: oidc
+    #   issuer: "https://sso.example.com/realms/main"
+    #   client_id: "..."
+    #   client_secret: "..."
+    #   allowed_domains: ["example.com"]
+    #   groups_claim: "groups"
+  bootstrap_admins: ["admin@example.com"]
+  access_token_ttl: "1h"
+  refresh_token_ttl: "720h"
+  allowed_redirect_uris:
+    - "https://claude.ai/api/mcp/auth_callback"
+    - "https://claude.com/api/mcp/auth_callback"        # Anthropic kündigt diesen Wechsel an
+    - "https://chatgpt.com/connector_platform_oauth_redirect"
+    - "https://chatgpt.com/connector/oauth/*"           # '*' am Ende = beliebiger Rest
+    # aktuelle Callback-URLs der Anbieter vor Livegang prüfen
+  allow_loopback_redirects: true   # lokale Clients wie Claude Code (http://localhost:<port>/...)
+
+database:
+  url: "${DATABASE_URL}"
+
+embedding:
+  # Backends und ihre Einstellungen: docs/embedding.md
+  backend: "tei"                 # tei | openai | bedrock
+  url: "http://tei-embed:80"   # tei: Compose-Dienstname, lokal z. B. http://localhost:8081; openai: Basisadresse der API (leer = api.openai.com)
+  model: "BAAI/bge-m3"
+  dimensions: 1024             # pro Datenbank fest, höchstens 2000
+  # api_key: "${EMBEDDING_API_KEY}"   # openai: Schlüssel; tei: nur wenn der TEI-Server mit --api-key läuft
+  # query_prefix: "query: "           # nur für Modelle, die Präfixe verlangen (E5)
+  # document_prefix: "passage: "
+  # timeout: 60s
+  # options:                          # gelten nur für das gewählte Backend, Tippfehler werden abgelehnt
+  #   batch_size: 16                  # tei 16, openai 32, bedrock (Cohere) 32
+  #
+  # Beispiel OpenAI:
+  #   backend: "openai", model: "text-embedding-3-small", dimensions: 1536,
+  #   api_key: "${EMBEDDING_API_KEY}", options: { send_dimensions: true }
+  # Beispiel Amazon Bedrock (Zugang über die IAM-Rolle, kein Schlüssel):
+  #   backend: "bedrock", model: "amazon.titan-embed-text-v2:0", dimensions: 1024,
+  #   options: { region: "eu-central-1" }
+
+reranker:
+  enabled: false
+  backend: "tei"
+  url: "http://tei-rerank:80"
+  candidates: 30
+
+search:
+  fts_languages: ["german", "english", "simple"]   # "simple" immer behalten
+  candidates_per_method: 50
+  rrf_k: 60
+  default_limit: 5
+  max_limit: 20
+  hnsw_ef_search: 100
+
+chunking:
+  target_tokens: 500
+  max_tokens: 800
+
+spaces:
+  personal:
+    enabled: true
+    max_documents: 500
+    max_bytes: 10485760          # 10 MB
+    retention_days_after_offboarding: 30   # danach wird der persönliche Bereich gesperrter Konten gelöscht; 0 = nie (docs/offboarding.md)
+  handoff_ttl_days: 14
+  default_space_by_group: {}     # z. B. { "support": "support" }
+
+policy:
+  duplicate_threshold: 0.90
+  max_document_bytes: 200000
+  rate_limit_writes_per_minute: 20
+
+tools:
+  descriptions: {}

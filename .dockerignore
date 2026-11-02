@@ -1,0 +1,9 @@
+.git
+.claude
+.env
+config.yaml
+bin
+deploy
+docs
+*.md
+docker-compose*.yml

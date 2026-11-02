@@ -1,0 +1,5 @@
+# Im Repository immer LF, auch wenn unter Windows mit CRLF gearbeitet wird (gofmt und die CI
+# unter Linux erwarten LF, Shell-Skripte laufen mit CRLF nicht).
+* text=auto eol=lf
+*.sh text eol=lf
+*.go text eol=lf

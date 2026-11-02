@@ -1,0 +1,13 @@
+# Variante B mit vorhandenem Caddy. Caddy holt das Zertifikat selbst.
+# In config.yaml: instance.trusted_proxies = Adresse von Caddy (z. B. ["127.0.0.1"]).
+knowledge.example.com {
+	reverse_proxy 127.0.0.1:8080 {
+		flush_interval -1
+		transport http {
+			read_timeout 1h
+		}
+	}
+	request_body {
+		max_size 2MB
+	}
+}

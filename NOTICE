@@ -1,0 +1,9 @@
+Atrium Tablinum
+Copyright 2026 Andreas Behringer (behringer24)
+
+This software is licensed under the Elastic License 2.0. See the file LICENSE.
+The license grants no rights to the names "Atrium Tablinum" or "behringer24".
+
+This product includes open source components under the MIT, BSD-3-Clause and
+Apache-2.0 licenses (see go.mod for the list). They remain under their own
+licenses; their notices are kept in the respective modules.
