@@ -15,6 +15,9 @@ var defaultDescriptions = map[string]string{
 		`(meist sein persönlicher Bereich) – nenne dem Nutzer danach, wo gespeichert wurde. ` +
 		`Keine personenbezogenen Kundendaten, Passwörter oder Zugangsdaten speichern. ` +
 		`Inhalt als eigenständig verständliches Markdown mit aussagekräftigem Titel formulieren. ` +
+		`draft=true NUR, wenn der Nutzer ausdrücklich einen Entwurf wünscht, den ein Kurator des Bereichs erst prüft ` +
+		`(z. B. ein Admin schreibt für ein fremdes Fachgebiet); nie von sich aus. Es gibt Entwürfe nur in Team-Bereichen, ` +
+		`in Bereichen mit Freigabepflicht sind Einträge von Autoren ohnehin Entwürfe. ` +
 		`Liefert das Tool ähnliche Einträge oder eine Liste möglicher Bereiche zurück, wurde noch nichts gespeichert: ` +
 		`den Nutzer fragen, ob der bestehende Eintrag aktualisiert werden soll bzw. welcher Bereich gemeint ist.`,
 
@@ -28,7 +31,14 @@ var defaultDescriptions = map[string]string{
 
 	"update_knowledge": `Ändert einen bestehenden Eintrag im Wissensspeicher „{{.ProductName}}“. NUR auf ausdrückliche Anweisung des Nutzers aufrufen. ` +
 		`Vorher mit get_knowledge den aktuellen Stand laden und den vollständigen neuen Inhalt übergeben (nicht nur die Änderung). ` +
-		`Nicht übergebene Felder bleiben unverändert.`,
+		`Nicht übergebene Felder bleiben unverändert. Ein zurückgegebener Entwurf (status rejected, Anmerkung in review_note) ` +
+		`geht nach der Überarbeitung wieder in die Prüfung.`,
+
+	"review_knowledge": `Prüft einen Entwurf im Wissensspeicher „{{.ProductName}}“: decision=approve gibt ihn frei, ` +
+		`decision=reject gibt ihn mit einer Anmerkung (note, Pflicht) an den Autor zurück. Nur Kuratoren und Admins des Bereichs; ` +
+		`den eigenen Entwurf dürfen nur Admins freigeben (um Blockaden zu lösen), Kuratoren nicht. Wartende Entwürfe findet list_knowledge mit status=draft. ` +
+		`NUR auf ausdrückliche Anweisung. Den Entwurf vorher mit get_knowledge laden und dem Nutzer vorlegen; ` +
+		`die Freigabe macht ihn für alle Leser des Bereichs sichtbar und braucht darum nach Bestätigung des Nutzers confirm=true.`,
 
 	"archive_knowledge": `Archiviert einen Eintrag im Wissensspeicher „{{.ProductName}}“, er ist danach nicht mehr les- und suchbar. ` +
 		`NUR auf ausdrückliche Anweisung. Vorher den Nutzer fragen und erst nach seiner Bestätigung mit confirm=true aufrufen.`,
@@ -44,7 +54,9 @@ var defaultDescriptions = map[string]string{
 		`NUR auf ausdrückliche Anweisung; zum bloßen Ausblenden stattdessen archive_knowledge verwenden. ` +
 		`Vorher den Nutzer fragen und erst nach seiner Bestätigung mit confirm=true aufrufen.`,
 
-	"list_knowledge": `Listet die neuesten Einträge eines Bereichs im Wissensspeicher „{{.ProductName}}“, optional gefiltert nach Tag. ` +
+	"list_knowledge": `Listet die neuesten Einträge eines Bereichs im Wissensspeicher „{{.ProductName}}“, optional gefiltert nach Tag ` +
+		`oder Status (draft = wartet auf Freigabe, approved, rejected = zurückgegeben). ` +
+		`Entwürfe sehen nur ihr Autor und die Kuratoren des Bereichs. ` +
 		`Ohne Bereichsangabe wird der persönliche Bereich des Nutzers gelistet.`,
 
 	"set_default_space": `Legt fest, in welchem Bereich Wissen standardmäßig gespeichert wird, wenn der Nutzer keinen nennt. ` +

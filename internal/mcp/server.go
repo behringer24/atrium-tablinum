@@ -78,6 +78,7 @@ type tier int
 
 const (
 	tierUser       tier = iota
+	tierCurator         // curator of at least one team space (or instance admin)
 	tierSpaceAdmin      // admin of at least one team space (or instance admin)
 	tierInstanceAdmin
 )
@@ -150,6 +151,9 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName}, &mcp.ServerOptions{Instructions: s.instructions()})
 	a := docs.Actor{User: u, Roles: roles}
 	s.registerUserTools(ms)
+	if cur, err := s.teamSpacesAtLeast(r.Context(), a, authz.Curator); err == nil && len(cur) > 0 {
+		s.registerCuratorTools(ms)
+	}
 	if admin, err := s.adminSpaces(r.Context(), a); err == nil && len(admin) > 0 {
 		s.registerSpaceAdminTools(ms)
 	}
@@ -231,6 +235,9 @@ func (s *Server) allowed(ctx context.Context, min tier, a docs.Actor) bool {
 	switch min {
 	case tierInstanceAdmin:
 		return a.User.InstanceAdmin
+	case tierCurator:
+		cur, err := s.teamSpacesAtLeast(ctx, a, authz.Curator)
+		return err == nil && len(cur) > 0
 	case tierSpaceAdmin:
 		admin, err := s.adminSpaces(ctx, a)
 		return err == nil && len(admin) > 0
@@ -241,7 +248,12 @@ func (s *Server) allowed(ctx context.Context, min tier, a docs.Actor) bool {
 // adminSpaces lists the team spaces the actor administers (all of them for instance
 // admins). Personal spaces never count: their owner is admin there by construction.
 func (s *Server) adminSpaces(ctx context.Context, a docs.Actor) ([]spaces.Space, error) {
-	all, err := s.spacesAtLeast(ctx, a, authz.Admin)
+	return s.teamSpacesAtLeast(ctx, a, authz.Admin)
+}
+
+// teamSpacesAtLeast lists the team spaces where the actor holds at least the given role.
+func (s *Server) teamSpacesAtLeast(ctx context.Context, a docs.Actor, min authz.Role) ([]spaces.Space, error) {
+	all, err := s.spacesAtLeast(ctx, a, min)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +276,7 @@ func translate(tool string, err error) error {
 	case errors.Is(err, docs.ErrNotFound), errors.Is(err, spaces.ErrNotFound), errors.Is(err, users.ErrNotFound):
 		return errors.New("nicht gefunden")
 	case errors.Is(err, docs.ErrForbidden), errors.Is(err, docs.ErrQuota), errors.Is(err, docs.ErrConflict),
-		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
+		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, docs.ErrOwnDraft), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
 		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap):

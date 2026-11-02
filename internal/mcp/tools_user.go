@@ -137,6 +137,7 @@ type storeIn struct {
 	Space   string   `json:"space,omitempty" jsonschema:"Zielbereich (Kürzel oder Name); leer = Standardbereich des Nutzers"`
 	Tags    []string `json:"tags,omitempty" jsonschema:"Optionale Schlagwörter"`
 	Force   bool     `json:"force,omitempty" jsonschema:"true = trotz ähnlicher Einträge speichern (nur nach Rückfrage beim Nutzer)"`
+	Draft   bool     `json:"draft,omitempty" jsonschema:"true = als Entwurf speichern, den erst ein Kurator des Bereichs prüft und freigibt (nur Team-Bereiche, nur auf ausdrücklichen Wunsch des Nutzers)"`
 }
 
 type similarInfo struct {
@@ -185,7 +186,7 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 		}, nil
 	}
 
-	res, err := s.Docs.Store(ctx, a, docs.StoreParams{SpaceID: target.ID, Title: in.Title, Content: in.Content, Tags: in.Tags, Force: in.Force})
+	res, err := s.Docs.Store(ctx, a, docs.StoreParams{SpaceID: target.ID, Title: in.Title, Content: in.Content, Tags: in.Tags, Force: in.Force, Draft: in.Draft})
 	if err != nil {
 		return storeOut{}, err
 	}
@@ -203,7 +204,7 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 	}
 	msg := fmt.Sprintf("Gespeichert im Bereich „%s“.", name)
 	if res.Document.Status == "draft" {
-		msg += " Der Eintrag ist ein Entwurf und für andere erst nach Freigabe durch einen Kurator sichtbar."
+		msg += " Der Eintrag ist ein Entwurf und für andere erst nach Freigabe durch einen Kurator des Bereichs sichtbar (review_knowledge)."
 	}
 	return storeOut{Result: "stored", Message: msg, ID: res.Document.ID.String(), Space: name, Status: res.Document.Status}, nil
 }
@@ -447,9 +448,10 @@ func (s *Server) deleteKnowledge(ctx context.Context, c *call, in archiveIn) (me
 }
 
 type listIn struct {
-	Space string `json:"space,omitempty" jsonschema:"Bereich (Kürzel oder Name); leer = persönlicher Bereich"`
-	Tag   string `json:"tag,omitempty" jsonschema:"Optional: nur Einträge mit diesem Tag"`
-	Limit int    `json:"limit,omitempty" jsonschema:"Anzahl, Standard 20, höchstens 100"`
+	Space  string `json:"space,omitempty" jsonschema:"Bereich (Kürzel oder Name); leer = persönlicher Bereich"`
+	Tag    string `json:"tag,omitempty" jsonschema:"Optional: nur Einträge mit diesem Tag"`
+	Status string `json:"status,omitempty" jsonschema:"Optional: nur draft (wartet auf Freigabe), approved oder rejected (zurückgegeben)"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Anzahl, Standard 20, höchstens 100"`
 }
 type listOut struct {
 	Space   string    `json:"space"`
@@ -473,7 +475,8 @@ func (s *Server) listKnowledge(ctx context.Context, c *call, in listIn) (listOut
 	case sp == nil:
 		return listOut{}, docs.ErrNotFound
 	}
-	list, err := s.Docs.List(ctx, a, docs.ListParams{SpaceID: sp.ID, Tag: strings.ToLower(strings.TrimSpace(in.Tag)), Limit: in.Limit})
+	list, err := s.Docs.List(ctx, a, docs.ListParams{SpaceID: sp.ID, Tag: strings.ToLower(strings.TrimSpace(in.Tag)),
+		Status: strings.ToLower(strings.TrimSpace(in.Status)), Limit: in.Limit})
 	if err != nil {
 		return listOut{}, err
 	}

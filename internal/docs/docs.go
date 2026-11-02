@@ -28,8 +28,10 @@ var (
 	ErrQuota     = errors.New("kontingent des persönlichen bereichs überschritten")
 	ErrConflict  = errors.New("der eintrag wurde zwischenzeitlich geändert, bitte erneut laden")
 	// ErrNeedsApproval: authors cannot yet change approved entries of approval spaces
-	// (the draft-next-to-approved workflow arrives with phase 2).
+	// (a draft next to the approved version is not implemented).
 	ErrNeedsApproval = errors.New("freigegebene einträge in bereichen mit freigabepflicht können derzeit nur kuratoren ändern")
+	// ErrOwnDraft: curators cannot release their own draft, admins can.
+	ErrOwnDraft = errors.New("einen eigenen entwurf kann nur ein admin des bereichs selbst freigeben, sonst muss das ein anderer kurator tun")
 )
 
 type Options struct {
@@ -120,13 +122,21 @@ func (s *Store) Get(ctx context.Context, a Actor, id uuid.UUID) (Document, error
 type ListParams struct {
 	SpaceID uuid.UUID
 	Tag     string
-	Limit   int
+	// Status limits the list to draft, approved or rejected entries (empty: all the actor
+	// may see). Drafts and rejected entries are visible only to their author and curators.
+	Status string
+	Limit  int
 }
 
 // List returns the newest knowledge documents of one space, without content.
 func (s *Store) List(ctx context.Context, a Actor, p ListParams) ([]Document, error) {
 	if !a.Roles.Can(p.SpaceID, authz.Reader) {
 		return nil, ErrNotFound
+	}
+	switch p.Status {
+	case "", "draft", "approved", "rejected":
+	default:
+		return nil, errors.Join(ingest.ErrInvalid, errors.New("status muss draft, approved oder rejected sein"))
 	}
 	if p.Limit < 1 || p.Limit > 100 {
 		p.Limit = 20
@@ -137,9 +147,9 @@ SELECT d.id, d.space_id, d.kind, d.title, '', d.tags, d.status, COALESCE(d.revie
        d.author_id, au.email::text, d.source, d.version, d.expires_at, d.created_at, d.updated_at
 FROM documents d JOIN users au ON au.id = d.author_id
 WHERE `+visibility.Clause("d", 1, 2, 3)+`
-  AND d.space_id = $4 AND d.kind = 'knowledge' AND ($5 = '' OR $5 = ANY(d.tags))
-ORDER BY d.updated_at DESC LIMIT $6`,
-		nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator), p.SpaceID, p.Tag, p.Limit)
+  AND d.space_id = $4 AND d.kind = 'knowledge' AND ($5 = '' OR $5 = ANY(d.tags)) AND ($6 = '' OR d.status = $6)
+ORDER BY d.updated_at DESC LIMIT $7`,
+		nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator), p.SpaceID, p.Tag, p.Status, p.Limit)
 	if err != nil {
 		return nil, err
 	}

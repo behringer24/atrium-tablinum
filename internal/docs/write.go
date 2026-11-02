@@ -24,6 +24,10 @@ type StoreParams struct {
 	Tags    []string
 	// Force stores even if very similar entries exist in the space.
 	Force bool
+	// Draft asks for status draft: a curator of the space has to release the entry before
+	// others see it (for example an admin writing for a field outside their own). Only team
+	// spaces have drafts. Authors of approval spaces get drafts anyway.
+	Draft bool
 }
 
 // StoreResult holds either the stored document or, when similar entries exist and Force
@@ -52,9 +56,10 @@ func (s *Store) writableSpace(ctx context.Context, a Actor, id uuid.UUID) (space
 	return sp, role, nil
 }
 
-// statusFor applies the approval rules of concept 7.5 to a new entry.
-func statusFor(sp spaces.Space, role authz.Role) string {
-	if sp.Type == "team" && sp.RequireApproval && role < authz.Curator {
+// statusFor applies the approval rules of concept 7.5 to a new entry; draft is the explicit
+// request of the author.
+func statusFor(sp spaces.Space, role authz.Role, draft bool) string {
+	if sp.Type == "team" && (draft || sp.RequireApproval && role < authz.Curator) {
 		return "draft"
 	}
 	return "approved"
@@ -76,6 +81,9 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 	sp, role, err := s.writableSpace(ctx, a, p.SpaceID)
 	if err != nil {
 		return StoreResult{}, err
+	}
+	if p.Draft && sp.Type == "personal" {
+		return StoreResult{}, errors.Join(ingest.ErrInvalid, errors.New("entwürfe gibt es nur in team-bereichen"))
 	}
 	n, err := s.ing.Validate(p.Title, p.Content, p.Tags)
 	if err != nil {
@@ -100,7 +108,7 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 		}
 	}
 
-	status := statusFor(sp, role)
+	status := statusFor(sp, role, p.Draft)
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return StoreResult{}, err
@@ -183,6 +191,9 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	}
 
 	status := cur.Status
+	if cur.Status == "rejected" {
+		status = "draft" // a revised rejected entry goes back to review
+	}
 	if sp.Type == "team" && sp.RequireApproval && role < authz.Curator {
 		if cur.Status == "approved" {
 			return Document{}, ErrNeedsApproval

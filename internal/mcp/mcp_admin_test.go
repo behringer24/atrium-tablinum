@@ -28,14 +28,21 @@ func toolNames(t *testing.T, e *env, cs *mcp.ClientSession) map[string]bool {
 
 func TestToolListFollowsRole(t *testing.T) {
 	e := setup(t, 0)
-	e.team(t, "support", "Support", false, map[string]authz.Role{"spaceadmin@x.de": authz.Admin, "author@x.de": authz.Author})
+	e.team(t, "support", "Support", false, map[string]authz.Role{"spaceadmin@x.de": authz.Admin, "author@x.de": authz.Author, "cur@x.de": authz.Curator})
 
 	plain := toolNames(t, e, e.session(t, "author@x.de"))
+	curator := toolNames(t, e, e.session(t, "cur@x.de"))
 	sadmin := toolNames(t, e, e.session(t, "spaceadmin@x.de"))
 	boss := toolNames(t, e, e.session(t, "boss@x.de"))
 
-	if plain["space_members"] || plain["admin_create_space"] || !plain["store_knowledge"] {
+	if plain["space_members"] || plain["admin_create_space"] || plain["review_knowledge"] || !plain["store_knowledge"] {
 		t.Errorf("normaler Nutzer: %v", plain)
+	}
+	if !curator["review_knowledge"] || curator["space_members"] || curator["admin_create_space"] {
+		t.Errorf("Kurator: %v", curator)
+	}
+	if !sadmin["review_knowledge"] || !boss["review_knowledge"] {
+		t.Error("Bereichs-Admin und Instanz-Admin ohne review_knowledge")
 	}
 	// Admin des eigenen persönlichen Bereichs reicht nicht für Bereichs-Admin-Tools (siehe 'plain')
 	if !sadmin["space_members"] || !sadmin["space_add_member"] || !sadmin["space_remove_member"] || sadmin["admin_create_space"] || sadmin["admin_update_space"] || sadmin["admin_audit_log"] {
@@ -224,6 +231,89 @@ func TestInstanceAdminSpaceLifecycle(t *testing.T) {
 	}
 	if !found {
 		t.Error("Bereich nach Wiederherstellung nicht sichtbar")
+	}
+}
+
+func TestDraftOnRequestAndReviewTool(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "recht", "Recht", false, map[string]authz.Role{"cur@x.de": authz.Curator, "reader@x.de": authz.Reader, "author@x.de": authz.Author})
+	boss := e.session(t, "boss@x.de")
+	cur := e.session(t, "cur@x.de")
+	reader := e.session(t, "reader@x.de")
+	author := e.session(t, "author@x.de")
+
+	// das Prüf-Tool sehen nur Kuratoren und Admins
+	for name, cs := range map[string]*mcp.ClientSession{"Kurator": cur, "Instanz-Admin": boss} {
+		if !toolNames(t, e, cs)["review_knowledge"] {
+			t.Errorf("%s ohne review_knowledge", name)
+		}
+	}
+	for name, cs := range map[string]*mcp.ClientSession{"Leser": reader, "Autor": author} {
+		if toolNames(t, e, cs)["review_knowledge"] {
+			t.Errorf("%s sieht review_knowledge", name)
+		}
+	}
+
+	// Entwurf nur auf Wunsch und nur in Team-Bereichen
+	if got := e.mustCall(t, boss, "store_knowledge", map[string]any{"title": "Direkt", "content": "alpha eins", "space": "recht"}); got["status"] != "approved" {
+		t.Errorf("ohne draft: %v", got)
+	}
+	out := e.mustCall(t, boss, "store_knowledge", map[string]any{"title": "Vertragsmuster", "content": "beta zwei", "space": "recht", "draft": true})
+	if out["status"] != "draft" || !strings.Contains(out["message"].(string), "Entwurf") {
+		t.Fatalf("mit draft: %v", out)
+	}
+	id := out["id"].(string)
+	if _, msg := e.call(t, boss, "store_knowledge", map[string]any{"title": "Privat", "content": "gamma drei", "draft": true}); !strings.Contains(msg, "team-bereichen") {
+		t.Errorf("draft im persönlichen Bereich: %q", msg)
+	}
+
+	// wartende Entwürfe findet der Kurator über den Statusfilter, der Leser sieht keine
+	entries := func(cs *mcp.ClientSession, status string) []any {
+		t.Helper()
+		return e.mustCall(t, cs, "list_knowledge", map[string]any{"space": "recht", "status": status})["entries"].([]any)
+	}
+	if l := entries(cur, "draft"); len(l) != 1 || l[0].(map[string]any)["id"] != id {
+		t.Errorf("Kurator-Liste draft: %v", l)
+	}
+	if l := entries(reader, "draft"); len(l) != 0 {
+		t.Errorf("Leser-Liste draft: %v", l)
+	}
+	if _, msg := e.call(t, cur, "list_knowledge", map[string]any{"space": "recht", "status": "kaputt"}); !strings.Contains(msg, "status") {
+		t.Errorf("ungültiger Status: %q", msg)
+	}
+
+	// Freigabe: Bestätigung nötig, nicht für den eigenen Entwurf, Zurückgeben nur mit Anmerkung
+	if _, msg := e.call(t, cur, "review_knowledge", map[string]any{"id": id, "decision": "approve"}); !strings.Contains(msg, "Bestätigung") {
+		t.Errorf("approve ohne confirm: %q", msg)
+	}
+	curDraft := e.mustCall(t, cur, "store_knowledge", map[string]any{"title": "Vom Kurator", "content": "delta vier", "space": "recht", "draft": true, "force": true})["id"]
+	if _, msg := e.call(t, cur, "review_knowledge", map[string]any{"id": curDraft, "decision": "approve", "confirm": true}); !strings.Contains(msg, "eigenen entwurf") {
+		t.Errorf("Kurator gibt eigenen Entwurf frei: %q", msg)
+	}
+	ownDraft := e.mustCall(t, boss, "store_knowledge", map[string]any{"title": "Eigene Freigabe", "content": "epsilon fünf", "space": "recht", "draft": true, "force": true})["id"]
+	if got := e.mustCall(t, boss, "review_knowledge", map[string]any{"id": ownDraft, "decision": "approve", "confirm": true}); got["document"].(map[string]any)["status"] != "approved" {
+		t.Errorf("Admin gibt eigenen Entwurf frei: %v", got)
+	}
+	if _, msg := e.call(t, cur, "review_knowledge", map[string]any{"id": id, "decision": "vielleicht"}); !strings.Contains(msg, "approve oder reject") {
+		t.Errorf("unbekannte decision: %q", msg)
+	}
+	if _, msg := e.call(t, cur, "review_knowledge", map[string]any{"id": id, "decision": "reject"}); !strings.Contains(msg, "anmerkung") {
+		t.Errorf("reject ohne Anmerkung: %q", msg)
+	}
+	rej := e.mustCall(t, cur, "review_knowledge", map[string]any{"id": id, "decision": "reject", "note": "Klausel 3 fehlt"})
+	if doc := rej["document"].(map[string]any); doc["status"] != "rejected" || doc["review_note"] != "Klausel 3 fehlt" {
+		t.Fatalf("reject: %v", rej)
+	}
+	if got := e.mustCall(t, boss, "get_knowledge", map[string]any{"id": id}); got["review_note"] != "Klausel 3 fehlt" {
+		t.Errorf("Autor sieht Anmerkung nicht: %v", got)
+	}
+	e.mustCall(t, boss, "update_knowledge", map[string]any{"id": id, "content": "beta zwei mit Klausel 3"})
+	ok := e.mustCall(t, cur, "review_knowledge", map[string]any{"id": id, "decision": "approve", "confirm": true})
+	if doc := ok["document"].(map[string]any); doc["status"] != "approved" {
+		t.Fatalf("approve: %v", ok)
+	}
+	if got := e.mustCall(t, reader, "get_knowledge", map[string]any{"id": id}); got["status"] != "approved" {
+		t.Errorf("Leser nach Freigabe: %v", got)
 	}
 }
 

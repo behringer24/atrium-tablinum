@@ -41,4 +41,4 @@ Zusätzlich einmal prüfen, dass der HNSW-Index genutzt wird (`EXPLAIN` der Such
 
 ## Bekannte offene Punkte
 
-Client ID Metadata Documents, Reranker, Freigabe-Workflow und Re-Embedding-Jobs sind nicht umgesetzt (Phase 2/3).
+Client ID Metadata Documents, Reranker und Re-Embedding-Jobs sind nicht umgesetzt (Phase 2/3). Der Freigabe-Workflow ist nur als Grundfunktion da (Entwurf, Freigabe, Rückgabe, siehe [approval.md](approval.md)); ein Entwurf neben dem freigegebenen Stand und Benachrichtigungen fehlen noch.

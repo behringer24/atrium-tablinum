@@ -24,6 +24,8 @@ Releases und das fertige Image aus der GitHub Container Registry: [docs/release.
 
 Das Embedding-Backend ist wählbar: eigener TEI-Server, OpenAI und kompatible Dienste oder Amazon Bedrock. Einstellungen, Speicherbedarf und Datenschutz: [docs/embedding.md](docs/embedding.md).
 
+Entwürfe, Freigabepflicht und die Prüfung durch Kuratoren: [docs/approval.md](docs/approval.md).
+
 ## Entwicklung
 
 ```bash

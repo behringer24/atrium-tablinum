@@ -253,6 +253,132 @@ func TestApprovalWorkflowVisibility(t *testing.T) {
 	}
 }
 
+// An admin asks for a draft in a space of another field; the curator of that space checks it.
+func TestDraftOnRequestAndReview(t *testing.T) {
+	e := setup(t)
+	boss := e.actor(t, "boss@x.de") // Instanz-Admin, in jedem Team-Bereich Admin
+	curator := e.actor(t, "cur@x.de")
+	author := e.actor(t, "author@x.de")
+	reader := e.actor(t, "reader@x.de")
+	sp := e.team(t, "recht", false, authz.None) // ohne Freigabepflicht
+	e.member(t, sp, curator, authz.Curator)
+	e.member(t, sp, author, authz.Author)
+	e.member(t, sp, reader, authz.Reader)
+	boss, curator, author, reader = e.refresh(t, boss), e.refresh(t, curator), e.refresh(t, author), e.refresh(t, reader)
+
+	storeDraft := func(a docs.Actor, title string) docs.Document {
+		t.Helper()
+		res, err := e.docs.Store(e.ctx, a, docs.StoreParams{SpaceID: sp.ID, Title: title, Content: "inhalt", Force: true, Draft: true})
+		if err != nil || res.Document == nil {
+			t.Fatalf("Entwurf speichern: %v %+v", err, res)
+		}
+		return *res.Document
+	}
+
+	// ohne Wunsch wird der Admin-Eintrag sofort freigegeben, mit Wunsch ist er ein Entwurf
+	if d := mustStore(t, e, boss, sp.ID, "Direkt", "inhalt"); d.Status != "approved" {
+		t.Errorf("Admin ohne Entwurfswunsch: %s", d.Status)
+	}
+	draft := storeDraft(boss, "Vertragsmuster")
+	if draft.Status != "draft" {
+		t.Fatalf("Admin mit Entwurfswunsch: %s", draft.Status)
+	}
+	if _, err := e.docs.Store(e.ctx, boss, docs.StoreParams{SpaceID: personal(boss), Title: "t", Content: "c", Draft: true}); !errors.Is(err, ingest.ErrInvalid) {
+		t.Errorf("Entwurf im persönlichen Bereich: %v", err)
+	}
+
+	// sichtbar nur für Autor und Kuratoren, auch in der Liste mit Statusfilter
+	if _, err := e.docs.Get(e.ctx, reader, draft.ID); !errors.Is(err, docs.ErrNotFound) {
+		t.Errorf("Reader sieht Entwurf: %v", err)
+	}
+	if l, err := e.docs.List(e.ctx, curator, docs.ListParams{SpaceID: sp.ID, Status: "draft"}); err != nil || len(l) != 1 || l[0].ID != draft.ID {
+		t.Errorf("Kurator-Liste draft: %v %+v", err, l)
+	}
+	if l, _ := e.docs.List(e.ctx, curator, docs.ListParams{SpaceID: sp.ID, Status: "approved"}); len(l) != 1 {
+		t.Errorf("Kurator-Liste approved: %d", len(l))
+	}
+	if l, _ := e.docs.List(e.ctx, reader, docs.ListParams{SpaceID: sp.ID, Status: "draft"}); len(l) != 0 {
+		t.Errorf("Reader-Liste draft: %d", len(l))
+	}
+	if _, err := e.docs.List(e.ctx, curator, docs.ListParams{SpaceID: sp.ID, Status: "kaputt"}); !errors.Is(err, ingest.ErrInvalid) {
+		t.Errorf("ungültiger Status: %v", err)
+	}
+
+	// prüfen dürfen Kuratoren und Admins; den eigenen Entwurf aber nur Admins
+	curDraft := storeDraft(curator, "Vom Kurator")
+	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: curDraft.ID, Approve: true}); !errors.Is(err, docs.ErrOwnDraft) {
+		t.Errorf("Kurator gibt eigenen Entwurf frei: %v", err)
+	}
+	if d, err := e.docs.Review(e.ctx, boss, docs.ReviewParams{ID: curDraft.ID, Approve: true}); err != nil || d.Status != "approved" {
+		t.Errorf("Admin gibt Entwurf des Kurators frei: %v %+v", err, d)
+	}
+	if _, err := e.docs.Review(e.ctx, reader, docs.ReviewParams{ID: draft.ID, Approve: true}); !errors.Is(err, docs.ErrNotFound) {
+		t.Errorf("Reader prüft: %v", err)
+	}
+	authorsDraft := storeDraft(author, "Von Autor")
+	if _, err := e.docs.Review(e.ctx, author, docs.ReviewParams{ID: authorsDraft.ID, Approve: true}); !errors.Is(err, docs.ErrForbidden) {
+		t.Errorf("Autor gibt eigenen Entwurf frei: %v", err)
+	}
+
+	// Zurückgeben braucht eine Anmerkung; der Autor sieht sie und überarbeitet
+	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: draft.ID}); !errors.Is(err, ingest.ErrInvalid) {
+		t.Errorf("Zurückgeben ohne Anmerkung: %v", err)
+	}
+	rejected, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: draft.ID, Note: "  Klausel 3 fehlt  "})
+	if err != nil || rejected.Status != "rejected" || rejected.ReviewNote != "Klausel 3 fehlt" || rejected.Version != 2 {
+		t.Fatalf("Zurückgeben: %v %+v", err, rejected)
+	}
+	if got, err := e.docs.Get(e.ctx, boss, draft.ID); err != nil || got.ReviewNote != "Klausel 3 fehlt" {
+		t.Errorf("Autor sieht die Anmerkung nicht: %v %+v", err, got)
+	}
+	if _, err := e.docs.Get(e.ctx, reader, draft.ID); !errors.Is(err, docs.ErrNotFound) {
+		t.Errorf("Reader sieht zurückgegebenen Entwurf: %v", err)
+	}
+	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: draft.ID, Approve: true}); !errors.Is(err, ingest.ErrInvalid) {
+		t.Errorf("zurückgegebenen Eintrag prüfen: %v", err)
+	}
+	content := "inhalt mit Klausel 3"
+	revised, err := e.docs.Update(e.ctx, boss, docs.UpdateParams{ID: draft.ID, Content: &content})
+	if err != nil || revised.Status != "draft" || revised.ReviewNote != "" {
+		t.Fatalf("Überarbeiten: %v %+v", err, revised)
+	}
+
+	// Freigabe: danach sieht der Reader den Eintrag, Version und Log halten es fest
+	approved, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: draft.ID, Approve: true, Note: "passt"})
+	if err != nil || approved.Status != "approved" || approved.ReviewNote != "passt" || approved.Version != 4 {
+		t.Fatalf("Freigabe: %v %+v", err, approved)
+	}
+	if _, err := e.docs.Get(e.ctx, reader, draft.ID); err != nil {
+		t.Errorf("Reader sieht freigegebenen Eintrag nicht: %v", err)
+	}
+	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: draft.ID, Approve: true}); !errors.Is(err, ingest.ErrInvalid) {
+		t.Errorf("freigegebenen Eintrag prüfen: %v", err)
+	}
+	if n := queryInt(t, e, `SELECT count(*) FROM document_versions WHERE document_id = $1`, draft.ID); n != 4 {
+		t.Errorf("Versionen: %d", n)
+	}
+	for action, want := range map[string]int{"reject": 1, "approve": 1} {
+		if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = $1 AND document_id = $2`, action, draft.ID); n != want {
+			t.Errorf("Audit %s: %d", action, n)
+		}
+	}
+	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE document_id = $1 AND details ? 'self'`, draft.ID); n != 0 {
+		t.Errorf("Freigabe durch anderen als Selbstfreigabe vermerkt: %d", n)
+	}
+
+	// Knoten lösen: der Admin gibt seinen eigenen Entwurf selbst frei, das Log vermerkt es
+	own := storeDraft(boss, "Eigene Freigabe")
+	if d, err := e.docs.Review(e.ctx, boss, docs.ReviewParams{ID: own.ID, Approve: true}); err != nil || d.Status != "approved" {
+		t.Fatalf("Admin gibt eigenen Entwurf frei: %v %+v", err, d)
+	}
+	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = 'approve' AND document_id = $1 AND details ? 'self'`, own.ID); n != 1 {
+		t.Errorf("Selbstfreigabe nicht im Audit-Log: %d", n)
+	}
+	if _, err := e.docs.Get(e.ctx, reader, own.ID); err != nil {
+		t.Errorf("Reader sieht selbst freigegebenen Eintrag nicht: %v", err)
+	}
+}
+
 func TestUpdateRightsAndVersions(t *testing.T) {
 	e := setup(t)
 	a1 := e.actor(t, "a1@x.de")

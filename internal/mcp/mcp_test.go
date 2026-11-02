@@ -285,8 +285,8 @@ func TestToolListAndDescriptions(t *testing.T) {
 		got[tool.Name] = tool
 	}
 	for name := range defaultDescriptions {
-		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") {
-			continue // Admin-Tools hängen von der Rolle ab, siehe TestToolListFollowsRole
+		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" {
+			continue // Tools für Admins und Kuratoren hängen von der Rolle ab, siehe TestToolListFollowsRole
 		}
 		if got[name] == nil {
 			t.Errorf("Tool %s fehlt", name)

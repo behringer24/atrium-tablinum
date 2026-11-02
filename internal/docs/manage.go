@@ -53,7 +53,7 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 			return Document{}, err
 		}
 	}
-	status := statusFor(dst, dstRole)
+	status := statusFor(dst, dstRole, false)
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
