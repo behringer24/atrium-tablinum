@@ -67,10 +67,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Image-Namen müssen klein geschrieben sein, der Repo-Name darf Großbuchstaben haben.
+      - id: repo
+        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ steps.repo.outputs.name }}
           # v1.2.3 ergibt 1.2.3, 1.2 und (ab 1.0) 1 sowie latest. Vorabversionen bekommen kein latest.
           tags: |
             type=semver,pattern={{version}}
