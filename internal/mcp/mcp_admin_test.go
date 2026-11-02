@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
+	"github.com/behringer24/atrium-tablinum/internal/docs"
 )
 
 func toolNames(t *testing.T, e *env, cs *mcp.ClientSession) map[string]bool {
@@ -63,9 +64,18 @@ func TestToolTierIsRecheckedOnEveryCall(t *testing.T) {
 	if err := e.users.SetInstanceAdmin(e.ctx, u.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	// Die Sitzung kennt die Tools noch, der Aufruf wird trotzdem abgewiesen.
-	if _, msg := e.call(t, cs, "admin_health", nil); !strings.Contains(msg, "Berechtigung") {
-		t.Errorf("entzogene Admin-Rechte: %q", msg)
+	// Der Endpunkt ist zustandslos: Die Werkzeugliste entsteht bei jedem Aufruf aus den aktuellen
+	// Rechten, ein entzogenes Admin-Werkzeug gibt es sofort nicht mehr.
+	if _, err := cs.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_health"}); err == nil {
+		t.Error("entzogene Admin-Rechte: Werkzeug noch aufrufbar")
+	}
+	// Die Rechteprüfung im Werkzeug selbst bleibt als zweite Sicherung bestehen.
+	boss, err := e.users.GetByEmail(e.ctx, "anna@x.de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.srv.allowed(e.ctx, tierInstanceAdmin, docs.Actor{User: boss}) {
+		t.Error("allowed() lässt Nicht-Admin zu")
 	}
 	// Ein Tool, das die Sitzung nie hatte, gibt es für den Client nicht
 	if _, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_health"}); err == nil {

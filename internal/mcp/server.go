@@ -99,6 +99,14 @@ func New(d Deps, set Settings) *Server {
 // authentication via verifier.
 func (s *Server) Handler(verifier auth.TokenVerifier, resourceMetadataURL string) http.Handler {
 	h := mcp.NewStreamableHTTPHandler(s.serverFor, &mcp.StreamableHTTPOptions{
+		// Atrium keeps no state between requests: every tool call re-checks the caller, and
+		// nothing is pushed to clients. Stateless mode accepts clients of the older protocol
+		// versions (initialize, then calls) as well as the sessionless one from 2026-07-28 on,
+		// which a stateful server rejects. It also avoids trouble with clients that do not keep
+		// the Mcp-Session-Id between calls.
+		Stateless: true,
+		// Without a logger the SDK drops its warnings, e.g. about rejected requests.
+		Logger:                     slog.Default(),
 		DisableLocalhostProtection: s.set.DisableHostProtection,
 	})
 	return auth.RequireBearerToken(verifier, &auth.RequireBearerTokenOptions{
