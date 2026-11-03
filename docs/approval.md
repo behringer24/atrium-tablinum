@@ -1,6 +1,6 @@
 # Entwürfe und Freigabe
 
-Ein Eintrag in einem Team-Bereich hat einen von vier Zuständen: `draft` (Entwurf), `approved` (freigegeben), `rejected` (zurückgegeben) oder `archived`. Lesen und durchsuchen können alle Mitglieder nur freigegebene Einträge. Entwürfe und zurückgegebene Einträge sehen nur ihr Autor und die Kuratoren des Bereichs. Persönliche Bereiche kennen keine Entwürfe.
+Ein Eintrag in einem Team-Bereich hat einen von vier Zuständen: `draft` (Entwurf), `approved` (freigegeben), `rejected` (zurückgegeben) oder `archived` (siehe [Archiv und Kontext](archive-and-context.md)). Lesen und durchsuchen können alle Mitglieder nur freigegebene Einträge. Entwürfe und zurückgegebene Einträge sehen nur ihr Autor und die Kuratoren des Bereichs. Persönliche Bereiche kennen keine Entwürfe.
 
 ## Wann ein Eintrag zum Entwurf wird
 

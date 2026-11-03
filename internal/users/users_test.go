@@ -29,13 +29,36 @@ func TestProvisionCreatesUserAndPersonalSpaceOnce(t *testing.T) {
 	if err != nil || u2.ID != u1.ID || *u2.PersonalSpaceID != *u1.PersonalSpaceID {
 		t.Fatalf("zweiter Login: %+v %v", u2, err)
 	}
-	// E-Mail-Abgleich ist case-insensitive und gilt über IdPs hinweg
-	u3, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "anna@X.de"})
-	if err != nil || u3.ID != u1.ID {
-		t.Fatalf("zweiter IdP: %+v %v", u3, err)
+	// Ein zweiter IdP mit gleicher E-Mail übernimmt das Konto standardmäßig NICHT
+	if _, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "anna@X.de"}); !errors.Is(err, users.ErrEmailTaken) {
+		t.Fatalf("zweiter IdP ohne Verknüpfung: %v", err)
 	}
 	if all, _ := s.List(ctx); len(all) != 1 {
 		t.Errorf("Nutzer = %d", len(all))
+	}
+}
+
+func TestLinkByEmailIsOptInAndAudited(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.NewPool(t)
+	s := users.New(pool, users.Options{BootstrapAdmins: []string{"boss@x.de"}, PersonalEnabled: true, LinkByEmail: true})
+	first, err := s.Provision(ctx, users.Identity{IDP: "google", Subject: "1", Email: "boss@x.de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// E-Mail-Abgleich ist case-insensitive und gilt dann über IdPs hinweg
+	linked, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "BOSS@x.de"})
+	if err != nil || linked.ID != first.ID {
+		t.Fatalf("zweiter IdP: %+v %v", linked, err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_log WHERE action = 'account_linked' AND user_id = $1`, first.ID).Scan(&n); err != nil || n != 1 {
+		t.Errorf("Audit account_linked: %d %v", n, err)
+	}
+	// ein weiterer Login mit demselben Subject ist keine neue Verknüpfung mehr nötig? Er läuft wieder über die E-Mail:
+	// entscheidend ist, dass jeder Fall im Audit-Log steht.
+	if _, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "boss@x.de"}); err != nil {
+		t.Fatal(err)
 	}
 }
 

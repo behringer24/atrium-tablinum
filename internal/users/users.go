@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/behringer24/atrium-tablinum/internal/audit"
 )
 
 var (
@@ -50,12 +53,18 @@ type Identity struct {
 type Options struct {
 	BootstrapAdmins []string
 	PersonalEnabled bool
+	// LinkByEmail lets a login through another provider (or with another subject) take over
+	// the existing account with the same e-mail. Off by default: who can issue an address
+	// in the allowed domain at a second provider would otherwise become that account,
+	// including an instance admin from bootstrap_admins.
+	LinkByEmail bool
 }
 
 type Store struct {
 	pool      *pgxpool.Pool
 	bootstrap map[string]bool
 	personal  bool
+	linkEmail bool
 
 	// OnChange is called after changes that can alter effective roles (status, admin
 	// flag, group membership). Wire it to authz.Checker.InvalidateAll.
@@ -67,7 +76,7 @@ func New(pool *pgxpool.Pool, opt Options) *Store {
 	for _, e := range opt.BootstrapAdmins {
 		b[strings.ToLower(strings.TrimSpace(e))] = true
 	}
-	return &Store{pool: pool, bootstrap: b, personal: opt.PersonalEnabled}
+	return &Store{pool: pool, bootstrap: b, personal: opt.PersonalEnabled, linkEmail: opt.LinkByEmail}
 }
 
 func (s *Store) changed() {
@@ -122,10 +131,28 @@ func (s *Store) List(ctx context.Context) ([]User, error) {
 	return out, rows.Err()
 }
 
+// InstanceAdminEmails lists the active accounts that are instance admins (stored flag or
+// bootstrap list), ordered by e-mail.
+func (s *Store) InstanceAdminEmails(ctx context.Context) ([]string, error) {
+	all, err := s.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, u := range all {
+		if u.Active && u.InstanceAdmin {
+			out = append(out, u.Email)
+		}
+	}
+	return out, nil
+}
+
 // Provision finds or creates the account for a verified identity (just-in-time) and
-// records the login. Lookup is by (idp, subject), then by e-mail, so the same person
-// signing in through a second configured IdP lands on the same account; the e-mail
-// must therefore be verified by the caller. Disabled accounts get ErrDisabled.
+// records the login. Lookup is by (idp, subject). Only with LinkByEmail a second lookup by
+// e-mail follows, so the same person signing in through a second configured IdP lands on
+// the same account (the e-mail must then be verified by the caller); without it an
+// address that is already taken by another login gets ErrEmailTaken. Disabled accounts
+// get ErrDisabled.
 func (s *Store) Provision(ctx context.Context, id Identity) (User, error) {
 	if id.IDP == "" || id.Subject == "" || id.Email == "" {
 		return User{}, errors.New("identität unvollständig")
@@ -161,7 +188,18 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 	err = tx.QueryRow(ctx, `SELECT id, status = 'active' FROM users WHERE idp = $1 AND idp_subject = $2`,
 		id.IDP, id.Subject).Scan(&uid, &active)
 	if errors.Is(err, pgx.ErrNoRows) {
-		err = tx.QueryRow(ctx, `SELECT id, status = 'active' FROM users WHERE email = $1`, id.Email).Scan(&uid, &active)
+		var taken bool
+		err = tx.QueryRow(ctx, `SELECT id, status = 'active', true FROM users WHERE email = $1`, id.Email).Scan(&uid, &active, &taken)
+		if taken && !s.linkEmail {
+			return uuid.Nil, ErrEmailTaken
+		}
+		if taken {
+			slog.Warn("Konto per E-Mail verknüpft", "idp", id.IDP, "user", uid)
+			if aerr := audit.Insert(ctx, tx, audit.Event{UserID: &uid, Client: "system", Action: "account_linked",
+				Details: map[string]any{"idp": id.IDP, "email": id.Email}}); aerr != nil {
+				return uuid.Nil, aerr
+			}
+		}
 	}
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

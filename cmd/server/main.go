@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"log/slog"
@@ -13,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
@@ -69,7 +68,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	}
 	log.Info("Embedding-Backend", "backend", cfg.Embedding.Backend, "model", cfg.Embedding.Model, "dimensions", cfg.Embedding.Dimensions)
 
-	userStore := users.New(pool, users.Options{BootstrapAdmins: cfg.Auth.BootstrapAdmins, PersonalEnabled: cfg.Spaces.Personal.Enabled})
+	userStore := users.New(pool, users.Options{BootstrapAdmins: cfg.Auth.BootstrapAdmins, PersonalEnabled: cfg.Spaces.Personal.Enabled, LinkByEmail: cfg.Auth.LinkAccountsByEmail})
 	spaceStore := spaces.New(pool)
 	checker := authz.NewChecker(pool, authz.DefaultCacheTTL)
 	userStore.OnChange = checker.InvalidateAll
@@ -127,7 +126,7 @@ func run(cfgPath string, log *slog.Logger) error {
 		mcpserver.Settings{
 			ProductName: cfg.Instance.ProductName, ShortName: cfg.Instance.ShortName, OrganizationName: cfg.Instance.OrganizationName,
 			HandoffTTLDays: cfg.Spaces.HandoffTTLDays, DescriptionOverrides: cfg.Tools.Descriptions,
-			DefaultSpaceByGroup: cfg.Spaces.DefaultSpaceByGr, WritesPerMinute: cfg.Policy.RateLimitWritesPerMinute,
+			DefaultSpaceByGroup: cfg.Spaces.DefaultSpaceByGr, WritesPerMinute: cfg.Policy.RateLimitWritesPerMinute, ReadsPerMinute: cfg.Policy.RateLimitReadsPerMinute,
 			PersonalRetentionDays: cfg.Spaces.Personal.RetentionDaysAfterOffboarding,
 			// A reverse proxy on the same host reaches us via loopback with the public Host header.
 			DisableHostProtection: len(cfg.Instance.TrustedProxies) > 0,
@@ -153,24 +152,25 @@ func run(cfgPath string, log *slog.Logger) error {
 		oauthSrv := oauth.NewServer(oauth.Config{
 			BaseURL: cfg.Instance.BaseURL, ProductName: cfg.Instance.ProductName,
 			AllowedRedirect: cfg.Auth.AllowedRedirectURIs, AllowLoopback: cfg.Auth.AllowLoopbackRedirects, TrustedProxies: proxies,
-		}, oauth.NewStore(pool, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL), userStore, providers)
+		}, oauth.NewStore(pool, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL).WithSessionMaxAge(cfg.Auth.SessionMaxAge), userStore, providers)
 		oauthSrv.Register(mux)
 		runner.AddPeriodic(jobs.Periodic{Name: "oauth_cleanup", Every: time.Hour, Run: oauthSrv.Cleanup})
 		mcpSrv.RevokeTokens = oauthSrv.RevokeUser // offboarding
+		mcpSrv.ListSessions = func(ctx context.Context, user uuid.UUID) ([]mcpserver.SessionInfo, error) {
+			list, err := oauthSrv.Sessions(ctx, user)
+			out := make([]mcpserver.SessionInfo, 0, len(list))
+			for _, x := range list {
+				out = append(out, mcpserver.SessionInfo{ClientID: x.ClientID, Client: x.ClientName, Started: x.Started, LastUsed: x.LastUsed})
+			}
+			return out, err
+		}
+		mcpSrv.RevokeClient = oauthSrv.RevokeClient
 		verifier = oauthSrv.Verifier()
 		resourceMetadataURL = oauthSrv.ResourceMetadataURL()
 	}
 	if cfg.Instance.DevMode {
-		token := cfg.Instance.DevToken
-		if token == "" {
-			if token, err = randomToken(); err != nil {
-				return err
-			}
-			log.Warn("dev_mode ist aktiv, statisches Test-Token wurde erzeugt", "token", token, "user", cfg.Instance.DevUser)
-		} else {
-			log.Warn("dev_mode ist aktiv – nicht für den Produktivbetrieb geeignet", "user", cfg.Instance.DevUser)
-		}
-		verifier = devFirst(mcpserver.DevVerifier(userStore, token, cfg.Instance.DevUser), verifier)
+		log.Warn("dev_mode ist aktiv – nicht für den Produktivbetrieb geeignet", "user", cfg.Instance.DevUser)
+		verifier = devFirst(mcpserver.DevVerifier(userStore, cfg.Instance.DevToken, cfg.Instance.DevUser), verifier)
 	}
 
 	mux.Handle("/mcp", mcpSrv.Handler(verifier, resourceMetadataURL))
@@ -207,14 +207,6 @@ func run(cfgPath string, log *slog.Logger) error {
 		return err
 	}
 	return nil
-}
-
-func randomToken() (string, error) {
-	b := make([]byte, 24)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }
 
 // devFirst accepts the static dev token and otherwise defers to the OAuth verifier (if any).

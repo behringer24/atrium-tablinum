@@ -423,6 +423,11 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		deny("Dieses Konto ist deaktiviert")
 		return
 	}
+	if errors.Is(err, users.ErrEmailTaken) {
+		s.log.Warn("Login mit einer E-Mail, die zu einem anderen Login gehört", "provider", providerID)
+		deny("Diese E-Mail-Adresse gehört bereits zu einer Anmeldung über einen anderen Anbieter. Bitte dort anmelden oder den Administrator kontaktieren.")
+		return
+	}
 	if err != nil {
 		s.log.Error("Benutzer anlegen", "error", err)
 		deny("Anmeldung fehlgeschlagen")
@@ -576,6 +581,16 @@ func contains(list []string, v string) bool {
 // RevokeUser is exposed for offboarding (admin tools).
 func (s *Server) RevokeUser(ctx context.Context, id uuid.UUID) (int64, error) {
 	return s.store.RevokeUser(ctx, id)
+}
+
+// Sessions lists the clients a user is logged in with.
+func (s *Server) Sessions(ctx context.Context, id uuid.UUID) ([]Session, error) {
+	return s.store.Sessions(ctx, id)
+}
+
+// RevokeClient ends the sessions of one client of the user.
+func (s *Server) RevokeClient(ctx context.Context, id uuid.UUID, clientID string) (int64, error) {
+	return s.store.RevokeClient(ctx, id, clientID)
 }
 
 // Cleanup removes expired rows; run it periodically.

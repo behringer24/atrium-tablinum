@@ -47,7 +47,7 @@ type Instance struct {
 	// headers are honoured. Empty = the server is reached directly and ignores them.
 	TrustedProxies []string `yaml:"trusted_proxies"`
 	// DevToken is the static bearer token accepted when dev_mode is on. Empty = the
-	// server generates one at start and logs it. DevUser is the account it maps to.
+	// server requires one (it is never generated or logged). DevUser is the account it maps to.
 	DevToken string `yaml:"dev_token"`
 	DevUser  string `yaml:"dev_user"`
 }
@@ -57,6 +57,12 @@ type Auth struct {
 	BootstrapAdmins []string      `yaml:"bootstrap_admins"`
 	AccessTokenTTL  time.Duration `yaml:"access_token_ttl"`
 	RefreshTokenTTL time.Duration `yaml:"refresh_token_ttl"`
+	// SessionMaxAge is the absolute lifetime of a login per client; after it the user logs in
+	// again even if the connection is used all the time. 0 = unlimited.
+	SessionMaxAge time.Duration `yaml:"session_max_age"`
+	// LinkAccountsByEmail lets a login through a second provider take over the account with
+	// the same e-mail. Off by default, see users.Options.LinkByEmail.
+	LinkAccountsByEmail bool `yaml:"link_accounts_by_email"`
 	// AllowedRedirectURIs are the callback URLs dynamic clients may register. A trailing
 	// "*" matches any suffix (e.g. https://chatgpt.com/connector/oauth/*).
 	AllowedRedirectURIs []string `yaml:"allowed_redirect_uris"`
@@ -150,6 +156,9 @@ type Policy struct {
 	DuplicateThreshold       float64 `yaml:"duplicate_threshold"`
 	MaxDocumentBytes         int     `yaml:"max_document_bytes"`
 	RateLimitWritesPerMinute int     `yaml:"rate_limit_writes_per_minute"`
+	// RateLimitReadsPerMinute caps search, read and list calls per user (each search costs an
+	// embedding); 0 = unlimited.
+	RateLimitReadsPerMinute int `yaml:"rate_limit_reads_per_minute"`
 }
 
 type Tools struct {
@@ -167,6 +176,7 @@ func Defaults() Config {
 		Auth: Auth{
 			AccessTokenTTL:         time.Hour,
 			RefreshTokenTTL:        720 * time.Hour,
+			SessionMaxAge:          2160 * time.Hour,
 			AllowLoopbackRedirects: true,
 		},
 		Embedding: Embedding{Backend: "tei", Model: "BAAI/bge-m3", Dimensions: 1024, Timeout: 60 * time.Second},
@@ -193,6 +203,7 @@ func Defaults() Config {
 			DuplicateThreshold:       0.90,
 			MaxDocumentBytes:         200000,
 			RateLimitWritesPerMinute: 20,
+			RateLimitReadsPerMinute:  120,
 		},
 	}
 }
@@ -263,6 +274,15 @@ func (c *Config) Validate() error {
 	for _, p := range c.Instance.TrustedProxies {
 		if !validIPOrCIDR(p) {
 			add("instance.trusted_proxies: %q ist weder IP noch CIDR", p)
+		}
+	}
+	if c.Instance.DevMode {
+		// A static token without expiry is only acceptable where nobody else can reach it.
+		if u, err := url.Parse(c.Instance.BaseURL); err == nil && !isLoopback(u.Hostname()) {
+			add("instance.dev_mode ist nur mit einer base_url auf localhost erlaubt")
+		}
+		if c.Instance.DevToken == "" {
+			add("instance.dev_mode braucht ein eigenes instance.dev_token (mindestens 16 Zeichen); es wird nicht mehr erzeugt und geloggt")
 		}
 	}
 	if c.Instance.DevToken != "" && !c.Instance.DevMode {

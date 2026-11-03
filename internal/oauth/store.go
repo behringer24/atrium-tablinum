@@ -40,6 +40,14 @@ type Store struct {
 	pool       *pgxpool.Pool
 	accessTTL  time.Duration
 	refreshTTL time.Duration
+	// maxSession is the absolute lifetime of a session, however often it is refreshed; 0 = none.
+	maxSession time.Duration
+}
+
+// WithSessionMaxAge sets the absolute session lifetime: after it the user has to log in again.
+func (s *Store) WithSessionMaxAge(d time.Duration) *Store {
+	s.maxSession = d
+	return s
 }
 
 func NewStore(pool *pgxpool.Pool, accessTTL, refreshTTL time.Duration) *Store {
@@ -191,15 +199,15 @@ type tx interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-func (s *Store) insertPair(ctx context.Context, q tx, clientID string, userID uuid.UUID, resource string) (TokenPair, error) {
+func (s *Store) insertPair(ctx context.Context, q tx, clientID string, userID uuid.UUID, resource string, started time.Time) (TokenPair, error) {
 	p := TokenPair{Access: randomToken("at_"), Refresh: randomToken("rt_"), AccessTTL: s.accessTTL, RefreshTTL: s.refreshTTL}
 	now := time.Now()
 	for _, t := range []struct {
 		raw, kind string
 		ttl       time.Duration
 	}{{p.Access, "access", s.accessTTL}, {p.Refresh, "refresh", s.refreshTTL}} {
-		if _, err := q.Exec(ctx, `INSERT INTO oauth_tokens (token_hash, kind, client_id, user_id, resource, expires_at)
-			VALUES ($1, $2, $3, $4, $5, $6)`, hash(t.raw), t.kind, clientID, userID, resource, now.Add(t.ttl)); err != nil {
+		if _, err := q.Exec(ctx, `INSERT INTO oauth_tokens (token_hash, kind, client_id, user_id, resource, expires_at, session_started_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`, hash(t.raw), t.kind, clientID, userID, resource, now.Add(t.ttl), started); err != nil {
 			return TokenPair{}, err
 		}
 	}
@@ -207,7 +215,7 @@ func (s *Store) insertPair(ctx context.Context, q tx, clientID string, userID uu
 }
 
 func (s *Store) IssueTokens(ctx context.Context, clientID string, userID uuid.UUID, resource string) (TokenPair, error) {
-	return s.insertPair(ctx, s.pool, clientID, userID, resource)
+	return s.insertPair(ctx, s.pool, clientID, userID, resource, time.Now())
 }
 
 // RefreshResult carries the new pair and whom it belongs to.
@@ -227,13 +235,13 @@ func (s *Store) Rotate(ctx context.Context, rawRefresh, clientID string) (Refres
 	defer t.Rollback(ctx)
 
 	var (
-		owner, resource string
-		userID          uuid.UUID
-		expires         time.Time
-		revoked         *time.Time
+		owner, resource  string
+		userID           uuid.UUID
+		expires, started time.Time
+		revoked          *time.Time
 	)
-	err = t.QueryRow(ctx, `SELECT client_id, user_id, resource, expires_at, revoked_at FROM oauth_tokens
-		WHERE token_hash = $1 AND kind = 'refresh' FOR UPDATE`, hash(rawRefresh)).Scan(&owner, &userID, &resource, &expires, &revoked)
+	err = t.QueryRow(ctx, `SELECT client_id, user_id, resource, expires_at, revoked_at, session_started_at FROM oauth_tokens
+		WHERE token_hash = $1 AND kind = 'refresh' FOR UPDATE`, hash(rawRefresh)).Scan(&owner, &userID, &resource, &expires, &revoked, &started)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return RefreshResult{}, ErrInvalidGrant
 	}
@@ -253,13 +261,13 @@ func (s *Store) Rotate(ctx context.Context, rawRefresh, clientID string) (Refres
 		}
 		return RefreshResult{}, ErrInvalidGrant
 	}
-	if !expires.After(time.Now()) {
+	if !expires.After(time.Now()) || (s.maxSession > 0 && time.Since(started) > s.maxSession) {
 		return RefreshResult{}, ErrInvalidGrant
 	}
 	if _, err := t.Exec(ctx, `UPDATE oauth_tokens SET revoked_at = now() WHERE token_hash = $1`, hash(rawRefresh)); err != nil {
 		return RefreshResult{}, err
 	}
-	pair, err := s.insertPair(ctx, t, clientID, userID, resource)
+	pair, err := s.insertPair(ctx, t, clientID, userID, resource, started)
 	if err != nil {
 		return RefreshResult{}, err
 	}
@@ -308,6 +316,45 @@ func (s *Store) Revoke(ctx context.Context, raw, clientID string) error {
 			WHERE user_id = $1 AND client_id = $2 AND kind = 'access' AND revoked_at IS NULL`, userID, clientID)
 	}
 	return err
+}
+
+// Session is one client a user is logged in with.
+type Session struct {
+	ClientID   string
+	ClientName string
+	Started    time.Time
+	LastUsed   *time.Time
+}
+
+// Sessions lists the clients that hold a live refresh token of the user, newest first.
+func (s *Store) Sessions(ctx context.Context, userID uuid.UUID) ([]Session, error) {
+	rows, err := s.pool.Query(ctx, `
+SELECT t.client_id, COALESCE(c.client_name, ''), min(t.session_started_at),
+       (SELECT max(u.last_used_at) FROM oauth_tokens u WHERE u.user_id = $1 AND u.client_id = t.client_id)
+FROM oauth_tokens t JOIN oauth_clients c ON c.client_id = t.client_id
+WHERE t.user_id = $1 AND t.kind = 'refresh' AND t.revoked_at IS NULL AND t.expires_at > now()
+GROUP BY t.client_id, c.client_name
+ORDER BY min(t.session_started_at) DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		var x Session
+		if err := rows.Scan(&x.ClientID, &x.ClientName, &x.Started, &x.LastUsed); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}
+
+// RevokeClient ends the sessions of one client of the user (all its tokens).
+func (s *Store) RevokeClient(ctx context.Context, userID uuid.UUID, clientID string) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE oauth_tokens SET revoked_at = now()
+		WHERE user_id = $1 AND client_id = $2 AND revoked_at IS NULL`, userID, clientID)
+	return tag.RowsAffected(), err
 }
 
 // RevokeUser revokes all tokens of a user (offboarding, "revoke sessions").

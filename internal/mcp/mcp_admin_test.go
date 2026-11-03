@@ -351,7 +351,7 @@ func TestInstanceAdminUpdatesSpace(t *testing.T) {
 		t.Errorf("default_role=reader: %v", m)
 	}
 	out = e.mustCall(t, boss, "admin_update_space", map[string]any{"space": "support", "default_role": "none",
-		"name": "Kundendienst", "description": "Anleitungen"})
+		"name": "Kundendienst", "description": "Anleitungen", "confirm": true})
 	if out["default_role"] != nil || out["requires_approval"] != true || out["name"] != "Kundendienst" || out["description"] != "Anleitungen" {
 		t.Errorf("%v", out)
 	}
@@ -495,6 +495,9 @@ func TestOffboardingConvertsPersonalSpace(t *testing.T) {
 	}
 	if _, msg := transfer(map[string]any{"mode": "dance"}); !strings.Contains(msg, "mode") {
 		t.Errorf("unbekannter mode: %q", msg)
+	}
+	if _, msg := transfer(map[string]any{"mode": "merge", "target_email": "boss@x.de"}); !strings.Contains(msg, "eigenen") {
+		t.Errorf("Admin übernimmt den Bereich selbst: %q", msg)
 	}
 	if _, msg := transfer(map[string]any{"mode": "space", "slug": "support", "name": "X"}); !strings.Contains(msg, "vergeben") {
 		t.Errorf("vergebenes Kürzel: %q", msg)

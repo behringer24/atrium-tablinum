@@ -410,8 +410,11 @@ func TestUpdateRightsAndVersions(t *testing.T) {
 	if err := e.docs.Archive(e.ctx, a1, d.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.docs.Get(e.ctx, a1, d.ID); !errors.Is(err, docs.ErrNotFound) {
-		t.Errorf("archivierter Eintrag lesbar: %v", err)
+	if _, err := e.docs.Get(e.ctx, a2, d.ID); !errors.Is(err, docs.ErrNotFound) {
+		t.Errorf("archivierter Eintrag für Fremde lesbar: %v", err)
+	}
+	if got, err := e.docs.Get(e.ctx, a1, d.ID); err != nil || got.Status != "archived" {
+		t.Errorf("Autor soll den Archivierten zum Zurückholen sehen: %v %s", err, got.Status)
 	}
 }
 
@@ -563,5 +566,118 @@ func TestChunksAndAudit(t *testing.T) {
 	}
 	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE document_id = $1 AND details IS NOT NULL`, pd.ID); n != 0 {
 		t.Errorf("persönliches Audit enthält Details")
+	}
+}
+
+// Archived entries leave the active knowledge base for everybody. Only those who may
+// archive an entry (its author, the curators of the space) list, read and restore it.
+func TestArchiveListAndRestore(t *testing.T) {
+	e := setup(t)
+	author := e.actor(t, "author@x.de")
+	other := e.actor(t, "other@x.de")
+	curator := e.actor(t, "cur@x.de")
+	reader := e.actor(t, "reader@x.de")
+	sp := e.team(t, "wiki", true, authz.None)
+	e.member(t, sp, author, authz.Author)
+	e.member(t, sp, other, authz.Author)
+	e.member(t, sp, curator, authz.Curator)
+	e.member(t, sp, reader, authz.Reader)
+	author, other, curator, reader = e.refresh(t, author), e.refresh(t, other), e.refresh(t, curator), e.refresh(t, reader)
+
+	byCurator := mustStore(t, e, curator, sp.ID, "Vom Kurator", "inhalt")
+	byAuthor := mustStore(t, e, author, sp.ID, "Vom Autor", "inhalt") // Freigabe-Bereich: Entwurf
+	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: byAuthor.ID, Approve: true}); err != nil {
+		t.Fatal(err)
+	}
+	asDraft := mustStore(t, e, author, sp.ID, "Noch Entwurf", "inhalt")
+	for _, c := range []struct {
+		a  docs.Actor
+		id uuid.UUID
+	}{{curator, byCurator.ID}, {author, byAuthor.ID}, {author, asDraft.ID}} {
+		if err := e.docs.Archive(e.ctx, c.a, c.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	archived := func(a docs.Actor) int {
+		l, err := e.docs.List(e.ctx, a, docs.ListParams{SpaceID: sp.ID, Status: "archived"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(l)
+	}
+	if n := queryInt(t, e, `SELECT count(*) FROM chunks`); n == 0 {
+		t.Fatal("Archivieren darf den Suchindex nicht löschen, sonst ist keine Archivsuche möglich")
+	}
+	// normale Listen: nichts Archiviertes
+	for _, a := range []docs.Actor{author, curator, reader} {
+		if l, _ := e.docs.List(e.ctx, a, docs.ListParams{SpaceID: sp.ID}); len(l) != 0 {
+			t.Errorf("aktive Liste zeigt %d archivierte Einträge", len(l))
+		}
+	}
+	// Archivliste: Kurator alle, Autor nur die eigenen, andere nichts
+	if n := archived(curator); n != 3 {
+		t.Errorf("Archiv des Kurators: %d", n)
+	}
+	if n := archived(author); n != 2 {
+		t.Errorf("Archiv des Autors: %d", n)
+	}
+	if n := archived(other); n != 0 {
+		t.Errorf("Archiv eines fremden Autors: %d", n)
+	}
+	if n := archived(reader); n != 0 {
+		t.Errorf("Archiv des Lesers: %d", n)
+	}
+	// Laden per ID folgt derselben Regel
+	if d, err := e.docs.Get(e.ctx, curator, byAuthor.ID); err != nil || d.Status != "archived" {
+		t.Errorf("Kurator lädt Archivierten: %v %s", err, d.Status)
+	}
+	for _, a := range []docs.Actor{other, reader} {
+		if _, err := e.docs.Get(e.ctx, a, byAuthor.ID); !errors.Is(err, docs.ErrNotFound) {
+			t.Errorf("Get durch Unberechtigte: %v", err)
+		}
+	}
+	if _, err := e.docs.Get(e.ctx, author, byCurator.ID); !errors.Is(err, docs.ErrNotFound) {
+		t.Errorf("Autor sieht fremden archivierten Eintrag: %v", err)
+	}
+	// archivierte Einträge lassen sich nicht ändern, nur zurückholen
+	title := "x"
+	if _, err := e.docs.Update(e.ctx, curator, docs.UpdateParams{ID: byCurator.ID, Title: &title}); !errors.Is(err, docs.ErrNotFound) {
+		t.Errorf("Update im Archiv: %v", err)
+	}
+
+	// Zurückholen: wer nicht sehen darf, kann es auch nicht; Autor nicht fremde Einträge
+	for _, c := range []struct {
+		a  docs.Actor
+		id uuid.UUID
+	}{{reader, byAuthor.ID}, {other, byAuthor.ID}, {author, byCurator.ID}} {
+		if _, err := e.docs.Unarchive(e.ctx, c.a, c.id); !errors.Is(err, docs.ErrNotFound) {
+			t.Errorf("Unarchive durch Unberechtigte: %v", err)
+		}
+	}
+	// Kurator: freigegeben bleibt freigegeben
+	if d, err := e.docs.Unarchive(e.ctx, curator, byCurator.ID); err != nil || d.Status != "approved" {
+		t.Errorf("Kurator-Eintrag zurück: %v %s", err, d.Status)
+	}
+	// Autor im Freigabe-Bereich: sein früher freigegebener Eintrag geht erneut in die Prüfung
+	if d, err := e.docs.Unarchive(e.ctx, author, byAuthor.ID); err != nil || d.Status != "draft" {
+		t.Errorf("Autor-Eintrag zurück: %v %s", err, d.Status)
+	}
+	// ein Entwurf bleibt ein Entwurf
+	if d, err := e.docs.Unarchive(e.ctx, curator, asDraft.ID); err != nil || d.Status != "draft" {
+		t.Errorf("Entwurf zurück: %v %s", err, d.Status)
+	}
+	// nicht archiviert -> nichts zu tun
+	if _, err := e.docs.Unarchive(e.ctx, curator, byCurator.ID); err == nil {
+		t.Error("Unarchive eines aktiven Eintrags")
+	}
+	if l, _ := e.docs.List(e.ctx, reader, docs.ListParams{SpaceID: sp.ID}); len(l) != 1 {
+		t.Errorf("Leser sieht nach dem Zurückholen %d Einträge, erwartet 1 (der freigegebene)", len(l))
+	}
+	if n := archived(curator); n != 0 {
+		t.Errorf("Archiv nach dem Zurückholen: %d", n)
+	}
+	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = 'unarchive'`); n != 3 {
+		t.Errorf("Audit-Einträge unarchive: %d", n)
 	}
 }

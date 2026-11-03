@@ -114,16 +114,29 @@ func fetch(ctx context.Context, q querier, a Actor, id uuid.UUID, lock bool) (Do
 	return scanDoc(q.QueryRow(ctx, sql, id, nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator)))
 }
 
-// Get returns a document the actor may see.
+// fetchAny also finds archived documents the actor may restore. Only reading and
+// unarchiving use it; every other write goes through fetch and so never touches the archive.
+func fetchAny(ctx context.Context, q querier, a Actor, id uuid.UUID, lock bool) (Document, error) {
+	sql := `SELECT ` + docColumns + ` FROM documents d JOIN users au ON au.id = d.author_id
+		WHERE d.id = $1 AND (` + visibility.Clause("d", 2, 3, 4) + ` OR ` + visibility.ArchiveClause("d", 2, 3, 4) + `)`
+	if lock {
+		sql += ` FOR UPDATE OF d`
+	}
+	sc := a.Scope()
+	return scanDoc(q.QueryRow(ctx, sql, id, nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator)))
+}
+
+// Get returns a document the actor may see, including archived ones they may restore.
 func (s *Store) Get(ctx context.Context, a Actor, id uuid.UUID) (Document, error) {
-	return fetch(ctx, s.pool, a, id, false)
+	return fetchAny(ctx, s.pool, a, id, false)
 }
 
 type ListParams struct {
 	SpaceID uuid.UUID
 	Tag     string
-	// Status limits the list to draft, approved or rejected entries (empty: all the actor
-	// may see). Drafts and rejected entries are visible only to their author and curators.
+	// Status limits the list to draft, approved, rejected or archived entries (empty: all
+	// active ones the actor may see). Drafts and rejected entries are visible only to their
+	// author and curators; archived ones only to those who may restore them.
 	Status string
 	Limit  int
 }
@@ -134,19 +147,23 @@ func (s *Store) List(ctx context.Context, a Actor, p ListParams) ([]Document, er
 		return nil, ErrNotFound
 	}
 	switch p.Status {
-	case "", "draft", "approved", "rejected":
+	case "", "draft", "approved", "rejected", "archived":
 	default:
-		return nil, errors.Join(ingest.ErrInvalid, errors.New("status muss draft, approved oder rejected sein"))
+		return nil, errors.Join(ingest.ErrInvalid, errors.New("status muss draft, approved, rejected oder archived sein"))
 	}
 	if p.Limit < 1 || p.Limit > 100 {
 		p.Limit = 20
+	}
+	visible := visibility.Clause("d", 1, 2, 3)
+	if p.Status == "archived" {
+		visible = visibility.ArchiveClause("d", 1, 2, 3)
 	}
 	sc := a.Scope()
 	rows, err := s.pool.Query(ctx, `
 SELECT d.id, d.space_id, d.kind, d.title, '', d.tags, d.status, COALESCE(d.review_note, ''),
        d.author_id, au.email::text, d.source, d.version, d.expires_at, d.created_at, d.updated_at
 FROM documents d JOIN users au ON au.id = d.author_id
-WHERE `+visibility.Clause("d", 1, 2, 3)+`
+WHERE `+visible+`
   AND d.space_id = $4 AND d.kind = 'knowledge' AND ($5 = '' OR $5 = ANY(d.tags)) AND ($6 = '' OR d.status = $6)
 ORDER BY d.updated_at DESC LIMIT $7`,
 		nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator), p.SpaceID, p.Tag, p.Status, p.Limit)

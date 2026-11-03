@@ -282,6 +282,67 @@ func (s *Store) Archive(ctx context.Context, a Actor, id uuid.UUID) error {
 	return tx.Commit(ctx)
 }
 
+// Unarchive brings an archived entry back with the status it had before. Whoever may
+// archive an entry may restore it. In an approval space an author's restored entry goes
+// back to review, so the archive is no way around the release.
+func (s *Store) Unarchive(ctx context.Context, a Actor, id uuid.UUID) (Document, error) {
+	cur, err := fetchAny(ctx, s.pool, a, id, false)
+	if err != nil {
+		return Document{}, err
+	}
+	if cur.Kind != "knowledge" || cur.Status != "archived" {
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("der eintrag ist nicht archiviert"))
+	}
+	if err := canEdit(a, cur); err != nil {
+		return Document{}, err
+	}
+	sp, role, err := s.writableSpace(ctx, a, cur.SpaceID)
+	if err != nil {
+		return Document{}, err
+	}
+	if sp.Type == "personal" {
+		if err := s.checkQuota(ctx, a, sp.ID, 1, int64(len(cur.Content))); err != nil {
+			return Document{}, err
+		}
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Document{}, err
+	}
+	defer tx.Rollback(ctx)
+	locked, err := fetchAny(ctx, tx, a, id, true)
+	if err != nil {
+		return Document{}, err
+	}
+	if locked.Version != cur.Version || locked.Status != "archived" {
+		return Document{}, ErrConflict
+	}
+	status := "approved"
+	if err := tx.QueryRow(ctx, `SELECT status FROM document_versions
+		WHERE document_id = $1 AND status <> 'archived' ORDER BY version DESC LIMIT 1`, id).Scan(&status); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Document{}, err
+	}
+	if status == "approved" && sp.Type == "team" && sp.RequireApproval && role < authz.Curator {
+		status = "draft"
+	}
+	version := locked.Version + 1
+	if _, err := tx.Exec(ctx, `UPDATE documents SET status = $2, review_note = CASE WHEN $2 = 'draft' THEN NULL ELSE review_note END,
+		version = $3, updated_at = now(), updated_by = $4 WHERE id = $1`, id, status, version, a.User.ID); err != nil {
+		return Document{}, err
+	}
+	if err := writeVersion(ctx, tx, id, version, sp.ID, locked.Title, locked.Content, locked.Tags, status, a.User.ID); err != nil {
+		return Document{}, err
+	}
+	if err := record(ctx, tx, a, "unarchive", sp, id, map[string]any{"version": version}); err != nil {
+		return Document{}, err
+	}
+	doc, err := fetch(ctx, tx, a, id, false)
+	if err != nil {
+		return Document{}, err
+	}
+	return doc, tx.Commit(ctx)
+}
+
 func writeVersion(ctx context.Context, tx pgx.Tx, id uuid.UUID, version int, space uuid.UUID, title, content string, tags []string, status string, by uuid.UUID) error {
 	_, err := tx.Exec(ctx, `INSERT INTO document_versions (document_id, version, space_id, title, content, tags, status, changed_by)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, id, version, space, title, content, tags, status, by)

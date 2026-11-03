@@ -21,3 +21,14 @@ func Clause(alias string, visible, actor, curator int) string {
            AND (%[1]s.author_id = $%[3]d::uuid OR %[1]s.space_id = ANY($%[4]d::uuid[])))))`,
 		alias, visible, actor, curator)
 }
+
+// ArchiveClause is the counterpart for archived documents: only those who may restore an
+// entry see it, that is its author and the curators of its space. Parameters as in Clause.
+// It is never combined with Clause except for a direct load by id.
+func ArchiveClause(alias string, visible, actor, curator int) string {
+	return fmt.Sprintf(`(%[1]s.space_id = ANY($%[2]d::uuid[])
+  AND (%[1]s.expires_at IS NULL OR %[1]s.expires_at > now())
+  AND %[1]s.status = 'archived'
+  AND (%[1]s.author_id = $%[3]d::uuid OR %[1]s.space_id = ANY($%[4]d::uuid[])))`,
+		alias, visible, actor, curator)
+}

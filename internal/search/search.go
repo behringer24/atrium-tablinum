@@ -53,6 +53,9 @@ type Params struct {
 	Spaces []uuid.UUID
 	Tags   []string
 	Limit  int
+	// Archive searches only the archive instead of the active entries. Archived entries
+	// are visible to their author and the curators of the space, nobody else.
+	Archive bool
 }
 
 type Result struct {
@@ -64,7 +67,7 @@ type Result struct {
 	Title       string
 	HeadingPath string
 	Content     string
-	Status      string // approved | draft | rejected – drafts are visible only to author/curators
+	Status      string // approved | draft | rejected | archived – all but approved only for author/curators
 	AuthorEmail string
 	UpdatedAt   time.Time
 	Score       float64
@@ -94,12 +97,16 @@ func New(pool *pgxpool.Pool, emb embed.Embedder, cfg Config) (*Service, error) {
 	return &Service{pool: pool, emb: emb, cfg: cfg, tsq: strings.Join(parts, " || ")}, nil
 }
 
-func (s *Service) sql() string {
+func (s *Service) sql(archive bool) string {
+	visible := visibility.Clause("d", 3, 4, 5)
+	if archive {
+		visible = visibility.ArchiveClause("d", 3, 4, 5)
+	}
 	return `
 WITH q AS (SELECT (` + s.tsq + `) AS tsq),
 vis AS (
     SELECT d.id FROM documents d
-    WHERE ` + visibility.Clause("d", 3, 4, 5) + `
+    WHERE ` + visible + `
       AND d.kind = 'knowledge'
       AND ($9::text[] IS NULL OR d.tags && $9::text[])
 ),
@@ -149,15 +156,15 @@ func (s *Service) Search(ctx context.Context, c Caller, p Params) ([]Result, err
 	var results []Result
 	if len(visible) > 0 {
 		var err error
-		if results, err = s.run(ctx, c, q, visible, p.Tags, limit); err != nil {
+		if results, err = s.run(ctx, c, q, visible, p.Tags, limit, p.Archive); err != nil {
 			return nil, err
 		}
 	}
-	s.audit(ctx, c, q, visible, len(results))
+	s.audit(ctx, c, q, visible, len(results), p.Archive)
 	return results, nil
 }
 
-func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UUID, tags []string, limit int) ([]Result, error) {
+func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UUID, tags []string, limit int, archive bool) ([]Result, error) {
 	var vec *string
 	if v, err := embed.Query(ctx, s.emb, q); err != nil {
 		slog.Warn("Embedding der Suchanfrage fehlgeschlagen, nur Volltextsuche", "error", err)
@@ -191,7 +198,7 @@ func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UU
 	if curator == nil {
 		curator = []uuid.UUID{}
 	}
-	rows, err := tx.Query(ctx, s.sql(), vec, q, visible, c.Scope.Actor, curator, s.cfg.CandidatesPerMethod, s.cfg.RRFK, limit, tagFilter)
+	rows, err := tx.Query(ctx, s.sql(archive), vec, q, visible, c.Scope.Actor, curator, s.cfg.CandidatesPerMethod, s.cfg.RRFK, limit, tagFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -210,8 +217,11 @@ func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UU
 
 // audit records the search. The query text is only kept when no personal space was
 // searched; the hit count is always kept (it feeds "searches without result" stats).
-func (s *Service) audit(ctx context.Context, c Caller, q string, visible []uuid.UUID, hits int) {
+func (s *Service) audit(ctx context.Context, c Caller, q string, visible []uuid.UUID, hits int, archive bool) {
 	details := map[string]any{"hits": hits}
+	if archive {
+		details["archive"] = true
+	}
 	if !includes(visible, c.PersonalSpace) {
 		details["query"] = q
 	}

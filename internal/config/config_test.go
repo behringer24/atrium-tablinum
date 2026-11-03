@@ -128,10 +128,12 @@ func TestValidate(t *testing.T) {
 	}{
 		{"ok", func(*Config) {}, ""},
 		{"http prod", func(c *Config) { c.Instance.BaseURL = "http://k.example.com" }, "https"},
-		{"http dev localhost", func(c *Config) { c.Instance.DevMode = true; c.Instance.BaseURL = "http://localhost:8080" }, ""},
+		{"http dev localhost", func(c *Config) { devLocal(c) }, ""},
 		{"http dev remote", func(c *Config) { c.Instance.DevMode = true; c.Instance.BaseURL = "http://k.example.com" }, "https"},
+		{"dev mode on a public https address", func(c *Config) { c.Instance.DevMode = true; c.Instance.DevToken = "0123456789abcdef" }, "localhost"},
+		{"dev mode needs an explicit token", func(c *Config) { devLocal(c); c.Instance.DevToken = "" }, "dev_token"},
 		{"no providers", func(c *Config) { c.Auth.Providers = nil }, "Identity Provider"},
-		{"no providers dev", func(c *Config) { c.Auth.Providers = nil; c.Instance.DevMode = true }, ""},
+		{"no providers dev", func(c *Config) { devLocal(c); c.Auth.Providers = nil }, ""},
 		{"entra needs tenant", func(c *Config) { c.Auth.Providers[0].Type = "entra" }, "allowed_tenants"},
 		{"google without domains or emails", func(c *Config) { c.Auth.Providers[0].AllowedDomains = nil }, "allowed_emails"},
 		{"google emails only", func(c *Config) {
@@ -148,7 +150,7 @@ func TestValidate(t *testing.T) {
 		{"good proxy", func(c *Config) { c.Instance.TrustedProxies = []string{"10.0.0.0/8", "::1"} }, ""},
 		{"dev token without dev mode", func(c *Config) { c.Instance.DevToken = "0123456789abcdef" }, "dev_mode"},
 		{"short dev token", func(c *Config) { c.Instance.DevMode = true; c.Instance.DevToken = "short" }, "16"},
-		{"dev token ok", func(c *Config) { c.Instance.DevMode = true; c.Instance.DevToken = "0123456789abcdef" }, ""},
+		{"dev token ok", func(c *Config) { devLocal(c) }, ""},
 		{"openai needs key", func(c *Config) { c.Embedding.Backend = "openai"; c.Embedding.URL = "" }, "api_key"},
 		{"openai custom url without key", func(c *Config) { c.Embedding.Backend = "openai" }, ""},
 		{"unknown embedding backend", func(c *Config) { c.Embedding.Backend = "ollama" }, "unbekannt"},
@@ -176,4 +178,11 @@ func TestValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// devLocal is a valid dev setup: loopback address and an explicit token.
+func devLocal(c *Config) {
+	c.Instance.DevMode = true
+	c.Instance.BaseURL = "http://localhost:8080"
+	c.Instance.DevToken = "0123456789abcdef"
 }

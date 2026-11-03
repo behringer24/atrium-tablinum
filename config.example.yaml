@@ -5,7 +5,8 @@ instance:
   organization_name: "Example Corp"          # erscheint in Tool-Beschreibungen
   base_url: "https://knowledge.example.com"   # öffentliche Adresse, egal welcher Proxy davor steht
   listen: ":8080"
-  dev_mode: false                         # nur lokal; erlaubt statisches Test-Token und http://localhost
+  dev_mode: false                         # nur lokal (base_url auf localhost); statisches Test-Token
+  # dev_token: "mindestens-16-zeichen"   # bei dev_mode Pflicht, wird nicht erzeugt oder geloggt
   # Proxys, deren X-Forwarded-*-Header vertraut wird (IP oder CIDR).
   # Leer lassen, wenn der Server direkt erreichbar ist.
   # Bundled nginx im Compose-Netz: ["172.30.0.0/24"]; eigener Proxy: dessen IP.
@@ -36,6 +37,8 @@ auth:
   bootstrap_admins: ["admin@example.com"]
   access_token_ttl: "1h"
   refresh_token_ttl: "720h"
+  session_max_age: "2160h"         # absolute Dauer einer Anmeldung (90 Tage), auch bei ständiger Nutzung; 0 = unbegrenzt
+  link_accounts_by_email: false    # true: Login über einen zweiten Provider übernimmt das Konto mit gleicher E-Mail (nur mit verifizierten E-Mails)
   allowed_redirect_uris:
     - "https://claude.ai/api/mcp/auth_callback"
     - "https://claude.com/api/mcp/auth_callback"        # Anthropic kündigt diesen Wechsel an
@@ -98,6 +101,7 @@ policy:
   duplicate_threshold: 0.90
   max_document_bytes: 200000
   rate_limit_writes_per_minute: 20
+  rate_limit_reads_per_minute: 120   # Suche, Lesen, Listen je Nutzer; jede Suche kostet ein Embedding; 0 = unbegrenzt
 
 tools:
   descriptions: {}

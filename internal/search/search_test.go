@@ -387,3 +387,47 @@ func TestSearchAudit(t *testing.T) {
 		t.Errorf("Suchtext aus persönlichem Scope im Audit")
 	}
 }
+
+// The archive is searched only on explicit request and then on its own: archived entries
+// never mix into normal hits, and only those who may restore an entry find it.
+func TestArchiveSearch(t *testing.T) {
+	e := setup(t, false)
+	author := e.actor(t, "author@x.de")
+	cur := e.actor(t, "cur@x.de")
+	reader := e.actor(t, "reader@x.de")
+	sp := e.team(t, "wiki", false, authz.None, map[*docs.Actor]authz.Role{&author: authz.Author, &cur: authz.Curator, &reader: authz.Reader})
+
+	e.put(t, cur, sp.ID, "Aktiv", "alpha aktuell")
+	old := e.put(t, author, sp.ID, "Alt", "alpha veraltet")
+	if err := e.docs.Archive(e.ctx, author, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	onlyArchive := func(p *search.Params) { p.Archive = true }
+
+	if rs := e.find(t, cur, "alpha"); len(rs) != 1 || rs[0].Title != "Aktiv" {
+		t.Errorf("normale Suche: %v", titles(rs))
+	}
+	for _, a := range []docs.Actor{author, cur} {
+		rs := e.find(t, a, "alpha", onlyArchive)
+		if len(rs) != 1 || rs[0].Title != "Alt" || rs[0].Status != "archived" {
+			t.Errorf("Archivsuche: %v", titles(rs))
+		}
+	}
+	if rs := e.find(t, reader, "alpha", onlyArchive); len(rs) != 0 {
+		t.Errorf("Leser findet Archiv: %v", titles(rs))
+	}
+	// Volltext (exaktes Wort) funktioniert im Archiv genauso wie bei aktiven Einträgen
+	if rs := e.find(t, cur, "veraltet", onlyArchive); len(rs) != 1 {
+		t.Errorf("Archiv-Volltext: %v", titles(rs))
+	}
+	// zurückgeholt: wieder normal auffindbar, nicht mehr im Archiv
+	if _, err := e.docs.Unarchive(e.ctx, author, old.ID); err != nil {
+		t.Fatal(err)
+	}
+	if rs := e.find(t, reader, "alpha"); len(rs) != 2 {
+		t.Errorf("nach dem Zurückholen: %v", titles(rs))
+	}
+	if rs := e.find(t, cur, "alpha", onlyArchive); len(rs) != 0 {
+		t.Errorf("Archiv nach dem Zurückholen: %v", titles(rs))
+	}
+}

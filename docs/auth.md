@@ -45,4 +45,10 @@ Beim IdP als Redirect-URI eintragen: `<base_url>/oauth/callback/<provider-id>` (
 
 - Client ID Metadata Documents (von der Spezifikation bevorzugt) sind nicht umgesetzt; Dynamic Client Registration funktioniert mit Claude und ChatGPT.
 - Gruppen aus dem ID-Token werden gelesen, aber noch nicht synchronisiert (Phase 2).
-- Der periodische Aufräumjob (`Cleanup`) wird mit den Hintergrundjobs in Schritt 9 eingehängt.
+
+## Konten, Sitzungen und dev_mode
+
+- **Konten werden nicht über die E-Mail verknüpft.** Ein Login bei einem zweiten Provider mit einer schon vergebenen E-Mail wird abgelehnt (Meldung an den Nutzer, der Admin muss entscheiden). Mit `auth.link_accounts_by_email: true` übernimmt er das bestehende Konto, auch einen Instanz-Admin aus `bootstrap_admins`; das ist nur sicher, wenn alle Provider verifizierte E-Mails liefern und niemand dort Adressen der erlaubten Domain beliebig ausstellen kann. Jede Verknüpfung steht als `account_linked` im Audit-Log.
+- **Absolute Sitzungsdauer:** `auth.session_max_age` (Standard 90 Tage). Danach meldet sich der Nutzer neu an, auch wenn die Verbindung ständig genutzt wird.
+- **Eigene Anmeldungen:** `my_sessions` zeigt die Clients, mit denen man angemeldet ist, `revoke_my_sessions` beendet eine oder alle (nach Geräteverlust). Instanz-Admins beenden die Anmeldungen eines Nutzers mit `admin_revoke_sessions`.
+- **`dev_mode`** läuft nur mit einer `base_url` auf localhost und verlangt ein eigenes `dev_token` (mindestens 16 Zeichen). Es wird nicht mehr erzeugt oder geloggt.

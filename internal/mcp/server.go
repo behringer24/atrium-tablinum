@@ -43,6 +43,8 @@ type Settings struct {
 	// DefaultSpaceByGroup maps a group name to the slug of its default target space.
 	DefaultSpaceByGroup map[string]string
 	WritesPerMinute     int
+	// ReadsPerMinute limits search, read and list calls per user; 0 = unlimited.
+	ReadsPerMinute int
 	// DisableHostProtection turns off the SDK's DNS-rebinding guard, which rejects a
 	// non-local Host header on loopback connections. Needed when a reverse proxy on the
 	// same host forwards to 127.0.0.1.
@@ -65,6 +67,9 @@ type Deps struct {
 	Pool *pgxpool.Pool
 	// RevokeTokens revokes all OAuth tokens of a user (offboarding); nil without OAuth.
 	RevokeTokens func(ctx context.Context, user uuid.UUID) (int64, error)
+	// ListSessions and RevokeClient serve my_sessions and revoke_my_sessions; nil without OAuth.
+	ListSessions func(ctx context.Context, user uuid.UUID) ([]SessionInfo, error)
+	RevokeClient func(ctx context.Context, user uuid.UUID, clientID string) (int64, error)
 	// Jobs and Health feed admin_health; both may be nil.
 	Jobs   *jobs.Runner
 	Health []HealthCheck
@@ -87,11 +92,12 @@ type Server struct {
 	Deps
 	set     Settings
 	limiter *limiter
+	reads   *limiter
 	desc    map[string]string // rendered descriptions
 }
 
 func New(d Deps, set Settings) *Server {
-	s := &Server{Deps: d, set: set, limiter: newLimiter(set.WritesPerMinute, time.Minute)}
+	s := &Server{Deps: d, set: set, limiter: newLimiter(set.WritesPerMinute, time.Minute), reads: newLimiter(set.ReadsPerMinute, time.Minute)}
 	s.desc = s.renderDescriptions()
 	return s
 }
@@ -125,7 +131,8 @@ func (s *Server) instructions() string {
 	}
 	return "Dies ist der zentrale Wissensspeicher " + name + ". Spricht der Nutzer von „" + s.shortName() +
 		"“, ist dieser Speicher gemeint. Speichere nur dann etwas, wenn der Nutzer es ausdrücklich verlangt. " +
-		"Nenne dem Nutzer nach dem Speichern immer, in welchem Bereich der Eintrag liegt."
+		"Nenne dem Nutzer nach dem Speichern immer, in welchem Bereich der Eintrag liegt. " +
+		untrustedHint
 }
 
 // shortName falls back to the product name when no short form is configured.
@@ -148,8 +155,8 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 		slog.Error("Rollen für Tool-Liste nicht ermittelbar", "error", err)
 		return nil
 	}
-	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName}, &mcp.ServerOptions{Instructions: s.instructions()})
 	a := docs.Actor{User: u, Roles: roles}
+	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a)})
 	s.registerUserTools(ms)
 	if cur, err := s.teamSpacesAtLeast(r.Context(), a, authz.Curator); err == nil && len(cur) > 0 {
 		s.registerCuratorTools(ms)
@@ -219,6 +226,9 @@ func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tie
 			}
 			if write && !s.limiter.allow(u.ID) {
 				return nil, zero, errors.New("zu viele Schreibvorgänge in kurzer Zeit, bitte in einer Minute erneut versuchen")
+			}
+			if !write && !s.reads.allow(u.ID) {
+				return nil, zero, errors.New("zu viele Abfragen in kurzer Zeit, bitte in einer Minute erneut versuchen")
 			}
 			out, err := fn(ctx, &call{Actor: docs.Actor{User: u, Roles: roles, Client: clientName(req)}}, in)
 			if err != nil {

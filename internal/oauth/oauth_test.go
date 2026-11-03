@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -652,5 +653,44 @@ func TestCleanup(t *testing.T) {
 	}
 	if n := count(`SELECT count(*) FROM oauth_tokens WHERE kind = 'refresh'`); n != 1 {
 		t.Errorf("gültiges Refresh-Token verloren: %d", n)
+	}
+}
+
+func TestSessionsAndAbsoluteLifetime(t *testing.T) {
+	e := setup(t, 1)
+	clientID, tok := e.tokens()
+	u, _ := e.users.GetByEmail(e.ctx, "anna@example.com")
+	store := oauth.NewStore(e.pool, time.Hour, 720*time.Hour).WithSessionMaxAge(24 * time.Hour)
+
+	list, err := store.Sessions(e.ctx, u.ID)
+	if err != nil || len(list) != 1 || list[0].ClientID != clientID || list[0].ClientName != "Claude" {
+		t.Fatalf("Sessions: %+v %v", list, err)
+	}
+	// Rotation nimmt den Sitzungsbeginn mit, die Sitzung bleibt eine
+	res, err := store.Rotate(e.ctx, tok["refresh_token"].(string), clientID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = store.Sessions(e.ctx, u.ID); len(list) != 1 {
+		t.Errorf("Sessions nach Rotation: %+v", list)
+	}
+	// nach der Höchstdauer hilft auch ein gültiges Refresh-Token nicht mehr
+	if _, err := e.pool.Exec(e.ctx, `UPDATE oauth_tokens SET session_started_at = now() - interval '48 hours'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Rotate(e.ctx, res.Pair.Refresh, clientID); !errors.Is(err, oauth.ErrInvalidGrant) {
+		t.Errorf("Rotation nach der Höchstdauer: %v", err)
+	}
+	// ohne Höchstdauer (0) bleibt es beim bisherigen Verhalten
+	if _, err := oauth.NewStore(e.pool, time.Hour, 720*time.Hour).Rotate(e.ctx, res.Pair.Refresh, clientID); err != nil {
+		t.Errorf("Rotation ohne Höchstdauer: %v", err)
+	}
+
+	n, err := store.RevokeClient(e.ctx, u.ID, clientID)
+	if err != nil || n == 0 {
+		t.Fatalf("RevokeClient: %d %v", n, err)
+	}
+	if list, _ = store.Sessions(e.ctx, u.ID); len(list) != 0 {
+		t.Errorf("Sessions nach dem Beenden: %+v", list)
 	}
 }

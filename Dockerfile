@@ -2,12 +2,14 @@
 # arm64-Images ohne Emulation des Go-Compilers entstehen (docker buildx --platform ...).
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 ARG TARGETOS TARGETARCH
+# Release-Version für server_info; ohne Angabe meldet das Binary "dev".
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # Migrationen sind per go:embed im Binary, das Image braucht keine weiteren Dateien.
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/atrium-tablinum ./cmd/server
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X github.com/behringer24/atrium-tablinum/internal/product.Version=${VERSION}" -o /out/atrium-tablinum ./cmd/server
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata \
