@@ -34,6 +34,7 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_reactivate_user", "Nutzer reaktivieren", tierInstanceAdmin, true, s.adminReactivateUser)
 	addTool(s, ms, "admin_groups", "Gruppen verwalten", tierInstanceAdmin, true, s.adminGroups)
 	addTool(s, ms, "admin_revoke_sessions", "Anmeldungen eines Nutzers beenden", tierInstanceAdmin, true, s.adminRevokeSessions)
+	addTool(s, ms, "admin_allowlist", "Login-Freigaben verwalten", tierInstanceAdmin, true, s.adminAllowlist)
 	addTool(s, ms, "admin_context", "Kontext verwalten", tierInstanceAdmin, true, s.adminContext)
 	addTool(s, ms, "admin_audit_log", "Audit-Log abfragen", tierInstanceAdmin, false, s.adminAuditLog)
 	addTool(s, ms, "admin_health", "Systemzustand", tierInstanceAdmin, false, s.adminHealth)

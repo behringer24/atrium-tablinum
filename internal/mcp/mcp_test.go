@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/behringer24/atrium-tablinum/internal/allowlist"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -741,5 +742,68 @@ func TestSessionTools(t *testing.T) {
 	}
 	if len(revokedAll) != 2 {
 		t.Errorf("Admin-Widerruf: %v", revokedAll)
+	}
+}
+
+func TestAdminAllowlistTool(t *testing.T) {
+	e := setup(t, 0)
+	e.srv.Allowlist = allowlist.New(e.srv.Pool)
+	e.srv.LoginProviders = []LoginProvider{
+		{ID: "google", Type: "google", Domains: []string{"example.com"}},
+		{ID: "entra", Type: "entra", Tenants: []string{"72f988bf-86f1-41af-91ab-2d7cd011db47"}},
+	}
+	boss := e.session(t, "boss@x.de")
+	anna := e.session(t, "anna@x.de")
+	if toolNames(t, e, anna)["admin_allowlist"] || !toolNames(t, e, boss)["admin_allowlist"] {
+		t.Error("admin_allowlist nur für Instanz-Admins")
+	}
+
+	fail := map[string]struct {
+		args map[string]any
+		want string
+	}{
+		"ohne Bestätigung":     {map[string]any{"action": "add", "kind": "domain", "value": "partner.de"}, "confirm=true"},
+		"Freemail":             {map[string]any{"action": "add", "kind": "domain", "value": "gmail.com", "confirm": true}, "öffentlicher Maildienst"},
+		"keine Domain":         {map[string]any{"action": "add", "kind": "domain", "value": "@partner.de", "confirm": true}, "keine Domain"},
+		"Tenant bei Google":    {map[string]any{"action": "add", "kind": "tenant", "value": "72f988bf-86f1-41af-91ab-2d7cd011db48", "provider": "google", "confirm": true}, "Entra"},
+		"Domain bei Entra":     {map[string]any{"action": "add", "kind": "domain", "value": "partner.de", "provider": "entra", "confirm": true}, "nur Tenants"},
+		"unbekannter Provider": {map[string]any{"action": "add", "kind": "domain", "value": "partner.de", "provider": "nope", "confirm": true}, "nicht gefunden"},
+		"Entfernen ohne ok":    {map[string]any{"action": "remove", "kind": "domain", "value": "partner.de"}, "confirm=true"},
+		"Entfernen unbekannt":  {map[string]any{"action": "remove", "kind": "domain", "value": "partner.de", "confirm": true}, "gibt es nicht"},
+		"unbekannte Aktion":    {map[string]any{"action": "dance"}, "list, add oder remove"},
+	}
+	for name, tc := range fail {
+		if _, msg := e.call(t, boss, "admin_allowlist", tc.args); !strings.Contains(msg, tc.want) {
+			t.Errorf("%s: %q", name, msg)
+		}
+	}
+
+	e.mustCall(t, boss, "admin_allowlist", map[string]any{"action": "add", "kind": "domain", "value": "Partner.de", "confirm": true})
+	e.mustCall(t, boss, "admin_allowlist", map[string]any{"action": "add", "kind": "tenant", "value": "72f988bf-86f1-41af-91ab-2d7cd011db48", "confirm": true})
+	if out := e.mustCall(t, boss, "admin_allowlist", map[string]any{"action": "add", "kind": "domain", "value": "partner.de", "confirm": true}); !strings.Contains(out["message"].(string), "bereits") {
+		t.Errorf("doppelt: %v", out)
+	}
+
+	list := e.mustCall(t, boss, "admin_allowlist", map[string]any{"action": "list"})
+	var cfgN, adminN int
+	for _, en := range list["entries"].([]any) {
+		m := en.(map[string]any)
+		switch m["source"] {
+		case "config":
+			cfgN++
+		case "admin":
+			adminN++
+			if m["added_by"] != "boss@x.de" {
+				t.Errorf("added_by: %v", m)
+			}
+		}
+	}
+	if cfgN != 2 || adminN != 2 || len(list["providers"].([]any)) != 2 {
+		t.Errorf("list: %v", list)
+	}
+
+	e.mustCall(t, boss, "admin_allowlist", map[string]any{"action": "remove", "kind": "domain", "value": "partner.de", "confirm": true})
+	if n := queryCount(t, e, `SELECT count(*) FROM audit_log WHERE action IN ('admin_allowlist_add', 'admin_allowlist_remove')`); n != 4 {
+		t.Errorf("Audit-Einträge: %d", n)
 	}
 }

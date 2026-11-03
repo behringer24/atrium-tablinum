@@ -407,6 +407,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	})
 	if errors.Is(err, idp.ErrNotAllowed) {
 		s.log.Warn("Login abgelehnt", "provider", providerID, "reason", err.Error())
+		s.store.RecordDenied(r.Context(), providerID, strings.TrimPrefix(err.Error(), idp.ErrNotAllowed.Error()+": "))
 		deny("Dieses Konto ist für diese Instanz nicht zugelassen")
 		return
 	}

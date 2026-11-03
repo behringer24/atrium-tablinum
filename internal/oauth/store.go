@@ -382,6 +382,16 @@ func (s *Store) Cleanup(ctx context.Context) error {
 	return nil
 }
 
+// RecordDenied writes the audit entry for a login the account policy rejected. The reason
+// names the domain or tenant but never the e-mail address; an admin who wants to let the
+// person in asks them or looks at the domain.
+func (s *Store) RecordDenied(ctx context.Context, provider, reason string) {
+	if err := audit.Insert(ctx, s.pool, audit.Event{Client: "system", Action: "login_denied",
+		Details: map[string]any{"provider": provider, "reason": reason}}); err != nil {
+		slog.Error("Audit-Eintrag für abgelehnten Login fehlgeschlagen", "error", err)
+	}
+}
+
 // RecordLogin writes the audit entry for a completed login.
 func (s *Store) RecordLogin(ctx context.Context, userID uuid.UUID, provider string) {
 	if err := audit.Insert(ctx, s.pool, audit.Event{UserID: &userID, Client: "system", Action: "login",

@@ -18,6 +18,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/behringer24/atrium-tablinum/internal/allowlist"
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/guard"
@@ -67,6 +68,9 @@ type Deps struct {
 	Pool *pgxpool.Pool
 	// RevokeTokens revokes all OAuth tokens of a user (offboarding); nil without OAuth.
 	RevokeTokens func(ctx context.Context, user uuid.UUID) (int64, error)
+	// Allowlist and LoginProviders serve admin_allowlist; Allowlist nil = not managed.
+	Allowlist      *allowlist.Store
+	LoginProviders []LoginProvider
 	// ListSessions and RevokeClient serve my_sessions and revoke_my_sessions; nil without OAuth.
 	ListSessions func(ctx context.Context, user uuid.UUID) ([]SessionInfo, error)
 	RevokeClient func(ctx context.Context, user uuid.UUID, clientID string) (int64, error)

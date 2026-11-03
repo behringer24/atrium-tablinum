@@ -52,3 +52,15 @@ Beim IdP als Redirect-URI eintragen: `<base_url>/oauth/callback/<provider-id>` (
 - **Absolute Sitzungsdauer:** `auth.session_max_age` (Standard 90 Tage). Danach meldet sich der Nutzer neu an, auch wenn die Verbindung ständig genutzt wird.
 - **Eigene Anmeldungen:** `my_sessions` zeigt die Clients, mit denen man angemeldet ist, `revoke_my_sessions` beendet eine oder alle (nach Geräteverlust). Instanz-Admins beenden die Anmeldungen eines Nutzers mit `admin_revoke_sessions`.
 - **`dev_mode`** läuft nur mit einer `base_url` auf localhost und verlangt ein eigenes `dev_token` (mindestens 16 Zeichen). Es wird nicht mehr erzeugt oder geloggt.
+
+## Wer sich anmelden darf (ohne Neustart)
+
+`allowed_domains`, `allowed_emails` und `allowed_tenants` aus der `config.yaml` bilden die Basis. Instanz-Admins ergänzen sie zur Laufzeit mit `admin_allowlist`, ein Neustart ist nicht nötig:
+
+- `action=list` zeigt die Provider und alle Einträge (`config` = aus der Konfiguration, nicht änderbar; `admin` = hier angelegt, mit Admin und Datum).
+- `action=add` und `remove` mit `kind` = `domain` (z. B. `partner.de`), `email` (einzelne Adresse) oder `tenant` (Entra-Tenant-ID als GUID), optional mit `provider`, sonst für alle passenden Provider. Domains und Adressen gelten für `google` und `oidc`, Tenants für `entra`.
+- Die Datenbank-Einträge **erweitern** nur: Was die Konfiguration erlaubt, lässt sich damit nicht verbieten. Bei Entra wachsen nur die Tenants (eine Domainliste würde dort einschränken). Kommt zu einem einzelnen Tenant ein zweiter hinzu, wechselt die Prüfung selbst auf das `organizations`-Dokument mit Issuer-Prüfung je Tenant.
+- `add` und `remove` brauchen `confirm=true` nach ausdrücklicher Rückfrage beim Nutzer, jede Änderung steht im Audit-Log (`admin_allowlist_add`, `admin_allowlist_remove`). Öffentliche Maildomains (gmail.com, outlook.com, gmx.de …) werden als Domain abgelehnt; dafür einzelne Adressen verwenden.
+- Entfernen sperrt keine bestehenden Konten: dafür `admin_offboard_user` und `admin_revoke_sessions`.
+- Abgelehnte Logins schreiben `login_denied` ins Audit-Log mit Provider und Grund (Domain oder Tenant, nie die E-Mail-Adresse). Es wird kein Konto angelegt.
+- Ist die Datenbank beim Login nicht lesbar, gilt nur die Konfiguration. Das kann nur mehr ablehnen, nie mehr zulassen.

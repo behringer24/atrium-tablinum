@@ -127,7 +127,7 @@ func (c claims) check(cfg config.Provider) (Identity, error) {
 			return Identity{}, reject("e-mail nicht verifiziert")
 		}
 		if !byEmail && len(cfg.AllowedDomains) == 0 {
-			return Identity{}, reject("e-mail %q nicht freigegeben", email)
+			return Identity{}, reject("e-mail-adresse nicht freigegeben")
 		}
 	default:
 		return Identity{}, reject("unbekannter provider-typ")

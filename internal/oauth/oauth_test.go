@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/behringer24/atrium-tablinum/internal/allowlist"
+	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +37,7 @@ type env struct {
 	idp   *idptest.Server
 	idp2  *idptest.Server
 	users *users.Store
+	allow *allowlist.Store
 	srv   *oauth.Server
 	http  *httptest.Server
 	cl    *http.Client // does not follow redirects
@@ -54,9 +57,14 @@ func setup(t *testing.T, providers int) *env {
 		return p
 	}
 	provs := []idp.Provider{mk("kc", e.idp)}
+	e.allow = allowlist.New(e.pool)
 	if providers > 1 {
 		e.idp2 = idptest.New(t)
 		provs = append(provs, mk("kc2", e.idp2))
+	}
+
+	for _, p := range provs {
+		p.(idp.AdditionsSetter).SetAdditions(e.allow)
 	}
 
 	mux := http.NewServeMux()
@@ -692,5 +700,44 @@ func TestSessionsAndAbsoluteLifetime(t *testing.T) {
 	}
 	if list, _ = store.Sessions(e.ctx, u.ID); len(list) != 0 {
 		t.Errorf("Sessions nach dem Beenden: %+v", list)
+	}
+}
+
+// An admin lets a new domain in while the server runs; a rejected login leaves a trace, but no account.
+func TestAllowlistAtRuntime(t *testing.T) {
+	e := setup(t, 1)
+	clientID := e.register(claudeRedirect)
+	attempt := func() *url.URL { return e.login(e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil)) }
+
+	e.idp.SetClaims(map[string]any{"email": "bob@partner.de"})
+	if loc := attempt(); loc.Query().Get("error") != "access_denied" {
+		t.Fatalf("fremde Domain wurde nicht abgelehnt: %s", loc)
+	}
+	if n := countUsers(t, e); n != 0 {
+		t.Errorf("abgelehnter Login hat %d Konten angelegt", n)
+	}
+	var reason string
+	if err := e.pool.QueryRow(e.ctx, `SELECT details->>'reason' FROM audit_log WHERE action = 'login_denied'`).Scan(&reason); err != nil {
+		t.Fatalf("kein Audit-Eintrag login_denied: %v", err)
+	}
+	if !strings.Contains(reason, "partner.de") || strings.Contains(reason, "bob@") {
+		t.Errorf("Grund im Audit-Log: %q (Domain ja, Adresse nein)", reason)
+	}
+
+	if _, err := e.allow.Add(e.ctx, "domain", "partner.de", "", uuid.Nil); err != nil {
+		t.Fatal(err)
+	}
+	if loc := attempt(); loc.Query().Get("code") == "" {
+		t.Fatalf("nach der Freigabe kein Login: %s", loc)
+	}
+	if n := countUsers(t, e); n != 1 {
+		t.Errorf("Konten nach der Freigabe: %d", n)
+	}
+
+	if err := e.allow.Remove(e.ctx, "domain", "partner.de", ""); err != nil {
+		t.Fatal(err)
+	}
+	if loc := attempt(); loc.Query().Get("error") != "access_denied" {
+		t.Errorf("nach dem Entfernen wieder abgelehnt erwartet: %s", loc)
 	}
 }

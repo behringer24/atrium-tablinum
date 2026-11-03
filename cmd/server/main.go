@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 
+	"github.com/behringer24/atrium-tablinum/internal/allowlist"
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/chunk"
 	"github.com/behringer24/atrium-tablinum/internal/config"
@@ -140,12 +141,21 @@ func run(cfgPath string, log *slog.Logger) error {
 
 	var verifier auth.TokenVerifier
 	resourceMetadataURL := ""
+	allowStore := allowlist.New(pool)
+	mcpSrv.Allowlist = allowStore
+	for _, pc := range cfg.Auth.Providers {
+		mcpSrv.LoginProviders = append(mcpSrv.LoginProviders, mcpserver.LoginProvider{
+			ID: pc.ID, Type: pc.Type, Domains: pc.AllowedDomains, Emails: pc.AllowedEmails, Tenants: pc.AllowedTenants})
+	}
 	if len(cfg.Auth.Providers) > 0 {
 		providers := make([]idp.Provider, 0, len(cfg.Auth.Providers))
 		for _, pc := range cfg.Auth.Providers {
 			p, err := idp.New(pc)
 			if err != nil {
 				return err
+			}
+			if a, ok := p.(idp.AdditionsSetter); ok {
+				a.SetAdditions(allowStore)
 			}
 			providers = append(providers, p)
 		}
