@@ -46,6 +46,8 @@ var (
 	ErrOwnVersion = errors.New("the author of a skill version cannot approve it, another curator has to do that")
 	// ErrTampered is returned when the stored files no longer match the digest of the version.
 	ErrTampered = errors.New("the stored files do not match the digest of this version")
+	// ErrArchived is returned when a change needs an active skill but the skill is archived.
+	ErrArchived = errors.New("the skill is archived: restore it first (unarchive_skill)")
 )
 
 // Statuses of a version.
@@ -123,7 +125,9 @@ type Version struct {
 	CreatedAt      time.Time
 	ReviewNote     string
 	BlockReason    string
-	Resources      []Resource
+	// Archived is a property of the whole skill, repeated on each of its versions.
+	Archived  bool
+	Resources []Resource
 }
 
 // ---- validation ---------------------------------------------------------------------
@@ -339,8 +343,12 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 		return Version{}, err
 	}
 	// Serialise concurrent saves of the same skill.
-	if _, err := tx.Exec(ctx, `SELECT 1 FROM skills WHERE id = $1 FOR UPDATE`, skillID); err != nil {
+	var archived bool
+	if err := tx.QueryRow(ctx, `SELECT archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).Scan(&archived); err != nil {
 		return Version{}, err
+	}
+	if archived {
+		return Version{}, ErrArchived
 	}
 
 	var latestID uuid.UUID
@@ -422,7 +430,10 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 	if p.Approve && risk != "A" && risk != "B" && risk != "C" {
 		return Version{}, invalid("approving needs a risk class: A (instructions only), B (uses tools), C (critical actions)")
 	}
-	return s.transition(ctx, a, p.Ref, func(v Version, sp spaces.Space) (string, map[string]any, error) {
+	return s.transition(ctx, a, p.Ref, authz.Curator, func(v Version, sp spaces.Space) (string, map[string]any, error) {
+		if v.Archived {
+			return "", nil, ErrArchived
+		}
 		if v.Status != StatusDraft {
 			return "", nil, ErrState
 		}
@@ -451,7 +462,10 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 // Publish makes an approved version available to the readers of the space. The stored
 // files are checked against the digest once more. Class C skills need an instance admin.
 func (s *Store) Publish(ctx context.Context, a docs.Actor, ref Ref) (Version, error) {
-	return s.transition(ctx, a, ref, func(v Version, sp spaces.Space) (string, map[string]any, error) {
+	return s.transition(ctx, a, ref, authz.Curator, func(v Version, sp spaces.Space) (string, map[string]any, error) {
+		if v.Archived {
+			return "", nil, ErrArchived
+		}
 		if v.Status != StatusApproved {
 			return "", nil, ErrState
 		}
@@ -500,7 +514,8 @@ func (s *Store) Block(ctx context.Context, a docs.Actor, ref Ref, reason string)
 	if reason == "" || utf8.RuneCountInString(reason) > maxNote {
 		return Version{}, invalid("a reason is required (at most 2000 characters)")
 	}
-	return s.transition(ctx, a, ref, func(v Version, sp spaces.Space) (string, map[string]any, error) {
+	// Blocking stays possible on an archived skill: withdrawing is always the safe direction.
+	return s.transition(ctx, a, ref, authz.Curator, func(v Version, sp spaces.Space) (string, map[string]any, error) {
 		if v.Status != StatusApproved && v.Status != StatusPublished {
 			return "", nil, ErrState
 		}
@@ -512,9 +527,146 @@ func (s *Store) Block(ctx context.Context, a docs.Actor, ref Ref, reason string)
 	})
 }
 
-// transition loads a version under lock, checks that the actor is a curator of its space,
-// lets check decide the action and its audit details, applies it and records the event.
-func (s *Store) transition(ctx context.Context, a docs.Actor, ref Ref,
+// Unblock lifts a block. Only admins of the space (instance admins in every team space) may,
+// with a reason for the audit log. The version does not become published again but
+// approved: a curator has to release it explicitly, and publishing checks the stored files
+// against the digest once more. The block itself stays in the audit log.
+func (s *Store) Unblock(ctx context.Context, a docs.Actor, ref Ref, reason string) (Version, error) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" || utf8.RuneCountInString(reason) > maxNote {
+		return Version{}, invalid("a reason is required (at most 2000 characters)")
+	}
+	return s.transition(ctx, a, ref, authz.Admin, func(v Version, sp spaces.Space) (string, map[string]any, error) {
+		if v.Status != StatusBlocked {
+			return "", nil, ErrState
+		}
+		return "skill_unblock", map[string]any{"skill": v.Name, "version": v.Version, "reason": reason, "block_reason": v.BlockReason}, nil
+	}, func(ctx context.Context, tx pgx.Tx, v Version, _ string) error {
+		_, err := tx.Exec(ctx, `UPDATE skill_versions SET status = 'approved', blocked_by = NULL, blocked_at = NULL, block_reason = NULL
+			WHERE id = $1`, v.VersionID)
+		return err
+	})
+}
+
+// Archive hides a whole skill, all its versions, from everyone who cannot restore it. Nothing
+// is deleted, and a skill in use stops being offered at once.
+func (s *Store) Archive(ctx context.Context, a docs.Actor, skillID uuid.UUID) error {
+	return s.skillAction(ctx, a, skillID, "skill_archive", func(archived bool, sp spaces.Space) error {
+		if archived {
+			return ErrState
+		}
+		if a.Roles.Role(sp.ID) < authz.Curator {
+			return ErrForbidden
+		}
+		return nil
+	}, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE skills SET archived_at = now(), archived_by = $2 WHERE id = $1`, skillID, a.User.ID)
+		return err
+	})
+}
+
+// Unarchive brings an archived skill back with its versions in the state they had.
+func (s *Store) Unarchive(ctx context.Context, a docs.Actor, skillID uuid.UUID) error {
+	return s.skillAction(ctx, a, skillID, "skill_unarchive", func(archived bool, sp spaces.Space) error {
+		if !archived {
+			return ErrState
+		}
+		if a.Roles.Role(sp.ID) < authz.Curator {
+			return ErrForbidden
+		}
+		return nil
+	}, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE skills SET archived_at = NULL, archived_by = NULL WHERE id = $1`, skillID)
+		return err
+	})
+}
+
+// Delete removes a skill with all its versions and files for good. In a team space only an
+// instance admin may: skills are instructions that assistants followed, so removing the
+// evidence is not a space matter. In a personal space the owner may. Everyone else archives
+// or blocks. The audit log keeps name, versions and digests of what was deleted.
+func (s *Store) Delete(ctx context.Context, a docs.Actor, skillID uuid.UUID) error {
+	return s.skillAction(ctx, a, skillID, "skill_delete", func(_ bool, sp spaces.Space) error {
+		if sp.Type == "personal" {
+			if a.Roles.Role(sp.ID) < authz.Admin {
+				return ErrForbidden
+			}
+			return nil
+		}
+		if !a.User.InstanceAdmin {
+			return fmt.Errorf("%w: only an instance admin can delete a skill of a team space; archive or block it instead", ErrForbidden)
+		}
+		return nil
+	}, func(ctx context.Context, tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `DELETE FROM skills WHERE id = $1`, skillID)
+		return err
+	})
+}
+
+// skillAction applies a change to a whole skill under lock. check decides whether the actor
+// may, from the archive state and the space. The audit event carries the name and the
+// versions of the skill; for a delete that is all that is left afterwards.
+func (s *Store) skillAction(ctx context.Context, a docs.Actor, skillID uuid.UUID, action string,
+	check func(archived bool, sp spaces.Space) error, apply func(context.Context, pgx.Tx) error) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var name string
+	var spaceID uuid.UUID
+	var archived bool
+	err = tx.QueryRow(ctx, `SELECT name, space_id, archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).Scan(&name, &spaceID, &archived)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	// Whoever cannot even see the skill (it is archived and they cannot restore it, or the space
+	// is not theirs) gets "not found", not "forbidden".
+	sp, _, err := s.space(ctx, a, spaceID, authz.Curator)
+	if err != nil {
+		return err
+	}
+	if err := check(archived, sp); err != nil {
+		return err
+	}
+	versions, err := listVersions(ctx, tx, skillID)
+	if err != nil {
+		return err
+	}
+	if err := apply(ctx, tx); err != nil {
+		return err
+	}
+	if err := record(ctx, tx, a, action, sp, map[string]any{"skill": name, "versions": versions}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// listVersions summarises the versions of a skill for the audit log.
+func listVersions(ctx context.Context, q querier, skillID uuid.UUID) ([]map[string]any, error) {
+	rows, err := q.Query(ctx, `SELECT version, status, digest FROM skill_versions WHERE skill_id = $1 ORDER BY version`, skillID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var n int
+		var st, dg string
+		if err := rows.Scan(&n, &st, &dg); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{"version": n, "status": st, "digest": dg})
+	}
+	return out, rows.Err()
+}
+
+// transition loads a version under lock, checks that the actor has at least the role min in
+// its space, lets check decide the action and its audit details, applies it and records the
+// event.
+func (s *Store) transition(ctx context.Context, a docs.Actor, ref Ref, min authz.Role,
 	check func(Version, spaces.Space) (string, map[string]any, error),
 	apply func(context.Context, pgx.Tx, Version, string) error) (Version, error) {
 	tx, err := s.pool.Begin(ctx)
@@ -530,7 +682,7 @@ func (s *Store) transition(ctx context.Context, a docs.Actor, ref Ref,
 	} else if err != nil {
 		return Version{}, err
 	}
-	sp, _, err := s.space(ctx, a, spaceID, authz.Curator)
+	sp, _, err := s.space(ctx, a, spaceID, min)
 	if err != nil {
 		return Version{}, err
 	}
@@ -563,13 +715,14 @@ type querier interface {
 }
 
 const versionSelect = `SELECT s.id, v.id, s.space_id, s.name, v.version, v.status, v.description, v.requested_tools,
-  COALESCE(v.risk_class, ''), v.digest, v.created_by, v.created_at, COALESCE(v.review_note, ''), COALESCE(v.block_reason, '')
+  COALESCE(v.risk_class, ''), v.digest, v.created_by, v.created_at, COALESCE(v.review_note, ''), COALESCE(v.block_reason, ''),
+  s.archived_at IS NOT NULL
 FROM skill_versions v JOIN skills s ON s.id = v.skill_id `
 
 func scanVersion(row pgx.Row) (Version, error) {
 	var v Version
 	err := row.Scan(&v.SkillID, &v.VersionID, &v.SpaceID, &v.Name, &v.Version, &v.Status, &v.Description, &v.RequestedTools,
-		&v.RiskClass, &v.Digest, &v.CreatedBy, &v.CreatedAt, &v.ReviewNote, &v.BlockReason)
+		&v.RiskClass, &v.Digest, &v.CreatedBy, &v.CreatedAt, &v.ReviewNote, &v.BlockReason, &v.Archived)
 	return v, err
 }
 
@@ -597,9 +750,11 @@ func loadVersion(ctx context.Context, q querier, id uuid.UUID) (Version, error) 
 
 // visibleSQL is the one predicate that decides which versions a caller may see: published
 // versions in spaces they can read, and any other state only for the author and the
-// curators of the space. $1 readable spaces, $2 the caller, $3 spaces where they curate.
+// curators of the space (archived skills: only those who may restore them).
+// $1 readable spaces, $2 the caller, $3 spaces where they curate.
 const visibleSQL = `(s.space_id = ANY($1::uuid[])
-  AND (v.status = 'published' OR v.created_by = $2::uuid OR s.space_id = ANY($3::uuid[])))`
+  AND (v.status = 'published' OR v.created_by = $2::uuid OR s.space_id = ANY($3::uuid[]))
+  AND (s.archived_at IS NULL OR s.space_id = ANY($3::uuid[])))`
 
 func scope(a docs.Actor) (visible []uuid.UUID, curator []uuid.UUID) {
 	return a.Roles.Spaces(authz.Reader), a.Roles.Spaces(authz.Curator)
@@ -610,8 +765,17 @@ type ListFilter struct {
 	Name          string
 	SpaceID       uuid.UUID
 	PublishedOnly bool
-	Limit         int
+	// Archive selects by archive state: "" only active skills, ArchiveOnly only archived
+	// ones, ArchiveAny both. Archived skills are visible to curators of the space only.
+	Archive string
+	Limit   int
 }
+
+// Values of ListFilter.Archive.
+const (
+	ArchiveOnly = "only"
+	ArchiveAny  = "any"
+)
 
 // List returns the versions the caller may see, newest version of each skill first.
 func (s *Store) List(ctx context.Context, a docs.Actor, f ListFilter) ([]Version, error) {
@@ -623,8 +787,9 @@ func (s *Store) List(ctx context.Context, a docs.Actor, f ListFilter) ([]Version
 	rows, err := s.pool.Query(ctx, versionSelect+`WHERE `+visibleSQL+`
 		AND ($4 = '' OR s.name = $4) AND ($5::uuid = '00000000-0000-0000-0000-000000000000'::uuid OR s.space_id = $5)
 		AND (NOT $6 OR v.status = 'published')
+		AND ($8 = 'any' OR ($8 = 'only') = (s.archived_at IS NOT NULL))
 		ORDER BY s.name, s.space_id, v.version DESC LIMIT $7`,
-		vis, a.User.ID, cur, f.Name, f.SpaceID, f.PublishedOnly, limit)
+		vis, a.User.ID, cur, f.Name, f.SpaceID, f.PublishedOnly, limit, f.Archive)
 	if err != nil {
 		return nil, err
 	}

@@ -190,5 +190,20 @@ var defaultDescriptions = map[string]string{
 		`A released version never changes; a change needs a new version and a new review. Skills of risk class C can only be released by an instance admin.`,
 
 	"block_skill": `Withdraws an approved or released skill version (curators and admins), e.g. when it turns out to be harmful: new reads are refused at once. ` +
-		`Needs a reason and the user's confirmation (confirm=true). Blocking cannot be undone; copies a client already holds are not recalled.`,
+		`Needs a reason and the user's confirmation (confirm=true). Only admins of the space and instance admins can lift a block (unblock_skill); copies a client already holds are not recalled.`,
+
+	"unblock_skill": `Lifts the block of a skill version (admins of the space and instance admins), after the user has seen why it was blocked. ` +
+		`Needs a reason and the user's confirmation (confirm=true). The version becomes approved again, not released: a curator has to release it with publish_skill ` +
+		`(class C: an instance admin). The block stays in the audit log.`,
+
+	"archive_skill": `Archives a skill in the "{{.ProductName}}" skill registry (curators and admins of the space, in a personal space the owner): the skill with all its ` +
+		`versions is no longer offered or served to anyone except those who may restore it. Nothing is deleted; list_skills with archived=true shows the archive and ` +
+		`unarchive_skill brings a skill back. ONLY on explicit instruction. Ask the user first and call with confirm=true only after their confirmation.`,
+
+	"unarchive_skill": `Brings an archived skill back (curators and admins of the space, in a personal space the owner). Its versions have the state they had before archiving. ` +
+		`ONLY on explicit instruction. Ask the user first and call with confirm=true only after their confirmation.`,
+
+	"delete_skill": `Deletes a skill of the "{{.ProductName}}" skill registry permanently with all its versions and files; this cannot be undone. ` +
+		`In a team space only instance admins may do this, in a personal space the owner. Everyone else archives (archive_skill) or blocks (block_skill). ` +
+		`The audit log keeps name, versions and digests. ONLY on explicit instruction. Ask the user first and call with confirm=true only after their confirmation.`,
 }

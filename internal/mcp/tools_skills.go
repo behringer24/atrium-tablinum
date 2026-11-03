@@ -39,6 +39,17 @@ func (s *Server) registerSkillTools(ms *mcp.Server) {
 	addTool(s, ms, "get_skill", "Load skill", tierUser, false, s.getSkill)
 	addTool(s, ms, "get_skill_resource", "Load skill file", tierUser, false, s.getSkillResource)
 	addTool(s, ms, "store_skill", "Store skill", tierUser, true, s.storeSkill)
+	// Like their knowledge counterparts these are open to every user in the tool list: the
+	// role (curator or admin of the space, instance admin, owner of a personal space) is
+	// checked per skill.
+	addTool(s, ms, "archive_skill", "Archive skill", tierUser, true, s.archiveSkill)
+	addTool(s, ms, "unarchive_skill", "Restore skill from archive", tierUser, true, s.unarchiveSkill)
+	addTool(s, ms, "delete_skill", "Delete skill permanently", tierUser, true, s.deleteSkill)
+}
+
+// registerSpaceAdminSkillTools adds what only admins of a space (and instance admins) need.
+func (s *Server) registerSpaceAdminSkillTools(ms *mcp.Server) {
+	addTool(s, ms, "unblock_skill", "Unblock skill", tierSpaceAdmin, true, s.unblockSkill)
 }
 
 func (s *Server) registerCuratorSkillTools(ms *mcp.Server) {
@@ -112,7 +123,7 @@ type skillChoice struct {
 // findSkill looks up a skill by name among the versions the caller may see. Several skills
 // with the same name in different spaces need a space reference; the second return value is
 // then the question for the user.
-func (s *Server) findSkill(ctx context.Context, c *call, name, spaceRef string, publishedOnly bool) (*skillMatch, *skillChoice, error) {
+func (s *Server) findSkill(ctx context.Context, c *call, name, spaceRef string, publishedOnly bool, archive string) (*skillMatch, *skillChoice, error) {
 	if s.Skills == nil {
 		return nil, nil, errNoSkills
 	}
@@ -124,7 +135,7 @@ func (s *Server) findSkill(ctx context.Context, c *call, name, spaceRef string, 
 	if err != nil {
 		return nil, nil, err
 	}
-	filter := skills.ListFilter{Name: name, PublishedOnly: publishedOnly}
+	filter := skills.ListFilter{Name: name, PublishedOnly: publishedOnly, Archive: archive}
 	if strings.TrimSpace(spaceRef) != "" {
 		sp, cands := matchSpace(readable, spaceRef)
 		if sp == nil {
@@ -224,12 +235,14 @@ type listSkillsIn struct {
 	Space      string `json:"space,omitempty" jsonschema:"Only skills of this space (slug or name)"`
 	Name       string `json:"name,omitempty" jsonschema:"Only the skill with this name"`
 	AllVersion bool   `json:"all_versions,omitempty" jsonschema:"true = also drafts, rejected and blocked versions that you may see as author or curator (default: released versions only)"`
+	Archived   bool   `json:"archived,omitempty" jsonschema:"true = list the archive instead: archived skills with all their versions, visible to curators and admins of the space only"`
 }
 
 type skillSummary struct {
 	Name        string             `json:"name"`
 	Space       string             `json:"space"`
 	Description string             `json:"description"`
+	Archived    bool               `json:"archived,omitempty"`
 	Latest      int                `json:"latest_published,omitempty"`
 	Versions    []skillVersionInfo `json:"versions"`
 }
@@ -243,7 +256,10 @@ func (s *Server) listSkills(ctx context.Context, c *call, in listSkillsIn) (list
 	if s.Skills == nil {
 		return listSkillsOut{}, errNoSkills
 	}
-	filter := skills.ListFilter{PublishedOnly: !in.AllVersion}
+	filter := skills.ListFilter{PublishedOnly: !in.AllVersion && !in.Archived}
+	if in.Archived {
+		filter.Archive = skills.ArchiveOnly
+	}
 	if n := strings.TrimSpace(in.Name); n != "" {
 		filter.Name = strings.ToLower(n)
 	}
@@ -274,7 +290,7 @@ func (s *Server) listSkills(ctx context.Context, c *call, in listSkillsIn) (list
 		if !ok {
 			i = len(out.Skills)
 			idx[key] = i
-			out.Skills = append(out.Skills, skillSummary{Name: v.Name, Space: names[v.SpaceID], Description: v.Description})
+			out.Skills = append(out.Skills, skillSummary{Name: v.Name, Space: names[v.SpaceID], Description: v.Description, Archived: v.Archived})
 		}
 		sm := &out.Skills[i]
 		sm.Versions = append(sm.Versions, versionInfo(v))
@@ -286,6 +302,8 @@ func (s *Server) listSkills(ctx context.Context, c *call, in listSkillsIn) (list
 	sort.SliceStable(out.Skills, func(i, j int) bool { return out.Skills[i].Name < out.Skills[j].Name })
 	if len(out.Skills) == 0 {
 		out.Message = "No skills found."
+	} else if in.Archived {
+		out.Message = "These skills are archived and not offered to anyone. unarchive_skill brings one back."
 	}
 	return out, nil
 }
@@ -311,7 +329,7 @@ type getSkillOut struct {
 }
 
 func (s *Server) getSkill(ctx context.Context, c *call, in getSkillIn) (getSkillOut, error) {
-	m, choice, err := s.findSkill(ctx, c, in.Skill, in.Space, in.Version <= 0)
+	m, choice, err := s.findSkill(ctx, c, in.Skill, in.Space, in.Version <= 0, "")
 	if err != nil {
 		return getSkillOut{}, err
 	}
@@ -362,7 +380,7 @@ type getSkillResourceOut struct {
 }
 
 func (s *Server) getSkillResource(ctx context.Context, c *call, in getSkillResourceIn) (getSkillResourceOut, error) {
-	m, choice, err := s.findSkill(ctx, c, in.Skill, in.Space, in.Version <= 0)
+	m, choice, err := s.findSkill(ctx, c, in.Skill, in.Space, in.Version <= 0, "")
 	if err != nil {
 		return getSkillResourceOut{}, err
 	}
@@ -475,7 +493,7 @@ func (s *Server) curatedVersion(ctx context.Context, c *call, name, space string
 	if version <= 0 {
 		return nil, nil, userErr("The version is required.")
 	}
-	m, choice, err := s.findSkill(ctx, c, name, space, false)
+	m, choice, err := s.findSkill(ctx, c, name, space, false, skills.ArchiveAny)
 	if err != nil || choice != nil {
 		return nil, choice, err
 	}
@@ -553,7 +571,7 @@ type blockSkillIn struct {
 
 func (s *Server) blockSkill(ctx context.Context, c *call, in blockSkillIn) (skillActionOut, error) {
 	if !in.Confirm {
-		return skillActionOut{}, userErr("Blocking withdraws the version for everyone and cannot be undone (a new version is needed): ask the user for confirmation and then call again with confirm=true.")
+		return skillActionOut{}, userErr("Blocking withdraws the version for everyone (only an admin of the space or an instance admin can lift it again with unblock_skill): ask the user for confirmation and then call again with confirm=true.")
 	}
 	v, choice, err := s.curatedVersion(ctx, c, in.Skill, in.Space, in.Version)
 	if err != nil {
@@ -568,4 +586,85 @@ func (s *Server) blockSkill(ctx context.Context, c *call, in blockSkillIn) (skil
 	}
 	info := versionInfo(out)
 	return skillActionOut{Message: fmt.Sprintf("Version %d of %q is blocked: no new reads are served. Copies that a client already holds are not recalled.", out.Version, out.Name), Skill: out.Name, Version: &info}, nil
+}
+
+// ---- unblock, archive, delete -----------------------------------------------------------
+
+type unblockSkillIn struct {
+	Skill   string `json:"skill" jsonschema:"Name of the skill"`
+	Version int    `json:"version" jsonschema:"Blocked version to lift the block of"`
+	Reason  string `json:"reason" jsonschema:"Why the block is lifted (kept in the audit log)"`
+	Space   string `json:"space,omitempty" jsonschema:"Space; needed only when several spaces have a skill of this name"`
+	Confirm bool   `json:"confirm,omitempty" jsonschema:"true only after confirmation by the user"`
+}
+
+func (s *Server) unblockSkill(ctx context.Context, c *call, in unblockSkillIn) (skillActionOut, error) {
+	if !in.Confirm {
+		return skillActionOut{}, userErr("Unblocking brings a withdrawn version back: show the user the block reason (list_skills with all_versions=true), ask for their confirmation and then call again with confirm=true.")
+	}
+	v, choice, err := s.curatedVersion(ctx, c, in.Skill, in.Space, in.Version)
+	if err != nil {
+		return skillActionOut{}, err
+	}
+	if choice != nil {
+		return skillActionOut{Result: choice.Result, Message: choice.Message, Spaces: choice.Spaces}, nil
+	}
+	out, err := s.Skills.Unblock(ctx, c.Actor, skills.Ref{SkillID: v.SkillID, Version: v.Version}, in.Reason)
+	if err != nil {
+		return skillActionOut{}, err
+	}
+	info := versionInfo(out)
+	return skillActionOut{Message: fmt.Sprintf("Version %d of %q is unblocked and approved again, but not yet released: publish_skill makes it available (class C: instance admin).", out.Version, out.Name), Skill: out.Name, Version: &info}, nil
+}
+
+type skillRefIn struct {
+	Skill   string `json:"skill" jsonschema:"Name of the skill"`
+	Space   string `json:"space,omitempty" jsonschema:"Space; needed only when several spaces have a skill of this name"`
+	Confirm bool   `json:"confirm,omitempty" jsonschema:"true only after confirmation by the user"`
+}
+
+// skillOf resolves the skill a lifecycle tool is about. archive says which archive state to
+// look in (see skills.ListFilter).
+func (s *Server) skillOf(ctx context.Context, c *call, in skillRefIn, archive string) (*skills.Version, *skillChoice, error) {
+	m, choice, err := s.findSkill(ctx, c, in.Skill, in.Space, false, archive)
+	if err != nil || choice != nil {
+		return nil, choice, err
+	}
+	return &m.Versions[0], nil, nil
+}
+
+func (s *Server) archiveSkill(ctx context.Context, c *call, in skillRefIn) (skillActionOut, error) {
+	return s.skillLifecycle(ctx, c, in, "", "Archiving hides the skill and all its versions from everyone except the curators and admins of the space; nothing is deleted. Ask the user for confirmation and then call again with confirm=true.",
+		s.Skills.Archive, "The skill %q is archived: it is no longer offered or served, and only curators and admins of the space can see it (list_skills with archived=true). unarchive_skill brings it back.")
+}
+
+func (s *Server) unarchiveSkill(ctx context.Context, c *call, in skillRefIn) (skillActionOut, error) {
+	return s.skillLifecycle(ctx, c, in, skills.ArchiveOnly, "Restoring offers the skill again in the state its versions had. Ask the user for confirmation and then call again with confirm=true.",
+		s.Skills.Unarchive, "The skill %q is active again; its versions have the state they had before.")
+}
+
+func (s *Server) deleteSkill(ctx context.Context, c *call, in skillRefIn) (skillActionOut, error) {
+	return s.skillLifecycle(ctx, c, in, skills.ArchiveAny, "Permanent deletion removes the skill with all its versions and files and cannot be undone (archive_skill is enough to hide it; block_skill withdraws a version and keeps the evidence). Tell the user, ask them and then call again with confirm=true.",
+		s.Skills.Delete, "The skill %q has been permanently deleted with all its versions. The audit log keeps its name and the digests.")
+}
+
+func (s *Server) skillLifecycle(ctx context.Context, c *call, in skillRefIn, archive, confirmMsg string,
+	do func(context.Context, docs.Actor, uuid.UUID) error, doneFmt string) (skillActionOut, error) {
+	if s.Skills == nil {
+		return skillActionOut{}, errNoSkills
+	}
+	if !in.Confirm {
+		return skillActionOut{}, userErr(confirmMsg)
+	}
+	v, choice, err := s.skillOf(ctx, c, in, archive)
+	if err != nil {
+		return skillActionOut{}, err
+	}
+	if choice != nil {
+		return skillActionOut{Result: choice.Result, Message: choice.Message, Spaces: choice.Spaces}, nil
+	}
+	if err := do(ctx, c.Actor, v.SkillID); err != nil {
+		return skillActionOut{}, err
+	}
+	return skillActionOut{Message: fmt.Sprintf(doneFmt, v.Name), Skill: v.Name}, nil
 }
