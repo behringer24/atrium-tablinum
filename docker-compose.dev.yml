@@ -1,5 +1,5 @@
-# Entwicklung: Server läuft lokal per `go run ./cmd/server`, Compose liefert nur Postgres + TEI.
-# Kein nginx/certbot. Für Tests mit claude.ai/ChatGPT: Tunnel-Agent separat starten (siehe docs/deployment.md, Variante C).
+# Development: the server runs locally via `go run ./cmd/server`, Compose only provides Postgres + TEI.
+# No nginx/certbot. For tests with claude.ai/ChatGPT: start the tunnel agent separately (see docs/deployment.md, variant C).
 services:
   postgres:
     image: pgvector/pgvector:0.8.0-pg17

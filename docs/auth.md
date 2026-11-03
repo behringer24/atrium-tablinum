@@ -1,66 +1,66 @@
-# Login und OAuth
+# Login and OAuth
 
-Der Server ist selbst OAuth-2.1-Autorisierungsserver für den MCP-Endpunkt. Die konfigurierten Identity Provider (IdP) dienen nur dem Login. Claude, ChatGPT und andere MCP-Clients registrieren sich per Dynamic Client Registration (RFC 7591) und holen Tokens bei diesem Server.
+The server is itself the OAuth 2.1 authorization server for the MCP endpoint. The configured identity providers (IdP) are used for login only. Claude, ChatGPT and other MCP clients register through Dynamic Client Registration (RFC 7591) and obtain tokens from this server.
 
-## Endpunkte
+## Endpoints
 
-| Pfad | Zweck |
+| Path | Purpose |
 |---|---|
-| `/.well-known/oauth-protected-resource[/mcp]` | Resource-Metadaten (RFC 9728), im `WWW-Authenticate` der 401-Antwort verlinkt |
-| `/.well-known/oauth-authorization-server` | AS-Metadaten (RFC 8414), inkl. `authorization_response_iss_parameter_supported` |
-| `POST /oauth/register` | Client-Registrierung (nur öffentliche Clients, begrenzt auf erlaubte Redirect-URIs) |
-| `GET /oauth/authorize` | PKCE (S256) Pflicht; `resource` muss auf diesen Server zeigen; Auswahlseite bei mehreren IdPs |
-| `GET /oauth/callback/{provider}` | Rücksprung vom IdP |
-| `POST /oauth/token` | Code gegen Token tauschen, Refresh mit Rotation |
-| `POST /oauth/revoke` | Token widerrufen (RFC 7009) |
+| `/.well-known/oauth-protected-resource[/mcp]` | Resource metadata (RFC 9728), linked in the `WWW-Authenticate` header of the 401 response |
+| `/.well-known/oauth-authorization-server` | AS metadata (RFC 8414), including `authorization_response_iss_parameter_supported` |
+| `POST /oauth/register` | Client registration (public clients only, limited to allowed redirect URIs) |
+| `GET /oauth/authorize` | PKCE (S256) required; `resource` must point to this server; selection page when there are several IdPs |
+| `GET /oauth/callback/{provider}` | Return from the IdP |
+| `POST /oauth/token` | Exchange code for token, refresh with rotation |
+| `POST /oauth/revoke` | Revoke a token (RFC 7009) |
 
-Eigenschaften, die der Server durchsetzt:
+Properties the server enforces:
 
-- Tokens sind opak, in der Datenbank nur als SHA-256-Hash; Access 1 h, Refresh 30 Tage (`auth.*_ttl`).
-- Tokens sind an die Ressource (`<base_url>/mcp`) gebunden (RFC 8707); fremde Audiences werden mit 401 abgewiesen.
-- Refresh-Tokens rotieren. Wird ein bereits benutzes Refresh-Token vorgelegt, widerruft der Server alle Tokens dieses Nutzers für diesen Client.
-- Autorisierungscodes gelten 2 Minuten und genau einmal.
-- Der Nutzer wird bei jeder Anfrage live geprüft: Deaktivierte Konten verlieren sofort den Zugriff, auch mit gültigem Token.
-- Der Server fordert beim IdP selbst PKCE und eine Nonce an.
+- Tokens are opaque and stored in the database only as a SHA-256 hash; access 1 h, refresh 30 days (`auth.*_ttl`).
+- Tokens are bound to the resource (`<base_url>/mcp`) (RFC 8707); foreign audiences are rejected with 401.
+- Refresh tokens rotate. If a refresh token that has already been used is presented, the server revokes all tokens of that user for that client.
+- Authorization codes are valid for 2 minutes and exactly once.
+- The user is checked live on every request: deactivated accounts lose access immediately, even with a valid token.
+- The server itself requests PKCE and a nonce from the IdP.
 
-## Redirect-URIs der Clients
+## Client redirect URIs
 
-`auth.allowed_redirect_uris` listet die Rückkehradressen, die sich registrieren dürfen; ein `*` am Ende steht für beliebigen Rest. Mitgeliefert (Stand 11/2026, vor Livegang gegen die Anbieter-Dokumentation prüfen):
+`auth.allowed_redirect_uris` lists the return addresses that may register; a trailing `*` stands for any remainder. Included by default (as of 11/2026, check against the vendors' documentation before going live):
 
-- Claude: `https://claude.ai/api/mcp/auth_callback` (Anthropic kündigt einen Wechsel auf `claude.com` an, beide sind eingetragen)
+- Claude: `https://claude.ai/api/mcp/auth_callback` (Anthropic has announced a switch to `claude.com`, both are listed)
 - ChatGPT: `https://chatgpt.com/connector_platform_oauth_redirect`, `https://chatgpt.com/connector/oauth/*`
-- Lokale Clients wie Claude Code nutzen `http://localhost:<port>/…`; das erlaubt `auth.allow_loopback_redirects` (Standard `true`).
+- Local clients such as Claude Code use `http://localhost:<port>/…`; this is allowed by `auth.allow_loopback_redirects` (default `true`).
 
-## Identity Provider einrichten
+## Setting up identity providers
 
-Beim IdP als Redirect-URI eintragen: `<base_url>/oauth/callback/<provider-id>` (die `id` aus der Config).
+Register at the IdP as redirect URI: `<base_url>/oauth/callback/<provider-id>` (the `id` from the config).
 
-**Google** (`type: google`): OAuth-Client „Webanwendung“ in der Google Cloud Console (einmalig durch den Betreiber). Zugelassen werden Konten, deren ID-Token einen `hd`-Claim aus `allowed_domains` trägt (Google Workspace), sowie einzeln in `allowed_emails` gelistete Adressen (z. B. private Gmail-Konten, die keinen `hd`-Claim haben). Mindestens eines von beiden ist Pflicht; `email_verified` muss immer `true` sein. `allowed_emails` gilt auch für `type: oidc`, nicht für Entra.
+**Google** (`type: google`): OAuth client of type "Web application" in the Google Cloud Console (once, by the operator). Accounts are admitted whose ID token carries an `hd` claim from `allowed_domains` (Google Workspace), as well as addresses listed individually in `allowed_emails` (e.g. private Gmail accounts, which have no `hd` claim). At least one of the two is required; `email_verified` must always be `true`. `allowed_emails` also applies to `type: oidc`, not to Entra.
 
-**Microsoft Entra ID** (`type: entra`): App-Registrierung, Redirect-Typ „Web“. `allowed_tenants` ist Pflicht. Bei genau einem Tenant wird dessen Discovery-Dokument genutzt, bei mehreren das `organizations`-Dokument mit manueller Issuer-Prüfung (`iss` muss zu `tid` passen). Die E-Mail wird aus `email`, sonst `upn`/`preferred_username` gelesen. Entra liefert kein `email_verified`; die Bindung an den Tenant ersetzt es. *Noch nicht gegen einen echten Entra-Tenant getestet.*
+**Microsoft Entra ID** (`type: entra`): app registration, redirect type "Web". `allowed_tenants` is required. With exactly one tenant, its discovery document is used; with several, the `organizations` document with manual issuer validation (`iss` must match `tid`). The e-mail is read from `email`, otherwise from `upn`/`preferred_username`. Entra does not deliver `email_verified`; the binding to the tenant replaces it. *Not yet tested against a real Entra tenant.*
 
-**Generisches OIDC** (`type: oidc`): `issuer`, `allowed_domains` und ein verifiziertes E-Mail-Feld sind Pflicht. Sendet der IdP kein `email_verified`, kann `allow_unverified_email: true` gesetzt werden – nur für IdPs, die keine ungeprüften Adressen ausstellen.
+**Generic OIDC** (`type: oidc`): `issuer`, `allowed_domains` and a verified e-mail field are required. If the IdP does not send `email_verified`, `allow_unverified_email: true` can be set, but only for IdPs that do not issue unverified addresses.
 
-## Offene Punkte
+## Open points
 
-- Client ID Metadata Documents (von der Spezifikation bevorzugt) sind nicht umgesetzt; Dynamic Client Registration funktioniert mit Claude und ChatGPT.
-- Gruppen aus dem ID-Token werden gelesen, aber noch nicht synchronisiert (Phase 2).
+- Client ID Metadata Documents (preferred by the specification) are not implemented; Dynamic Client Registration works with Claude and ChatGPT.
+- Groups from the ID token are read but not yet synchronized (phase 2).
 
-## Konten, Sitzungen und dev_mode
+## Accounts, sessions and dev_mode
 
-- **Konten werden nicht über die E-Mail verknüpft.** Ein Login bei einem zweiten Provider mit einer schon vergebenen E-Mail wird abgelehnt (Meldung an den Nutzer, der Admin muss entscheiden). Mit `auth.link_accounts_by_email: true` übernimmt er das bestehende Konto, auch einen Instanz-Admin aus `bootstrap_admins`; das ist nur sicher, wenn alle Provider verifizierte E-Mails liefern und niemand dort Adressen der erlaubten Domain beliebig ausstellen kann. Jede Verknüpfung steht als `account_linked` im Audit-Log.
-- **Absolute Sitzungsdauer:** `auth.session_max_age` (Standard 90 Tage). Danach meldet sich der Nutzer neu an, auch wenn die Verbindung ständig genutzt wird.
-- **Eigene Anmeldungen:** `my_sessions` zeigt die Clients, mit denen man angemeldet ist, `revoke_my_sessions` beendet eine oder alle (nach Geräteverlust). Instanz-Admins beenden die Anmeldungen eines Nutzers mit `admin_revoke_sessions`.
-- **`dev_mode`** läuft nur mit einer `base_url` auf localhost und verlangt ein eigenes `dev_token` (mindestens 16 Zeichen). Es wird nicht mehr erzeugt oder geloggt.
+- **Accounts are not linked by e-mail.** A login with a second provider using an already assigned e-mail is rejected (message to the user, the admin must decide). With `auth.link_accounts_by_email: true` it takes over the existing account, including an instance admin from `bootstrap_admins`; this is only safe if all providers deliver verified e-mails and nobody there can issue arbitrary addresses of the allowed domain. Every link is recorded as `account_linked` in the audit log.
+- **Absolute session lifetime:** `auth.session_max_age` (default 90 days). After that the user logs in again, even if the connection is used continuously.
+- **Your own logins:** `my_sessions` shows the clients you are logged in with, `revoke_my_sessions` ends one or all of them (after losing a device). Instance admins end a user's logins with `admin_revoke_sessions`.
+- **`dev_mode`** only runs with a `base_url` on localhost and requires its own `dev_token` (at least 16 characters). It is no longer generated or logged.
 
-## Wer sich anmelden darf (ohne Neustart)
+## Who may log in (without a restart)
 
-`allowed_domains`, `allowed_emails` und `allowed_tenants` aus der `config.yaml` bilden die Basis. Instanz-Admins ergänzen sie zur Laufzeit mit `admin_allowlist`, ein Neustart ist nicht nötig:
+`allowed_domains`, `allowed_emails` and `allowed_tenants` from `config.yaml` form the base. Instance admins extend them at runtime with `admin_allowlist`, no restart needed:
 
-- `action=list` zeigt die Provider und alle Einträge (`config` = aus der Konfiguration, nicht änderbar; `admin` = hier angelegt, mit Admin und Datum).
-- `action=add` und `remove` mit `kind` = `domain` (z. B. `partner.de`), `email` (einzelne Adresse) oder `tenant` (Entra-Tenant-ID als GUID), optional mit `provider`, sonst für alle passenden Provider. Domains und Adressen gelten für `google` und `oidc`, Tenants für `entra`.
-- Die Datenbank-Einträge **erweitern** nur: Was die Konfiguration erlaubt, lässt sich damit nicht verbieten. Bei Entra wachsen nur die Tenants (eine Domainliste würde dort einschränken). Kommt zu einem einzelnen Tenant ein zweiter hinzu, wechselt die Prüfung selbst auf das `organizations`-Dokument mit Issuer-Prüfung je Tenant.
-- `add` und `remove` brauchen `confirm=true` nach ausdrücklicher Rückfrage beim Nutzer, jede Änderung steht im Audit-Log (`admin_allowlist_add`, `admin_allowlist_remove`). Öffentliche Maildomains (gmail.com, outlook.com, gmx.de …) werden als Domain abgelehnt; dafür einzelne Adressen verwenden.
-- Entfernen sperrt keine bestehenden Konten: dafür `admin_offboard_user` und `admin_revoke_sessions`.
-- Abgelehnte Logins schreiben `login_denied` ins Audit-Log mit Provider und Grund (Domain oder Tenant, nie die E-Mail-Adresse). Es wird kein Konto angelegt.
-- Ist die Datenbank beim Login nicht lesbar, gilt nur die Konfiguration. Das kann nur mehr ablehnen, nie mehr zulassen.
+- `action=list` shows the providers and all entries (`config` = from the configuration, not changeable; `admin` = created here, with admin and date).
+- `action=add` and `remove` with `kind` = `domain` (e.g. `partner.de`), `email` (single address) or `tenant` (Entra tenant ID as GUID), optionally with `provider`, otherwise for all matching providers. Domains and addresses apply to `google` and `oidc`, tenants to `entra`.
+- The database entries only **extend**: what the configuration allows cannot be forbidden this way. With Entra only the tenants grow (a domain list would restrict there). If a second tenant is added to a single one, the check itself switches to the `organizations` document with issuer validation per tenant.
+- `add` and `remove` need `confirm=true` after explicitly asking the user, every change is in the audit log (`admin_allowlist_add`, `admin_allowlist_remove`). Public mail domains (gmail.com, outlook.com, gmx.de …) are rejected as a domain; use single addresses for those.
+- Removing does not lock existing accounts: use `admin_offboard_user` and `admin_revoke_sessions` for that.
+- Rejected logins write `login_denied` to the audit log with provider and reason (domain or tenant, never the e-mail address). No account is created.
+- If the database cannot be read during login, only the configuration applies. This can only reject more, never allow more.

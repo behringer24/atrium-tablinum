@@ -1,14 +1,14 @@
-# Gebaut wird auf der Plattform des Builders und für die Zielplattform kreuzkompiliert, damit
-# arm64-Images ohne Emulation des Go-Compilers entstehen (docker buildx --platform ...).
+# The build runs on the builder's platform and cross-compiles for the target platform, so that
+# arm64 images are produced without emulating the Go compiler (docker buildx --platform ...).
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 ARG TARGETOS TARGETARCH
-# Release-Version für server_info; ohne Angabe meldet das Binary "dev".
+# Release version for server_info; without a value the binary reports "dev".
 ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# Migrationen sind per go:embed im Binary, das Image braucht keine weiteren Dateien.
+# Migrations are in the binary via go:embed, the image needs no further files.
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X github.com/behringer24/atrium-tablinum/internal/product.Version=${VERSION}" -o /out/atrium-tablinum ./cmd/server
 
 FROM alpine:3.22

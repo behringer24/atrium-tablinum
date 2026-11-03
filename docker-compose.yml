@@ -1,7 +1,7 @@
-# Produktion. Varianten (siehe docs/deployment.md):
-#   A  eigener nginx + Let's Encrypt:  docker compose --profile proxy up -d
-#   B/C vorhandener Proxy bzw. Tunnel: docker compose up -d
-# Konfiguration: .env (siehe .env.example) und config.yaml (siehe config.example.yaml).
+# Production. Variants (see docs/deployment.md):
+#   A   own nginx + Let's Encrypt:     docker compose --profile proxy up -d
+#   B/C existing proxy or tunnel:      docker compose up -d
+# Configuration: .env (see .env.example) and config.yaml (see config.example.yaml).
 name: atrium-tablinum
 services:
   server:
@@ -9,22 +9,22 @@ services:
     image: atrium-tablinum:latest
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://knowledge:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}@postgres:5432/knowledge
+      DATABASE_URL: postgres://knowledge:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/knowledge
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
       ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      # Bedrock: auf ECS/EC2 genügt die IAM-Rolle, sonst Schlüssel eines eingeschränkten IAM-Benutzers.
+      # Bedrock: on ECS/EC2 the IAM role is enough, otherwise keys of a restricted IAM user.
       AWS_REGION: ${AWS_REGION:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
     volumes:
       - ${CONFIG_FILE:-./config.yaml}:/etc/atrium-tablinum/config.yaml:ro
-    # Variante A braucht keine Veröffentlichung (nginx erreicht den Server im Compose-Netz).
-    # Variante B/C: SERVER_BIND auf die Schnittstelle setzen, die der Proxy erreicht.
+    # Variant A needs no publishing (nginx reaches the server in the Compose network).
+    # Variant B/C: set SERVER_BIND to the interface the proxy can reach.
     ports:
       - "${SERVER_BIND:-127.0.0.1:8080}:8080"
     depends_on:
@@ -40,7 +40,7 @@ services:
     environment:
       POSTGRES_DB: knowledge
       POSTGRES_USER: knowledge
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -52,14 +52,14 @@ services:
   tei-embed:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
     restart: unless-stopped
-    # Auf kleinen Servern TEI_ARGS in .env setzen, siehe docs/embedding.md (Speicherbedarf).
-    # Ohne eigenen Embedding-Server (openai, bedrock): docker-compose.api.yml dazunehmen.
+    # On small servers set TEI_ARGS in .env, see docs/embedding.md (memory requirements).
+    # Without an own embedding server (openai, bedrock): add docker-compose.api.yml.
     command: ${TEI_ARGS:---model-id BAAI/bge-m3 --max-batch-tokens 8192}
     volumes:
       - teidata:/data
     networks: [atrium]
 
-  # --- nur Variante A (--profile proxy) ---
+  # --- variant A only (--profile proxy) ---
   nginx:
     profiles: ["proxy"]
     image: nginx:1.28-alpine
@@ -73,7 +73,7 @@ services:
       - ./deploy/nginx/knowledge.conf.template:/etc/nginx/templates/knowledge.conf.template:ro
       - certbot-www:/var/www/certbot:ro
       - letsencrypt:/etc/letsencrypt:ro
-    # Zertifikate nach Erneuerung alle 6 Stunden neu laden.
+    # Reload certificates every 6 hours after renewal.
     command: >
       /bin/sh -c "while :; do sleep 6h; nginx -s reload; done &
       exec /docker-entrypoint.sh nginx -g 'daemon off;'"
@@ -95,7 +95,7 @@ networks:
   atrium:
     ipam:
       config:
-        # fest, damit instance.trusted_proxies für den mitgelieferten nginx stabil bleibt
+        # fixed so that instance.trusted_proxies stays stable for the bundled nginx
         - subnet: 172.30.0.0/24
 
 volumes:

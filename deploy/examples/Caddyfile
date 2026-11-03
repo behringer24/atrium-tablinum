@@ -1,5 +1,5 @@
-# Variante B mit vorhandenem Caddy. Caddy holt das Zertifikat selbst.
-# In config.yaml: instance.trusted_proxies = Adresse von Caddy (z. B. ["127.0.0.1"]).
+# Variant B with an existing Caddy. Caddy obtains the certificate itself.
+# In config.yaml: instance.trusted_proxies = address of Caddy (e.g. ["127.0.0.1"]).
 knowledge.example.com {
 	reverse_proxy 127.0.0.1:8080 {
 		flush_interval -1

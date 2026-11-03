@@ -1,39 +1,39 @@
-# Releases und Image
+# Releases and image
 
-Ein Release entsteht, wenn ein Tag der Form `vX.Y.Z` gepusht wird, auch als Vorabversion (`v1.2.0-rc1`). Der Workflow `.github/workflows/release.yml` macht dann:
+A release is created when a tag of the form `vX.Y.Z` is pushed, also as a pre-release (`v1.2.0-rc1`). The workflow `.github/workflows/release.yml` then does the following:
 
-1. **Tests:** `gofmt`, `go vet` und `go test ./...` gegen einen Postgres mit pgvector. Schlägt etwas fehl, entsteht kein Image.
-2. **Image** für `linux/amd64` und `linux/arm64`, veröffentlicht in der GitHub Container Registry als `ghcr.io/<owner>/<repo>`.
+1. **Tests:** `gofmt`, `go vet` and `go test ./...` against a Postgres with pgvector. If anything fails, no image is built.
+2. **Image** for `linux/amd64` and `linux/arm64`, published to the GitHub Container Registry as `ghcr.io/<owner>/<repo>`.
 
-| Tag im Repo | Image-Tags |
+| Tag in the repo | Image tags |
 |---|---|
 | `v1.2.3` | `1.2.3`, `1.2`, `1`, `latest` |
-| `v0.4.0` | `0.4.0`, `0.4`, `latest` (kein Tag `0` für 0.x) |
-| `v1.2.3-rc1` | `1.2.3-rc1` (kein `latest`) |
+| `v0.4.0` | `0.4.0`, `0.4`, `latest` (no tag `0` for 0.x) |
+| `v1.2.3-rc1` | `1.2.3-rc1` (no `latest`) |
 
-## Veröffentlichen
+## Publishing
 
 ```bash
 git tag -a v0.1.0 -m "Atrium Tablinum 0.1.0"
 git push origin v0.1.0
 ```
 
-Der Verlauf steht unter „Actions“ im Repo. Das fertige Paket erscheint unter „Packages“ und trägt über das Label `org.opencontainers.image.source` die Verbindung zum Repo.
+The progress is visible under "Actions" in the repo. The finished package appears under "Packages" and is linked to the repo through the label `org.opencontainers.image.source`.
 
-## Das Image verwenden
+## Using the image
 
-In der Compose-Datei steht statt `build: .` die Adresse mit fester Version, z. B. `ghcr.io/<owner>/<repo>:0.1.0`. Eine feste Version ist besser als `latest`, weil ein Update dann bewusst geschieht.
+In the Compose file, instead of `build: .` put the address with a fixed version, e.g. `ghcr.io/<owner>/<repo>:0.1.0`. A fixed version is better than `latest` because an update then happens deliberately.
 
-Das Paket entsteht **privat**. Wer es ziehen soll, braucht Zugriff (Paket-Einstellungen, „Manage access“) und meldet sich mit einem Token an (personal access token classic mit `read:packages`):
+The package is created as **private**. Anyone who is to pull it needs access (package settings, "Manage access") and logs in with a token (personal access token classic with `read:packages`):
 
 ```bash
 echo "$TOKEN" | docker login ghcr.io -u <benutzer> --password-stdin
 ```
 
-Ein Paket öffentlich zu machen lässt sich nicht wieder rückgängig machen. Das sollte erst geschehen, wenn Lizenz und Name feststehen.
+Making a package public cannot be undone. This should only happen once license and name are settled.
 
-## Hinweise
+## Notes
 
-- Veröffentlicht wird nur das Server-Image. Postgres und TEI kommen weiter von ihren Herstellern.
-- Das Server-Image gibt es auch für arm64. Der TEI-Server nicht: Für ARM-Hosts muss das Embedding über ein API-Backend laufen (`openai` oder `bedrock`, siehe [embedding.md](embedding.md)).
-- Rückgängig machen: Ein veröffentlichtes Image bleibt unter seinem Tag bestehen. Zurück geht man mit der Compose-Datei auf die frühere Version.
+- Only the server image is published. Postgres and TEI still come from their vendors.
+- The server image is also available for arm64. The TEI server is not: for ARM hosts, embedding must run through an API backend (`openai` or `bedrock`, see [embedding.md](embedding.md)).
+- Rolling back: a published image remains available under its tag. To go back, point the Compose file to the earlier version.
