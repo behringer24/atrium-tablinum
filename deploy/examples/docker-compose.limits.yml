@@ -1,24 +1,24 @@
-# Beispiel: Ressourcen-Limits für einen geteilten Server, auf dem schon andere Container laufen
-# (gedacht für etwa 4 vCPU und 8 GB RAM). Nicht Teil der Standardkonfiguration.
+# Example: resource limits for a shared server on which other containers already run
+# (meant for roughly 4 vCPU and 8 GB RAM). Not part of the default configuration.
 #
-# Verwendung, im Projektordner:
+# Usage, in the project folder:
 #   docker compose -f docker-compose.yml -f deploy/examples/docker-compose.limits.yml up -d
-# Mit mitgeliefertem nginx zusätzlich --profile proxy, ohne eigenen TEI siehe docker-compose.api.yml.
+# With the bundled nginx additionally --profile proxy, without an own TEI see docker-compose.api.yml.
 #
-# Dazu in .env die sparsamen Startargumente für TEI setzen (sonst braucht TEI rund 12 GB):
+# In addition, set the frugal start arguments for TEI in .env (otherwise TEI needs about 12 GB):
 #   TEI_ARGS=--model-id BAAI/bge-m3 --max-batch-tokens 1024 --auto-truncate
 #
-# Die Werte sind Ausgangspunkte aus Messungen mit bge-m3 (docs/embedding.md):
-#   2 Kerne: rund 1,7 GB RAM, etwa 2,5 s je Abschnitt
-#   4 Kerne: rund 2,1 GB RAM, etwa 1 s je Abschnitt
-# Auf den eigenen Server anpassen und nach dem Start mit `docker stats` prüfen.
+# The values are starting points from measurements with bge-m3 (docs/embedding.md):
+#   2 cores: about 1.7 GB RAM, about 2.5 s per section
+#   4 cores: about 2.1 GB RAM, about 1 s per section
+# Adjust to your own server and check with `docker stats` after starting.
 services:
   tei-embed:
-    # Weniger Kerne = langsamere Indexierung, aber die anderen Container bleiben bedienbar.
+    # Fewer cores = slower indexing, but the other containers stay responsive.
     cpus: 2
     mem_limit: 2500m
-    # Etwas Swap als Puffer; bei gleichem Wert wie mem_limit gäbe es stattdessen einen
-    # Neustart durch restart: unless-stopped, sobald TEI das Limit erreicht.
+    # Some swap as a buffer; with the same value as mem_limit there would instead be a
+    # restart by restart: unless-stopped as soon as TEI reaches the limit.
     memswap_limit: 3g
   postgres:
     mem_limit: 512m

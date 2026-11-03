@@ -49,11 +49,11 @@ func TestTEIBatchesAndKeepsOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(vecs) != 40 {
-		t.Fatalf("%d Vektoren", len(vecs))
+		t.Fatalf("%d vectors", len(vecs))
 	}
 	for i, v := range vecs {
 		if int(v[0]) != i+1 {
-			t.Fatalf("Reihenfolge verletzt bei %d", i)
+			t.Fatalf("order violated at %d", i)
 		}
 	}
 	if len(calls) != 3 || calls[0] != 16 || calls[2] != 8 {
@@ -66,19 +66,19 @@ func TestTEIDimensionMismatch(t *testing.T) {
 	srv := fakeTEI(t, 8, &calls)
 	defer srv.Close()
 	e, _ := New(Settings{Backend: "tei", URL: srv.URL, Dimensions: 4})
-	if _, err := e.Embed(context.Background(), []string{"a"}); err == nil || !strings.Contains(err.Error(), "Dimensionen") {
+	if _, err := e.Embed(context.Background(), []string{"a"}); err == nil || !strings.Contains(err.Error(), "dimensions") {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestTEIErrorDoesNotLeakInput(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "geheimer Inhalt", http.StatusBadRequest)
+		http.Error(w, "secret content", http.StatusBadRequest)
 	}))
 	defer srv.Close()
 	e, _ := New(Settings{Backend: "tei", URL: srv.URL, Dimensions: 4})
-	_, err := e.Embed(context.Background(), []string{"geheimer Inhalt"})
-	if err == nil || strings.Contains(err.Error(), "geheim") {
+	_, err := e.Embed(context.Background(), []string{"secret content"})
+	if err == nil || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -92,12 +92,12 @@ func TestTEIPing(t *testing.T) {
 	}
 	srv.Close()
 	if err := e.Ping(context.Background()); err == nil {
-		t.Fatal("Ping nach Shutdown muss fehlschlagen")
+		t.Fatal("ping after shutdown must fail")
 	}
 }
 
 func TestUnknownBackend(t *testing.T) {
 	if _, err := New(Settings{Backend: "ollama"}); err == nil {
-		t.Fatal("nicht implementiertes Backend muss Fehler liefern")
+		t.Fatal("unimplemented backend must return an error")
 	}
 }

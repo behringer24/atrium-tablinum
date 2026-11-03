@@ -1,44 +1,44 @@
-# Tunnel-Test und Staging
+# Tunnel test and staging
 
-Ziel: den Server mit echten Clients (claude.ai, ChatGPT, Claude Code) und echtem Login prüfen, bevor er produktiv geht. Die automatischen Tests decken weder TEI mit bge-m3, noch Google/Entra, noch die Clients ab.
+Goal: check the server with real clients (claude.ai, ChatGPT, Claude Code) and a real login before it goes live. The automated tests cover neither TEI with bge-m3, nor Google/Entra, nor the clients.
 
-## 1. Tunnel-Test (lokal, Variante C)
+## 1. Tunnel test (local, variant C)
 
-1. Dev-Datenbank und TEI starten: `docker compose -f docker-compose.dev.yml up -d`. Beim ersten Start lädt TEI das Modell (einige Minuten); `curl localhost:8081/health` muss 200 liefern.
-2. Tunnel auf `localhost:8080` einrichten (Cloudflare Tunnel, Tailscale Funnel oder ngrok). Ergebnis ist eine öffentliche HTTPS-Adresse.
-3. `config.yaml`: `instance.base_url` = diese Adresse, `dev_mode: false`, ein echter Provider unter `auth.providers`, `bootstrap_admins` = eigene E-Mail. Beim Identity Provider die Redirect-URI `<base_url>/oauth/callback/<provider-id>` eintragen (siehe [auth.md](auth.md)).
-4. `go run ./cmd/server -config config.yaml`; `curl <base_url>/healthz` und `<base_url>/.well-known/oauth-protected-resource` von außen prüfen.
+1. Start the dev database and TEI: `docker compose -f docker-compose.dev.yml up -d`. On first start TEI downloads the model (a few minutes); `curl localhost:8081/health` must return 200.
+2. Set up a tunnel to `localhost:8080` (Cloudflare Tunnel, Tailscale Funnel or ngrok). The result is a public HTTPS address.
+3. `config.yaml`: `instance.base_url` = this address, `dev_mode: false`, a real provider under `auth.providers`, `bootstrap_admins` = your own e-mail. At the identity provider, register the redirect URI `<base_url>/oauth/callback/<provider-id>` (see [auth.md](auth.md)).
+4. `go run ./cmd/server -config config.yaml`; check `curl <base_url>/healthz` and `<base_url>/.well-known/oauth-protected-resource` from outside.
 
-Läuft der Tunnel auf demselben Host, `trusted_proxies: ["127.0.0.1"]` setzen (siehe [deployment.md](deployment.md), Host-Schutz).
+If the tunnel runs on the same host, set `trusted_proxies: ["127.0.0.1"]` (see [deployment.md](deployment.md), host protection).
 
-## 2. Checkliste
+## 2. Checklist
 
-| Prüfpunkt | Erwartung |
+| Check | Expectation |
 |---|---|
-| MCP Inspector gegen `<base_url>/mcp` | OAuth-Flow läuft durch, Tool-Liste erscheint |
-| claude.ai: Connector hinzufügen | Login beim Provider, danach Tools sichtbar |
-| Claude Code: `claude mcp add --transport http atrium <base_url>/mcp` | Browser-Login über Loopback-Redirect |
-| ChatGPT-Connector | Login, Tools sichtbar (Callback-URL vorher prüfen) |
-| `store_knowledge` → `search_knowledge` | Treffer mit bge-m3, auch bei Synonymen |
-| Nutzer mit fremder Domain | Login wird abgelehnt |
-| Zweiter Nutzer | sieht den persönlichen Bereich des ersten nicht |
-| Bootstrap-Admin | sieht `admin_*`-Tools; normaler Nutzer nicht |
-| Token widerrufen / Nutzer deaktiviert | nächster Aufruf schlägt fehl |
-| Lange Sitzung (> 1 h Token-Laufzeit) | Refresh funktioniert ohne neuen Login |
-| `admin_health` | Datenbank und Embedder „ok“ |
+| MCP Inspector against `<base_url>/mcp` | OAuth flow completes, tool list appears |
+| claude.ai: add connector | Login at the provider, then tools visible |
+| Claude Code: `claude mcp add --transport http atrium <base_url>/mcp` | Browser login via loopback redirect |
+| ChatGPT connector | Login, tools visible (check the callback URL beforehand) |
+| `store_knowledge` → `search_knowledge` | Hit with bge-m3, also for synonyms |
+| User with a foreign domain | Login is rejected |
+| Second user | does not see the first user's personal space |
+| Bootstrap admin | sees `admin_*` tools; a normal user does not |
+| Token revoked / user deactivated | next call fails |
+| Long session (> 1 h token lifetime) | Refresh works without a new login |
+| `admin_health` | Database and embedder "ok" |
 
-Zusätzlich einmal prüfen, dass der HNSW-Index genutzt wird (`EXPLAIN` der Suchanfrage bei einigen tausend Chunks) und dass Entra mit einem echten Tenant funktioniert (bisher nur gegen einen Fake-Provider getestet).
+In addition, check once that the HNSW index is used (`EXPLAIN` of the search query with a few thousand chunks) and that Entra works with a real tenant (so far only tested against a fake provider).
 
-## 3. Staging (Variante A oder B)
+## 3. Staging (variant A or B)
 
-1. Eigene Subdomain, DNS auf den Host, Ports 80/443 offen.
-2. [README](../README.md) Schnellstart durchführen; bei Variante A zuletzt `scripts/init-letsencrypt.sh`.
-3. Checkliste aus Abschnitt 2 wiederholen, dazu:
-   - Zertifikatserneuerung: `docker compose --profile proxy run --rm certbot renew --dry-run`
-   - Neustart des Hosts: alle Dienste kommen von selbst hoch (`restart: unless-stopped`)
-   - Backup und Wiederherstellung einmal gegen eine leere Datenbank durchspielen
-4. Erst danach Produktivnutzer einladen.
+1. Own subdomain, DNS pointing to the host, ports 80/443 open.
+2. Go through the [README](../README.md) quick start; for variant A finish with `scripts/init-letsencrypt.sh`.
+3. Repeat the checklist from section 2, plus:
+   - Certificate renewal: `docker compose --profile proxy run --rm certbot renew --dry-run`
+   - Reboot of the host: all services come up on their own (`restart: unless-stopped`)
+   - Run through backup and restore once against an empty database
+4. Only then invite production users.
 
-## Bekannte offene Punkte
+## Known open points
 
-Client ID Metadata Documents, Reranker und Re-Embedding-Jobs sind nicht umgesetzt (Phase 2/3). Der Freigabe-Workflow ist nur als Grundfunktion da (Entwurf, Freigabe, Rückgabe, siehe [approval.md](approval.md)); ein Entwurf neben dem freigegebenen Stand und Benachrichtigungen fehlen noch.
+Client ID Metadata Documents, reranker and re-embedding jobs are not implemented. The approval workflow covers drafts, curator review and returning entries (see [approval.md](approval.md)); a draft alongside the approved version and notifications are still missing. Planned work is listed in the [roadmap](../ROADMAP.md).

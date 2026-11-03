@@ -42,13 +42,13 @@ func newOpenAI(s Settings, o *options, c *http.Client) (backend, error) {
 	if b.url == "" {
 		b.url = openAIBaseURL
 		if b.apiKey == "" {
-			o.fail("embedding.api_key fehlt (die OpenAI-API verlangt einen Schlüssel)")
+			o.fail("embedding.api_key is missing (the OpenAI API requires a key)")
 		}
 	} else if !validHTTPURL(b.url) {
-		o.fail("embedding.url ist keine http(s)-Adresse")
+		o.fail("embedding.url is not an http(s) address")
 	}
 	if b.model == "" {
-		o.fail("embedding.model fehlt")
+		o.fail("embedding.model is missing")
 	}
 	if err := o.done(); err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (b *openai) ping(ctx context.Context) error {
 			return err
 		}
 		if len(vecs) != 1 || len(vecs[0]) != b.dim {
-			return fmt.Errorf("embedder liefert andere Dimensionen als konfiguriert (%d)", b.dim)
+			return fmt.Errorf("embedder returns different dimensions than configured (%d)", b.dim)
 		}
 		return nil
 	})
@@ -112,13 +112,13 @@ func (b *openai) batchEmbed(ctx context.Context, batch []string) ([][]float32, e
 	out := make([][]float32, len(batch))
 	for _, d := range resp.Data {
 		if d.Index < 0 || d.Index >= len(batch) || out[d.Index] != nil {
-			return nil, fmt.Errorf("embedder lieferte einen unerwarteten Index %d", d.Index)
+			return nil, fmt.Errorf("embedder returned an unexpected index %d", d.Index)
 		}
 		out[d.Index] = d.Embedding
 	}
 	for i, v := range out {
 		if v == nil {
-			return nil, fmt.Errorf("embedder lieferte keinen Vektor für Text %d", i)
+			return nil, fmt.Errorf("embedder returned no vector for text %d", i)
 		}
 	}
 	return out, nil

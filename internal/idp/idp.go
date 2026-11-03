@@ -17,7 +17,7 @@ import (
 
 // ErrNotAllowed means the login was valid but policy rejects the account (wrong domain,
 // tenant, unverified e-mail …). The wrapped text is for logs, not for end users.
-var ErrNotAllowed = errors.New("konto nicht zugelassen")
+var ErrNotAllowed = errors.New("account not allowed")
 
 // Identity is the verified result of a login.
 type Identity struct {
@@ -52,7 +52,7 @@ func New(cfg config.Provider) (Provider, error) {
 	case "google", "entra", "oidc":
 		return newOIDC(cfg), nil
 	}
-	return nil, fmt.Errorf("unbekannter provider-typ %q", cfg.Type)
+	return nil, fmt.Errorf("unknown provider type %q", cfg.Type)
 }
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
@@ -96,44 +96,44 @@ func reject(format string, a ...any) error {
 // check applies the per-type account policy of concept section 6.2.
 func (c claims) check(cfg config.Provider) (Identity, error) {
 	if c.Subject == "" {
-		return Identity{}, reject("token ohne sub")
+		return Identity{}, reject("token without sub")
 	}
 	email := c.email()
 	if email == "" {
-		return Identity{}, reject("token ohne e-mail-adresse")
+		return Identity{}, reject("token without e-mail address")
 	}
 	domain := email[strings.LastIndex(email, "@")+1:]
 
-	// Einzeln freigegebene Adressen (z. B. private Gmail-Konten) umgehen die Domain-Prüfung,
-	// nicht aber die Verifizierung der E-Mail-Adresse.
+	// Individually approved addresses (e.g. private Gmail accounts) bypass the domain check,
+	// but not the verification of the e-mail address.
 	byEmail := containsFold(cfg.AllowedEmails, email)
 
 	switch cfg.Type {
 	case "google":
 		if !c.EmailVerified {
-			return Identity{}, reject("e-mail nicht verifiziert")
+			return Identity{}, reject("e-mail not verified")
 		}
 		// The hd parameter in the login URL is only a hint; the claim decides.
 		if !byEmail && !containsFold(cfg.AllowedDomains, c.HostedDomain) {
-			return Identity{}, reject("hd-claim %q nicht erlaubt", c.HostedDomain)
+			return Identity{}, reject("hd claim %q not allowed", c.HostedDomain)
 		}
 	case "entra":
 		// Entra has no email_verified claim; accounts are bound to their tenant instead.
 		if !containsFold(cfg.AllowedTenants, c.TenantID) {
-			return Identity{}, reject("tenant %q nicht erlaubt", c.TenantID)
+			return Identity{}, reject("tenant %q not allowed", c.TenantID)
 		}
 	case "oidc":
 		if !bool(c.EmailVerified) && !cfg.AllowUnverifiedEmail {
-			return Identity{}, reject("e-mail nicht verifiziert")
+			return Identity{}, reject("e-mail not verified")
 		}
 		if !byEmail && len(cfg.AllowedDomains) == 0 {
-			return Identity{}, reject("e-mail-adresse nicht freigegeben")
+			return Identity{}, reject("e-mail address not approved")
 		}
 	default:
-		return Identity{}, reject("unbekannter provider-typ")
+		return Identity{}, reject("unknown provider type")
 	}
 	if !byEmail && len(cfg.AllowedDomains) > 0 && !containsFold(cfg.AllowedDomains, domain) {
-		return Identity{}, reject("domain %q nicht erlaubt", domain)
+		return Identity{}, reject("domain %q not allowed", domain)
 	}
 
 	name := strings.TrimSpace(c.Name)

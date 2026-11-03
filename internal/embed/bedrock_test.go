@@ -100,15 +100,15 @@ func TestBedrockTitanKeepsOrderAndLimitsConcurrency(t *testing.T) {
 	}
 	for i, v := range vecs {
 		if int(v[0]) != i+1 {
-			t.Fatalf("Reihenfolge verletzt bei %d", i)
+			t.Fatalf("order violated at %d", i)
 		}
 	}
 	if len(f.calls) != 20 || f.maxSeen.Load() > 3 {
-		t.Errorf("Anfragen=%d, gleichzeitig höchstens %d", len(f.calls), f.maxSeen.Load())
+		t.Errorf("requests=%d, at most %d concurrent", len(f.calls), f.maxSeen.Load())
 	}
 	c := f.calls[0]
 	if c.Model != "amazon.titan-embed-text-v2:0" || c.Body["dimensions"] != float64(1024) || c.Body["normalize"] != true {
-		t.Errorf("Anfrage: %+v", c)
+		t.Errorf("request: %+v", c)
 	}
 }
 
@@ -124,7 +124,7 @@ func TestBedrockCohereInputTypesAndAnswerShapes(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(f.calls) != 3 {
-			t.Fatalf("%s: %d Anfragen", shape, len(f.calls))
+			t.Fatalf("%s: %d requests", shape, len(f.calls))
 		}
 		if f.calls[0].Body["input_type"] != "search_document" || f.calls[2].Body["input_type"] != "search_query" ||
 			f.calls[0].Body["truncate"] != "END" {
@@ -141,10 +141,10 @@ func TestBedrockCohereV4AndInferenceProfile(t *testing.T) {
 	}
 	b := f.calls[0].Body
 	if f.calls[0].Model != "eu.cohere.embed-v4:0" || b["output_dimension"] != float64(1536) {
-		t.Errorf("Anfrage: %+v", f.calls[0])
+		t.Errorf("request: %+v", f.calls[0])
 	}
 	if _, has := b["truncate"]; has {
-		t.Error("v4 bekommt kein truncate")
+		t.Error("v4 gets no truncate")
 	}
 }
 
@@ -156,42 +156,42 @@ func TestBedrockValidation(t *testing.T) {
 		s    Settings
 		want string
 	}{
-		"Modell fehlt":         {Settings{Backend: "bedrock", Dimensions: 1024, Options: region}, "embedding.model"},
-		"Modell unbekannt":     {Settings{Backend: "bedrock", Model: "BAAI/bge-m3", Dimensions: 1024, Options: region}, "nicht unterstützt"},
-		"Dimension Titan":      {Settings{Backend: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dimensions: 768, Options: region}, "möglich"},
-		"Dimension Cohere v3":  {Settings{Backend: "bedrock", Model: "cohere.embed-english-v3", Dimensions: 512, Options: region}, "möglich"},
-		"Region fehlt":         {Settings{Backend: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dimensions: 1024}, "region"},
-		"Cohere-Batch zu groß": {Settings{Backend: "bedrock", Model: "cohere.embed-v4:0", Dimensions: 1024, Options: map[string]string{"region": "x", "batch_size": "200"}}, "96"},
-		"Option unbekannt":     {Settings{Backend: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dimensions: 1024, Options: map[string]string{"region": "x", "key": "y"}}, "unbekannte options"},
+		"model missing":          {Settings{Backend: "bedrock", Dimensions: 1024, Options: region}, "embedding.model"},
+		"model unknown":          {Settings{Backend: "bedrock", Model: "BAAI/bge-m3", Dimensions: 1024, Options: region}, "not supported"},
+		"dimension Titan":        {Settings{Backend: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dimensions: 768, Options: region}, "possible"},
+		"dimension Cohere v3":    {Settings{Backend: "bedrock", Model: "cohere.embed-english-v3", Dimensions: 512, Options: region}, "possible"},
+		"region missing":         {Settings{Backend: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dimensions: 1024}, "region"},
+		"Cohere batch too large": {Settings{Backend: "bedrock", Model: "cohere.embed-v4:0", Dimensions: 1024, Options: map[string]string{"region": "x", "batch_size": "200"}}, "96"},
+		"option unknown":         {Settings{Backend: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dimensions: 1024, Options: map[string]string{"region": "x", "key": "y"}}, "unknown options"},
 	} {
 		if err := Validate(tc.s); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	// die Region darf auch aus der Umgebung kommen
+	// the region may also come from the environment
 	t.Setenv("AWS_REGION", "eu-west-1")
 	if err := Validate(Settings{Backend: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dimensions: 1024}); err != nil {
-		t.Errorf("Region aus AWS_REGION: %v", err)
+		t.Errorf("region from AWS_REGION: %v", err)
 	}
 }
 
 func TestBedrockErrorsNameTheCodeButNotTheMessage(t *testing.T) {
 	for code, want := range map[string]string{
-		"AccessDeniedException": "Modellzugriff",
-		"ThrottlingException":   "drosselt",
+		"AccessDeniedException": "model access",
+		"ThrottlingException":   "throttles",
 		"ValidationException":   "ValidationException",
 	} {
-		f := &fakeBedrock{err: &smithy.GenericAPIError{Code: code, Message: "geheimer Text im Fehler"}}
+		f := &fakeBedrock{err: &smithy.GenericAPIError{Code: code, Message: "secret text in the error"}}
 		e := newBedrockForTest(t, "amazon.titan-embed-text-v2:0", 1024, f, nil)
 		_, err := e.Embed(context.Background(), []string{"x", "y", "z"})
-		if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "geheim") {
+		if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "secret") {
 			t.Errorf("%s: %v", code, err)
 		}
 	}
 	f := &fakeBedrock{err: errors.New("no EC2 IMDS role found")}
 	e := newBedrockForTest(t, "cohere.embed-v4:0", 1024, f, nil)
 	if _, err := e.Embed(context.Background(), []string{"x"}); err == nil || !strings.Contains(err.Error(), "IMDS") {
-		t.Errorf("Transportfehler: %v", err)
+		t.Errorf("transport error: %v", err)
 	}
 }
 
@@ -204,12 +204,12 @@ func TestBedrockPingIsCachedAndChecksDimension(t *testing.T) {
 		}
 	}
 	if len(f.calls) != 1 {
-		t.Errorf("Ping kostet %d Anfragen", len(f.calls))
+		t.Errorf("ping costs %d requests", len(f.calls))
 	}
 	bad := &fakeBedrock{}
 	e2 := newBedrockForTest(t, "amazon.titan-embed-text-v2:0", 512, bad, nil)
-	bad.dim = 256 // der Dienst liefert etwas anderes als konfiguriert
-	if err := e2.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "Dimensionen") {
-		t.Errorf("falsche Dimension: %v", err)
+	bad.dim = 256 // the service returns something other than configured
+	if err := e2.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "dimensions") {
+		t.Errorf("wrong dimension: %v", err)
 	}
 }

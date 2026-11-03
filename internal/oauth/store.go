@@ -24,7 +24,7 @@ import (
 
 var (
 	ErrInvalidGrant = errors.New("invalid_grant")
-	ErrNotFound     = errors.New("nicht gefunden")
+	ErrNotFound     = errors.New("not found")
 )
 
 const (
@@ -34,7 +34,7 @@ const (
 	// ErrTooManyClients is returned when dynamic registration is saturated.
 )
 
-var ErrTooManyClients = errors.New("zu viele registrierte clients")
+var ErrTooManyClients = errors.New("too many registered clients")
 
 type Store struct {
 	pool       *pgxpool.Pool
@@ -388,7 +388,7 @@ func (s *Store) Cleanup(ctx context.Context) error {
 func (s *Store) RecordDenied(ctx context.Context, provider, reason string) {
 	if err := audit.Insert(ctx, s.pool, audit.Event{Client: "system", Action: "login_denied",
 		Details: map[string]any{"provider": provider, "reason": reason}}); err != nil {
-		slog.Error("Audit-Eintrag für abgelehnten Login fehlgeschlagen", "error", err)
+		slog.Error("audit entry for denied login failed", "error", err)
 	}
 }
 
@@ -396,6 +396,6 @@ func (s *Store) RecordDenied(ctx context.Context, provider, reason string) {
 func (s *Store) RecordLogin(ctx context.Context, userID uuid.UUID, provider string) {
 	if err := audit.Insert(ctx, s.pool, audit.Event{UserID: &userID, Client: "system", Action: "login",
 		Details: map[string]any{"provider": provider}}); err != nil {
-		slog.Error("Audit-Eintrag für Login fehlgeschlagen", "error", err)
+		slog.Error("audit entry for login failed", "error", err)
 	}
 }

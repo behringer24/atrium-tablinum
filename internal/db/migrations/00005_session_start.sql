@@ -1,6 +1,6 @@
 -- +goose Up
--- Beginn einer Sitzung (erste Anmeldung eines Clients). Refresh-Rotation übernimmt ihn, so
--- lässt sich eine absolute Höchstdauer durchsetzen, auch wenn die Verbindung ständig genutzt wird.
+-- Start of a session (a client's first login). Refresh rotation carries it over, so an
+-- absolute maximum lifetime can be enforced even if the connection is in constant use.
 ALTER TABLE oauth_tokens ADD COLUMN session_started_at timestamptz;
 UPDATE oauth_tokens SET session_started_at = created_at;
 ALTER TABLE oauth_tokens

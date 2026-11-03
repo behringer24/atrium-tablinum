@@ -173,7 +173,7 @@ func (s *Server) clientIP(r *http.Request) string { return httpx.ClientIP(r, s.c
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if !s.regLimit.Allow(s.clientIP(r)) {
-		tokenError(w, http.StatusTooManyRequests, "temporarily_unavailable", "zu viele Registrierungen")
+		tokenError(w, http.StatusTooManyRequests, "temporarily_unavailable", "too many registrations")
 		return
 	}
 	var req struct {
@@ -183,28 +183,28 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		ResponseTypes []string `json:"response_types"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
-		tokenError(w, http.StatusBadRequest, "invalid_client_metadata", "ungültiges JSON")
+		tokenError(w, http.StatusBadRequest, "invalid_client_metadata", "invalid JSON")
 		return
 	}
 	if len(req.RedirectURIs) == 0 || len(req.RedirectURIs) > 10 {
-		tokenError(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uris: 1 bis 10 Einträge erforderlich")
+		tokenError(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uris: 1 to 10 entries required")
 		return
 	}
 	for _, u := range req.RedirectURIs {
 		if !s.AllowsRedirect(u) {
-			tokenError(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uri ist für diese Instanz nicht zugelassen")
+			tokenError(w, http.StatusBadRequest, "invalid_redirect_uri", "redirect_uri is not allowed for this instance")
 			return
 		}
 	}
 	for _, g := range req.GrantTypes {
 		if g != "authorization_code" && g != "refresh_token" {
-			tokenError(w, http.StatusBadRequest, "invalid_client_metadata", "grant_type nicht unterstützt: "+g)
+			tokenError(w, http.StatusBadRequest, "invalid_client_metadata", "grant_type not supported: "+g)
 			return
 		}
 	}
 	for _, t := range req.ResponseTypes {
 		if t != "code" {
-			tokenError(w, http.StatusBadRequest, "invalid_client_metadata", "response_type nicht unterstützt: "+t)
+			tokenError(w, http.StatusBadRequest, "invalid_client_metadata", "response_type not supported: "+t)
 			return
 		}
 	}
@@ -214,11 +214,11 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	c, err := s.store.CreateClient(r.Context(), name, req.RedirectURIs)
 	if errors.Is(err, ErrTooManyClients) {
-		tokenError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "Registrierung derzeit nicht möglich")
+		tokenError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "registration currently not possible")
 		return
 	}
 	if err != nil {
-		s.log.Error("Client-Registrierung", "error", err)
+		s.log.Error("client registration", "error", err)
 		tokenError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
@@ -233,18 +233,18 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 // ---- authorization endpoint ---------------------------------------------------------------
 
 var chooserTmpl = template.Must(template.New("chooser").Parse(`<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{.Product}} – Anmelden</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Product}} – Log in</title>
 <style>body{font:16px system-ui,sans-serif;max-width:24rem;margin:15vh auto;padding:0 1rem}
 a.b{display:block;margin:.6rem 0;padding:.75rem 1rem;border:1px solid #888;border-radius:.5rem;text-decoration:none;color:inherit;text-align:center}
 a.b:hover{background:#8881}</style></head>
-<body><h1>{{.Product}}</h1><p>Wie möchten Sie sich anmelden?</p>
+<body><h1>{{.Product}}</h1><p>How would you like to log in?</p>
 {{range .Providers}}<a class="b" href="{{.URL}}">{{.Name}}</a>{{end}}</body></html>`))
 
 var errorTmpl = template.Must(template.New("error").Parse(`<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Product}}</title><style>body{font:16px system-ui,sans-serif;max-width:30rem;margin:15vh auto;padding:0 1rem}</style></head>
-<body><h1>Anmeldung nicht möglich</h1><p>{{.Message}}</p></body></html>`))
+<body><h1>Login not possible</h1><p>{{.Message}}</p></body></html>`))
 
 // errorPage is used when the redirect URI cannot be trusted, so nothing is redirected.
 func (s *Server) errorPage(w http.ResponseWriter, status int, msg string) {
@@ -259,7 +259,7 @@ func (s *Server) errorPage(w http.ResponseWriter, status int, msg string) {
 func (s *Server) redirectClient(w http.ResponseWriter, r *http.Request, redirectURI, state string, params map[string]string) {
 	u, err := url.Parse(redirectURI)
 	if err != nil {
-		s.errorPage(w, http.StatusBadRequest, "Ungültige Weiterleitung.")
+		s.errorPage(w, http.StatusBadRequest, "Invalid redirect.")
 		return
 	}
 	q := u.Query()
@@ -277,13 +277,13 @@ func (s *Server) redirectClient(w http.ResponseWriter, r *http.Request, redirect
 
 func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 	if !s.authLimit.Allow(s.clientIP(r)) {
-		s.errorPage(w, http.StatusTooManyRequests, "Zu viele Anfragen, bitte später erneut versuchen.")
+		s.errorPage(w, http.StatusTooManyRequests, "Too many requests, please try again later.")
 		return
 	}
 	q := r.URL.Query()
 	client, err := s.store.GetClient(r.Context(), q.Get("client_id"))
 	if err != nil {
-		s.errorPage(w, http.StatusBadRequest, "Unbekannter Client. Bitte die Verbindung im KI-Assistenten neu einrichten.")
+		s.errorPage(w, http.StatusBadRequest, "Unknown client. Please set up the connection in your AI assistant again.")
 		return
 	}
 	redirectURI := q.Get("redirect_uri")
@@ -291,7 +291,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 		redirectURI = client.RedirectURIs[0]
 	}
 	if !contains(client.RedirectURIs, redirectURI) {
-		s.errorPage(w, http.StatusBadRequest, "Die Weiterleitungsadresse ist für diesen Client nicht registriert.")
+		s.errorPage(w, http.StatusBadRequest, "The redirect address is not registered for this client.")
 		return
 	}
 	state := q.Get("state")
@@ -300,20 +300,20 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if q.Get("response_type") != "code" {
-		fail("unsupported_response_type", "nur response_type=code wird unterstützt")
+		fail("unsupported_response_type", "only response_type=code is supported")
 		return
 	}
 	if q.Get("code_challenge") == "" || q.Get("code_challenge_method") != "S256" {
-		fail("invalid_request", "PKCE mit code_challenge_method=S256 ist erforderlich")
+		fail("invalid_request", "PKCE with code_challenge_method=S256 is required")
 		return
 	}
 	resource := q.Get("resource")
 	if resource != "" && !s.acceptedResource(resource) {
-		fail("invalid_target", "resource passt nicht zu diesem Server")
+		fail("invalid_target", "resource does not match this server")
 		return
 	}
 	if len(s.order) == 0 {
-		fail("server_error", "kein Login-Verfahren konfiguriert")
+		fail("server_error", "no login method configured")
 		return
 	}
 
@@ -322,7 +322,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 		ClientState: state, Resource: s.resource,
 	})
 	if err != nil {
-		s.log.Error("Login-State anlegen", "error", err)
+		s.log.Error("create login state", "error", err)
 		fail("server_error", "")
 		return
 	}
@@ -342,7 +342,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !s.authLimit.Allow(s.clientIP(r)) {
-		s.errorPage(w, http.StatusTooManyRequests, "Zu viele Anfragen, bitte später erneut versuchen.")
+		s.errorPage(w, http.StatusTooManyRequests, "Too many requests, please try again later.")
 		return
 	}
 	s.startIDP(w, r, r.URL.Query().Get("s"), r.URL.Query().Get("p"))
@@ -352,20 +352,20 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startIDP(w http.ResponseWriter, r *http.Request, rawState, providerID string) {
 	p, ok := s.providers[providerID]
 	if !ok {
-		s.errorPage(w, http.StatusBadRequest, "Unbekanntes Login-Verfahren.")
+		s.errorPage(w, http.StatusBadRequest, "Unknown login method.")
 		return
 	}
 	nonce, verifier := randomToken(""), oauth2.GenerateVerifier()
 	if _, err := s.store.BindLoginState(r.Context(), rawState, providerID, nonce, verifier); err != nil {
-		s.errorPage(w, http.StatusBadRequest, "Die Anmeldung ist abgelaufen oder wurde bereits gestartet. Bitte im KI-Assistenten erneut verbinden.")
+		s.errorPage(w, http.StatusBadRequest, "The login has expired or was already started. Please reconnect in your AI assistant.")
 		return
 	}
 	authURL, err := p.AuthURL(r.Context(), idp.AuthRequest{
 		State: rawState, Nonce: nonce, Verifier: verifier, RedirectURL: s.callbackURL(providerID),
 	})
 	if err != nil {
-		s.log.Error("IdP nicht erreichbar", "provider", providerID, "error", err)
-		s.errorPage(w, http.StatusBadGateway, "Der Identity Provider ist derzeit nicht erreichbar.")
+		s.log.Error("IdP unreachable", "provider", providerID, "error", err)
+		s.errorPage(w, http.StatusBadGateway, "The identity provider is currently unreachable.")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -378,7 +378,7 @@ func (s *Server) callbackURL(providerID string) string {
 
 func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	if !s.authLimit.Allow(s.clientIP(r)) {
-		s.errorPage(w, http.StatusTooManyRequests, "Zu viele Anfragen, bitte später erneut versuchen.")
+		s.errorPage(w, http.StatusTooManyRequests, "Too many requests, please try again later.")
 		return
 	}
 	providerID := r.PathValue("provider")
@@ -386,19 +386,19 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	st, err := s.store.TakeLoginState(r.Context(), q.Get("state"))
 	p, known := s.providers[providerID]
 	if err != nil || !known || st.IDP != providerID {
-		s.errorPage(w, http.StatusBadRequest, "Die Anmeldung ist abgelaufen oder ungültig. Bitte im KI-Assistenten erneut verbinden.")
+		s.errorPage(w, http.StatusBadRequest, "The login has expired or is invalid. Please reconnect in your AI assistant.")
 		return
 	}
 	deny := func(desc string) {
 		s.redirectClient(w, r, st.RedirectURI, st.ClientState, map[string]string{"error": "access_denied", "error_description": desc})
 	}
 	if q.Get("error") != "" {
-		s.log.Info("Login vom IdP abgebrochen", "provider", providerID, "error", q.Get("error"))
-		deny("Anmeldung abgebrochen")
+		s.log.Info("Login cancelled at the IdP", "provider", providerID, "error", q.Get("error"))
+		deny("Login cancelled")
 		return
 	}
 	if q.Get("code") == "" {
-		deny("Anmeldung fehlgeschlagen")
+		deny("Login failed")
 		return
 	}
 
@@ -406,32 +406,32 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		Nonce: st.IDPNonce, Verifier: st.IDPVerifier, RedirectURL: s.callbackURL(providerID),
 	})
 	if errors.Is(err, idp.ErrNotAllowed) {
-		s.log.Warn("Login abgelehnt", "provider", providerID, "reason", err.Error())
+		s.log.Warn("Login denied", "provider", providerID, "reason", err.Error())
 		s.store.RecordDenied(r.Context(), providerID, strings.TrimPrefix(err.Error(), idp.ErrNotAllowed.Error()+": "))
-		deny("Dieses Konto ist für diese Instanz nicht zugelassen")
+		deny("This account is not allowed for this instance")
 		return
 	}
 	if err != nil {
-		s.log.Error("Login fehlgeschlagen", "provider", providerID, "error", err)
-		deny("Anmeldung fehlgeschlagen")
+		s.log.Error("Login failed", "provider", providerID, "error", err)
+		deny("Login failed")
 		return
 	}
 	u, err := s.users.Provision(r.Context(), users.Identity{
 		IDP: providerID, Subject: id.Subject, Email: id.Email, DisplayName: id.DisplayName,
 	})
 	if errors.Is(err, users.ErrDisabled) {
-		s.log.Warn("Login eines deaktivierten Kontos", "provider", providerID)
-		deny("Dieses Konto ist deaktiviert")
+		s.log.Warn("Login of a disabled account", "provider", providerID)
+		deny("This account is disabled")
 		return
 	}
 	if errors.Is(err, users.ErrEmailTaken) {
-		s.log.Warn("Login mit einer E-Mail, die zu einem anderen Login gehört", "provider", providerID)
-		deny("Diese E-Mail-Adresse gehört bereits zu einer Anmeldung über einen anderen Anbieter. Bitte dort anmelden oder den Administrator kontaktieren.")
+		s.log.Warn("Login with an e-mail that belongs to a different login", "provider", providerID)
+		deny("This e-mail address already belongs to a login via a different provider. Please log in there or contact the administrator.")
 		return
 	}
 	if err != nil {
-		s.log.Error("Benutzer anlegen", "error", err)
-		deny("Anmeldung fehlgeschlagen")
+		s.log.Error("create user", "error", err)
+		deny("Login failed")
 		return
 	}
 	s.store.RecordLogin(r.Context(), u.ID, providerID)
@@ -439,8 +439,8 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		ClientID: st.ClientID, UserID: u.ID, RedirectURI: st.RedirectURI, CodeChallenge: st.CodeChallenge, Resource: st.Resource,
 	})
 	if err != nil {
-		s.log.Error("Code anlegen", "error", err)
-		deny("Anmeldung fehlgeschlagen")
+		s.log.Error("create code", "error", err)
+		deny("Login failed")
 		return
 	}
 	s.redirectClient(w, r, st.RedirectURI, st.ClientState, map[string]string{"code": code})
@@ -475,20 +475,20 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
-		tokenError(w, http.StatusBadRequest, "invalid_request", "Formular nicht lesbar")
+		tokenError(w, http.StatusBadRequest, "invalid_request", "form not readable")
 		return
 	}
 	cid := clientID(r)
 	if cid == "" {
-		tokenError(w, http.StatusBadRequest, "invalid_client", "client_id fehlt")
+		tokenError(w, http.StatusBadRequest, "invalid_client", "client_id missing")
 		return
 	}
 	if _, err := s.store.GetClient(r.Context(), cid); err != nil {
-		tokenError(w, http.StatusBadRequest, "invalid_client", "unbekannter Client")
+		tokenError(w, http.StatusBadRequest, "invalid_client", "unknown client")
 		return
 	}
 	if res := r.PostForm.Get("resource"); res != "" && !s.acceptedResource(res) {
-		tokenError(w, http.StatusBadRequest, "invalid_target", "resource passt nicht zu diesem Server")
+		tokenError(w, http.StatusBadRequest, "invalid_target", "resource does not match this server")
 		return
 	}
 
@@ -505,7 +505,7 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 func (s *Server) grantCode(w http.ResponseWriter, r *http.Request, cid string) {
 	c, err := s.store.TakeCode(r.Context(), r.PostForm.Get("code"))
 	if err != nil {
-		tokenError(w, http.StatusBadRequest, "invalid_grant", "Code ungültig oder abgelaufen")
+		tokenError(w, http.StatusBadRequest, "invalid_grant", "code invalid or expired")
 		return
 	}
 	verifier := r.PostForm.Get("code_verifier")
@@ -513,17 +513,17 @@ func (s *Server) grantCode(w http.ResponseWriter, r *http.Request, cid string) {
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 	if c.ClientID != cid || c.RedirectURI != r.PostForm.Get("redirect_uri") || verifier == "" ||
 		subtle.ConstantTimeCompare([]byte(challenge), []byte(c.CodeChallenge)) != 1 {
-		tokenError(w, http.StatusBadRequest, "invalid_grant", "Code, redirect_uri oder code_verifier passen nicht")
+		tokenError(w, http.StatusBadRequest, "invalid_grant", "code, redirect_uri or code_verifier do not match")
 		return
 	}
 	u, err := s.users.Get(r.Context(), c.UserID)
 	if err != nil || !u.Active {
-		tokenError(w, http.StatusBadRequest, "invalid_grant", "Konto nicht verfügbar")
+		tokenError(w, http.StatusBadRequest, "invalid_grant", "account not available")
 		return
 	}
 	pair, err := s.store.IssueTokens(r.Context(), cid, c.UserID, c.Resource)
 	if err != nil {
-		s.log.Error("Token ausstellen", "error", err)
+		s.log.Error("issue token", "error", err)
 		tokenError(w, http.StatusInternalServerError, "server_error", "")
 		return
 	}
@@ -533,7 +533,7 @@ func (s *Server) grantCode(w http.ResponseWriter, r *http.Request, cid string) {
 func (s *Server) grantRefresh(w http.ResponseWriter, r *http.Request, cid string) {
 	res, err := s.store.Rotate(r.Context(), r.PostForm.Get("refresh_token"), cid)
 	if errors.Is(err, ErrInvalidGrant) {
-		tokenError(w, http.StatusBadRequest, "invalid_grant", "Refresh-Token ungültig oder abgelaufen")
+		tokenError(w, http.StatusBadRequest, "invalid_grant", "refresh token invalid or expired")
 		return
 	}
 	if err != nil {
@@ -543,7 +543,7 @@ func (s *Server) grantRefresh(w http.ResponseWriter, r *http.Request, cid string
 	}
 	if u, err := s.users.Get(r.Context(), res.UserID); err != nil || !u.Active {
 		_, _ = s.store.RevokeUser(r.Context(), res.UserID)
-		tokenError(w, http.StatusBadRequest, "invalid_grant", "Konto nicht verfügbar")
+		tokenError(w, http.StatusBadRequest, "invalid_grant", "account not available")
 		return
 	}
 	writeTokens(w, res.Pair)

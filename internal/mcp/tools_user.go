@@ -17,23 +17,23 @@ import (
 )
 
 func (s *Server) registerUserTools(ms *mcp.Server) {
-	addTool(s, ms, "list_spaces", "Bereiche anzeigen", tierUser, false, s.listSpaces)
-	addTool(s, ms, "space_contacts", "Kuratoren und Admins anzeigen", tierUser, false, s.spaceContacts)
+	addTool(s, ms, "list_spaces", "Show spaces", tierUser, false, s.listSpaces)
+	addTool(s, ms, "space_contacts", "Show curators and admins", tierUser, false, s.spaceContacts)
 	s.registerSessionTools(ms)
-	addTool(s, ms, "server_info", "Version anzeigen", tierUser, false, s.serverInfo)
-	addTool(s, ms, "store_knowledge", "Wissen speichern", tierUser, true, s.storeKnowledge)
-	addTool(s, ms, "search_knowledge", "Wissen durchsuchen", tierUser, false, s.searchKnowledge)
-	addTool(s, ms, "get_knowledge", "Eintrag laden", tierUser, false, s.getKnowledge)
-	addTool(s, ms, "update_knowledge", "Eintrag ändern", tierUser, true, s.updateKnowledge)
-	addTool(s, ms, "archive_knowledge", "Eintrag archivieren", tierUser, true, s.archiveKnowledge)
-	addTool(s, ms, "unarchive_knowledge", "Eintrag aus dem Archiv holen", tierUser, true, s.unarchiveKnowledge)
-	addTool(s, ms, "move_knowledge", "Eintrag verschieben", tierUser, true, s.moveKnowledge)
-	addTool(s, ms, "delete_knowledge", "Eintrag endgültig löschen", tierUser, true, s.deleteKnowledge)
-	addTool(s, ms, "list_knowledge", "Einträge auflisten", tierUser, false, s.listKnowledge)
-	addTool(s, ms, "set_default_space", "Standardbereich setzen", tierUser, true, s.setDefaultSpace)
-	addTool(s, ms, "handoff_save", "Übergabe ablegen", tierUser, true, s.handoffSave)
-	addTool(s, ms, "handoff_list", "Übergaben auflisten", tierUser, false, s.handoffList)
-	addTool(s, ms, "handoff_load", "Übergabe laden", tierUser, false, s.handoffLoad)
+	addTool(s, ms, "server_info", "Show version", tierUser, false, s.serverInfo)
+	addTool(s, ms, "store_knowledge", "Store knowledge", tierUser, true, s.storeKnowledge)
+	addTool(s, ms, "search_knowledge", "Search knowledge", tierUser, false, s.searchKnowledge)
+	addTool(s, ms, "get_knowledge", "Load entry", tierUser, false, s.getKnowledge)
+	addTool(s, ms, "update_knowledge", "Update entry", tierUser, true, s.updateKnowledge)
+	addTool(s, ms, "archive_knowledge", "Archive entry", tierUser, true, s.archiveKnowledge)
+	addTool(s, ms, "unarchive_knowledge", "Restore entry from archive", tierUser, true, s.unarchiveKnowledge)
+	addTool(s, ms, "move_knowledge", "Move entry", tierUser, true, s.moveKnowledge)
+	addTool(s, ms, "delete_knowledge", "Delete entry permanently", tierUser, true, s.deleteKnowledge)
+	addTool(s, ms, "list_knowledge", "List entries", tierUser, false, s.listKnowledge)
+	addTool(s, ms, "set_default_space", "Set default space", tierUser, true, s.setDefaultSpace)
+	addTool(s, ms, "handoff_save", "Save handoff", tierUser, true, s.handoffSave)
+	addTool(s, ms, "handoff_list", "List handoffs", tierUser, false, s.handoffList)
+	addTool(s, ms, "handoff_load", "Load handoff", tierUser, false, s.handoffLoad)
 }
 
 // ---- shared output shapes ---------------------------------------------------
@@ -72,7 +72,7 @@ func (s *Server) spaceInfos(list []spaces.Space, a docs.Actor) []spaceInfo {
 		si := spaceInfo{Slug: sp.Slug, Name: sp.Name, Type: sp.Type, Role: a.Roles.Role(sp.ID).String(),
 			Description: sp.Description, RequiresApproval: sp.RequireApproval}
 		if sp.Type == "personal" {
-			si.Name = "Mein persönlicher Bereich"
+			si.Name = "My personal space"
 		}
 		si.IsDefault = a.User.DefaultSpaceID != nil && *a.User.DefaultSpaceID == sp.ID
 		out = append(out, si)
@@ -87,7 +87,7 @@ func (s *Server) docInfo(ctx context.Context, d docs.Document, withContent bool)
 	}
 	name := sp.Name
 	if sp.Type == "personal" {
-		name = "Mein persönlicher Bereich"
+		name = "My personal space"
 	}
 	di := docInfo{ID: d.ID.String(), Title: d.Title, Space: name, SpaceType: sp.Type, Kind: d.Kind, Tags: d.Tags,
 		Status: d.Status, ReviewNote: d.ReviewNote, Author: d.AuthorEmail, Source: d.Source, Version: d.Version,
@@ -138,12 +138,12 @@ func (s *Server) listSpaces(ctx context.Context, c *call, _ listSpacesIn) (listS
 // ---- space_contacts / server_info ----------------------------------------------------------
 
 type contactsIn struct {
-	Space string `json:"space,omitempty" jsonschema:"Optional: nur dieser Bereich (Kürzel oder Name); leer = alle Team-Bereiche des Nutzers"`
+	Space string `json:"space,omitempty" jsonschema:"Optional: only this space (slug or name); empty = all team spaces of the user"`
 }
 
 type contactInfo struct {
 	Type string `json:"type"` // user | group
-	Name string `json:"name"` // E-Mail oder Gruppenname
+	Name string `json:"name"` // e-mail or group name
 	Role string `json:"role"` // curator | admin
 }
 
@@ -170,9 +170,9 @@ func (s *Server) spaceContacts(ctx context.Context, c *call, in contactsIn) (con
 		case sp != nil:
 			visible = []spaces.Space{*sp}
 		case len(cands) > 1:
-			return contactsOut{}, userErr(fmt.Sprintf("Der Bereich %q ist mehrdeutig: %s.", in.Space, spaceNames(cands)))
+			return contactsOut{}, userErr(fmt.Sprintf("The space %q is ambiguous: %s.", in.Space, spaceNames(cands)))
 		default:
-			return contactsOut{}, userErr(fmt.Sprintf("Bereich %q nicht gefunden.", in.Space))
+			return contactsOut{}, userErr(fmt.Sprintf("Space %q not found.", in.Space))
 		}
 	}
 	out := contactsOut{Spaces: make([]spaceContacts, 0, len(visible)), InstanceAdmins: []string{}}
@@ -213,12 +213,12 @@ func (s *Server) serverInfo(_ context.Context, _ *call, _ serverInfoIn) (serverI
 // ---- store_knowledge ----------------------------------------------------------
 
 type storeIn struct {
-	Title   string   `json:"title" jsonschema:"Aussagekräftiger Titel des Eintrags"`
-	Content string   `json:"content" jsonschema:"Eigenständig verständlicher Inhalt als Markdown"`
-	Space   string   `json:"space,omitempty" jsonschema:"Zielbereich (Kürzel oder Name); leer = Standardbereich des Nutzers"`
-	Tags    []string `json:"tags,omitempty" jsonschema:"Optionale Schlagwörter"`
-	Force   bool     `json:"force,omitempty" jsonschema:"true = trotz ähnlicher Einträge speichern (nur nach Rückfrage beim Nutzer)"`
-	Draft   bool     `json:"draft,omitempty" jsonschema:"true = als Entwurf speichern, den erst ein Kurator des Bereichs prüft und freigibt (nur Team-Bereiche, nur auf ausdrücklichen Wunsch des Nutzers)"`
+	Title   string   `json:"title" jsonschema:"Meaningful title of the entry"`
+	Content string   `json:"content" jsonschema:"Self-contained content as Markdown"`
+	Space   string   `json:"space,omitempty" jsonschema:"Target space (slug or name); empty = the user's default space"`
+	Tags    []string `json:"tags,omitempty" jsonschema:"Optional keywords"`
+	Force   bool     `json:"force,omitempty" jsonschema:"true = store despite similar entries (only after checking with the user)"`
+	Draft   bool     `json:"draft,omitempty" jsonschema:"true = store as a draft that a curator of the space reviews and approves first (team spaces only, only on the explicit request of the user)"`
 }
 
 type similarInfo struct {
@@ -255,14 +255,14 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 			}
 			return storeOut{
 				Result:  "choose_space",
-				Message: fmt.Sprintf("Der Bereich %q ist nicht eindeutig oder nicht beschreibbar. Nichts wurde gespeichert – bitte den Nutzer fragen, welcher Bereich gemeint ist.", in.Space),
+				Message: fmt.Sprintf("The space %q is ambiguous or not writable. Nothing was saved - please ask the user which space is meant.", in.Space),
 				Spaces:  s.spaceInfos(cands, a),
 			}, nil
 		}
 	} else if target = s.defaultTarget(ctx, a, writable); target == nil {
 		return storeOut{
 			Result:  "choose_space",
-			Message: "Es gibt keinen Standardbereich. Nichts wurde gespeichert – bitte den Nutzer fragen, in welchem Bereich gespeichert werden soll.",
+			Message: "There is no default space. Nothing was saved - please ask the user which space to save to.",
 			Spaces:  s.spaceInfos(writable, a),
 		}, nil
 	}
@@ -273,7 +273,7 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 	}
 	if res.Document == nil {
 		out := storeOut{Result: "similar_found",
-			Message: "Es gibt sehr ähnliche Einträge in diesem Bereich. Nichts wurde gespeichert – den Nutzer fragen, ob ein bestehender Eintrag aktualisiert (update_knowledge) oder trotzdem neu gespeichert werden soll (force=true)."}
+			Message: "There are very similar entries in this space. Nothing was saved - ask the user whether an existing entry should be updated (update_knowledge) or a new one saved anyway (force=true)."}
 		for _, d := range res.Duplicates {
 			out.Similar = append(out.Similar, similarInfo{ID: d.ID.String(), Title: d.Title, Similarity: d.Similarity})
 		}
@@ -281,11 +281,11 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 	}
 	name := target.Name
 	if target.Type == "personal" {
-		name = "Mein persönlicher Bereich"
+		name = "My personal space"
 	}
-	msg := fmt.Sprintf("Gespeichert im Bereich „%s“.", name)
+	msg := fmt.Sprintf("Saved in the space \"%s\".", name)
 	if res.Document.Status == "draft" {
-		msg += " Der Eintrag ist ein Entwurf und für andere erst nach Freigabe durch einen Kurator des Bereichs sichtbar (review_knowledge)."
+		msg += " The entry is a draft and is visible to others only after approval by a curator of the space (review_knowledge)."
 	}
 	return storeOut{Result: "stored", Message: msg, ID: res.Document.ID.String(), Space: name, Status: res.Document.Status}, nil
 }
@@ -327,11 +327,11 @@ func (s *Server) defaultTarget(ctx context.Context, a docs.Actor, writable []spa
 // ---- search_knowledge -----------------------------------------------------------
 
 type searchIn struct {
-	Query   string   `json:"query" jsonschema:"Suchanfrage in natürlicher Sprache"`
-	Spaces  []string `json:"spaces,omitempty" jsonschema:"Optional: nur in diesen Bereichen suchen (Kürzel oder Name)"`
-	Tags    []string `json:"tags,omitempty" jsonschema:"Optional: nur Einträge mit einem dieser Tags"`
-	Limit   int      `json:"limit,omitempty" jsonschema:"Anzahl Treffer, Standard 5, höchstens 20"`
-	Archive bool     `json:"archive,omitempty" jsonschema:"true = NUR im Archiv suchen (statt in den aktiven Einträgen), nur auf ausdrücklichen Wunsch des Nutzers"`
+	Query   string   `json:"query" jsonschema:"Search query in natural language"`
+	Spaces  []string `json:"spaces,omitempty" jsonschema:"Optional: search only in these spaces (slug or name)"`
+	Tags    []string `json:"tags,omitempty" jsonschema:"Optional: only entries with one of these tags"`
+	Limit   int      `json:"limit,omitempty" jsonschema:"Number of hits, default 5, at most 20"`
+	Archive bool     `json:"archive,omitempty" jsonschema:"true = search ONLY the archive (instead of the active entries), only on the explicit request of the user"`
 }
 
 type hitInfo struct {
@@ -367,9 +367,9 @@ func (s *Server) searchKnowledge(ctx context.Context, c *call, in searchIn) (sea
 			case sp != nil:
 				p.Spaces = append(p.Spaces, sp.ID)
 			case len(cands) > 1:
-				return searchOut{}, userErr(fmt.Sprintf("Der Bereich %q ist mehrdeutig: %s.", ref, spaceNames(cands)))
+				return searchOut{}, userErr(fmt.Sprintf("The space %q is ambiguous: %s.", ref, spaceNames(cands)))
 			default:
-				return searchOut{}, userErr(fmt.Sprintf("Bereich %q nicht gefunden.", ref))
+				return searchOut{}, userErr(fmt.Sprintf("Space %q not found.", ref))
 			}
 		}
 	}
@@ -381,7 +381,7 @@ func (s *Server) searchKnowledge(ctx context.Context, c *call, in searchIn) (sea
 	for _, r := range rs {
 		name := r.SpaceName
 		if r.SpaceType == "personal" {
-			name = "Mein persönlicher Bereich"
+			name = "My personal space"
 		}
 		out.Results = append(out.Results, hitInfo{
 			ID: r.DocumentID.String(), Title: r.Title, Space: name, SpaceType: r.SpaceType, Section: r.HeadingPath,
@@ -390,11 +390,11 @@ func (s *Server) searchKnowledge(ctx context.Context, c *call, in searchIn) (sea
 	}
 	switch {
 	case len(out.Results) == 0 && in.Archive:
-		out.Message = "Keine passenden Einträge im Archiv gefunden."
+		out.Message = "No matching entries found in the archive."
 	case len(out.Results) == 0:
-		out.Message = "Keine passenden Einträge gefunden."
+		out.Message = "No matching entries found."
 	case in.Archive:
-		out.Message = "Treffer aus dem Archiv: Diese Einträge sind archiviert, nicht aktuell gültig. Mit unarchive_knowledge lassen sie sich zurückholen."
+		out.Message = "Hits from the archive: these entries are archived and not currently valid. They can be brought back with unarchive_knowledge."
 	}
 	return out, nil
 }
@@ -402,7 +402,7 @@ func (s *Server) searchKnowledge(ctx context.Context, c *call, in searchIn) (sea
 // ---- get / update / archive / list ----------------------------------------------
 
 type idIn struct {
-	ID string `json:"id" jsonschema:"ID des Eintrags"`
+	ID string `json:"id" jsonschema:"ID of the entry"`
 }
 
 func (s *Server) getKnowledge(ctx context.Context, c *call, in idIn) (docInfo, error) {
@@ -420,10 +420,10 @@ func (s *Server) getKnowledge(ctx context.Context, c *call, in idIn) (docInfo, e
 }
 
 type updateIn struct {
-	ID      string    `json:"id" jsonschema:"ID des Eintrags"`
-	Title   *string   `json:"title,omitempty" jsonschema:"Neuer Titel"`
-	Content *string   `json:"content,omitempty" jsonschema:"Vollständiger neuer Inhalt (Markdown)"`
-	Tags    *[]string `json:"tags,omitempty" jsonschema:"Neue vollständige Tag-Liste"`
+	ID      string    `json:"id" jsonschema:"ID of the entry"`
+	Title   *string   `json:"title,omitempty" jsonschema:"New title"`
+	Content *string   `json:"content,omitempty" jsonschema:"Complete new content (Markdown)"`
+	Tags    *[]string `json:"tags,omitempty" jsonschema:"New complete tag list"`
 }
 
 func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (docInfo, error) {
@@ -432,7 +432,7 @@ func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (doc
 		return docInfo{}, err
 	}
 	if in.Title == nil && in.Content == nil && in.Tags == nil {
-		return docInfo{}, userErr("Es wurde nichts zum Ändern übergeben.")
+		return docInfo{}, userErr("Nothing to change was passed.")
 	}
 	d, err := s.Docs.Update(ctx, c.Actor, docs.UpdateParams{ID: id, Title: in.Title, Content: in.Content, Tags: in.Tags})
 	if err != nil {
@@ -442,8 +442,8 @@ func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (doc
 }
 
 type archiveIn struct {
-	ID      string `json:"id" jsonschema:"ID des Eintrags"`
-	Confirm bool   `json:"confirm" jsonschema:"true erst nach ausdrücklicher Bestätigung durch den Nutzer"`
+	ID      string `json:"id" jsonschema:"ID of the entry"`
+	Confirm bool   `json:"confirm" jsonschema:"true only after explicit confirmation by the user"`
 }
 type messageOut struct {
 	Message string `json:"message"`
@@ -455,12 +455,12 @@ func (s *Server) archiveKnowledge(ctx context.Context, c *call, in archiveIn) (m
 		return messageOut{}, err
 	}
 	if !in.Confirm {
-		return messageOut{}, userErr("Archivieren braucht eine Bestätigung: den Nutzer fragen und danach mit confirm=true erneut aufrufen.")
+		return messageOut{}, userErr("Archiving needs a confirmation: ask the user and then call again with confirm=true.")
 	}
 	if err := s.Docs.Archive(ctx, c.Actor, id); err != nil {
 		return messageOut{}, err
 	}
-	return messageOut{Message: "Der Eintrag wurde archiviert."}, nil
+	return messageOut{Message: "The entry has been archived."}, nil
 }
 
 func (s *Server) unarchiveKnowledge(ctx context.Context, c *call, in archiveIn) (unarchiveOut, error) {
@@ -469,7 +469,7 @@ func (s *Server) unarchiveKnowledge(ctx context.Context, c *call, in archiveIn) 
 		return unarchiveOut{}, err
 	}
 	if !in.Confirm {
-		return unarchiveOut{}, userErr("Das Zurückholen macht den Eintrag wieder für alle Leser des Bereichs les- und suchbar: den Nutzer fragen und danach mit confirm=true erneut aufrufen.")
+		return unarchiveOut{}, userErr("Restoring makes the entry readable and searchable again for all readers of the space: ask the user and then call again with confirm=true.")
 	}
 	d, err := s.Docs.Unarchive(ctx, c.Actor, id)
 	if err != nil {
@@ -479,9 +479,9 @@ func (s *Server) unarchiveKnowledge(ctx context.Context, c *call, in archiveIn) 
 	if err != nil {
 		return unarchiveOut{}, err
 	}
-	msg := "Der Eintrag ist wieder aktiv."
+	msg := "The entry is active again."
 	if d.Status == "draft" {
-		msg = "Der Eintrag ist zurückgeholt, gilt im Bereich mit Freigabepflicht aber als Entwurf und ist für andere erst nach Freigabe durch einen Kurator sichtbar."
+		msg = "The entry has been restored, but in a space that requires approval it counts as a draft and is visible to others only after approval by a curator."
 	}
 	return unarchiveOut{Message: msg, Document: info}, nil
 }
@@ -492,9 +492,9 @@ type unarchiveOut struct {
 }
 
 type moveIn struct {
-	ID      string `json:"id" jsonschema:"ID des Eintrags"`
-	Space   string `json:"space" jsonschema:"Zielbereich (Kürzel oder Name)"`
-	Confirm bool   `json:"confirm" jsonschema:"true erst nach ausdrücklicher Bestätigung durch den Nutzer"`
+	ID      string `json:"id" jsonschema:"ID of the entry"`
+	Space   string `json:"space" jsonschema:"Target space (slug or name)"`
+	Confirm bool   `json:"confirm" jsonschema:"true only after explicit confirmation by the user"`
 }
 type moveOut struct {
 	Result   string      `json:"result"` // moved | choose_space
@@ -509,7 +509,7 @@ func (s *Server) moveKnowledge(ctx context.Context, c *call, in moveIn) (moveOut
 	if err != nil {
 		return moveOut{}, err
 	}
-	// Nur Bereiche mit Schreibrecht kommen als Ziel infrage.
+	// Only spaces with write permission qualify as a target.
 	writable, err := s.spacesAtLeast(ctx, a, authz.Author)
 	if err != nil {
 		return moveOut{}, err
@@ -521,7 +521,7 @@ func (s *Server) moveKnowledge(ctx context.Context, c *call, in moveIn) (moveOut
 		}
 		return moveOut{
 			Result:  "choose_space",
-			Message: fmt.Sprintf("Der Bereich %q ist nicht eindeutig oder dort fehlt das Schreibrecht. Nichts wurde verschoben – bitte den Nutzer fragen, welcher Bereich gemeint ist.", in.Space),
+			Message: fmt.Sprintf("The space %q is ambiguous or you lack write permission there. Nothing was moved - please ask the user which space is meant.", in.Space),
 			Spaces:  s.spaceInfos(cands, a),
 		}, nil
 	}
@@ -531,10 +531,10 @@ func (s *Server) moveKnowledge(ctx context.Context, c *call, in moveIn) (moveOut
 	}
 	name := target.Name
 	if target.Type == "personal" {
-		name = "Mein persönlicher Bereich"
+		name = "My personal space"
 	}
 	if !in.Confirm {
-		return moveOut{}, userErr(fmt.Sprintf("Das Verschieben von „%s“ nach „%s“ braucht eine Bestätigung: den Nutzer fragen (andere Mitglieder sehen den Eintrag danach dort, nicht mehr im alten Bereich) und danach mit confirm=true erneut aufrufen.", cur.Title, name))
+		return moveOut{}, userErr(fmt.Sprintf("Moving \"%s\" to \"%s\" needs a confirmation: ask the user (other members will then see the entry there, no longer in the old space) and then call again with confirm=true.", cur.Title, name))
 	}
 	d, err := s.Docs.Move(ctx, a, docs.MoveParams{ID: id, SpaceID: target.ID})
 	if err != nil {
@@ -544,9 +544,9 @@ func (s *Server) moveKnowledge(ctx context.Context, c *call, in moveIn) (moveOut
 	if err != nil {
 		return moveOut{}, err
 	}
-	msg := fmt.Sprintf("Der Eintrag wurde nach „%s“ verschoben.", name)
+	msg := fmt.Sprintf("The entry has been moved to \"%s\".", name)
 	if d.Status == "draft" {
-		msg += " Dort gilt eine Freigabepflicht: Der Eintrag ist jetzt ein Entwurf und für andere erst nach Freigabe durch einen Kurator sichtbar."
+		msg += " Approval is required there: the entry is now a draft and is visible to others only after approval by a curator."
 	}
 	return moveOut{Result: "moved", Message: msg, Document: &info}, nil
 }
@@ -557,19 +557,19 @@ func (s *Server) deleteKnowledge(ctx context.Context, c *call, in archiveIn) (me
 		return messageOut{}, err
 	}
 	if !in.Confirm {
-		return messageOut{}, userErr("Endgültiges Löschen braucht eine Bestätigung: den Nutzer fragen, dass der Eintrag samt Versionen unwiderruflich entfernt wird (zum Ausblenden reicht archive_knowledge), und danach mit confirm=true erneut aufrufen.")
+		return messageOut{}, userErr("Permanent deletion needs a confirmation: tell the user that the entry will be irrevocably removed along with its versions (archive_knowledge is enough to hide it), ask them, and then call again with confirm=true.")
 	}
 	if err := s.Docs.Delete(ctx, c.Actor, id); err != nil {
 		return messageOut{}, err
 	}
-	return messageOut{Message: "Der Eintrag wurde endgültig gelöscht."}, nil
+	return messageOut{Message: "The entry has been permanently deleted."}, nil
 }
 
 type listIn struct {
-	Space  string `json:"space,omitempty" jsonschema:"Bereich (Kürzel oder Name); leer = persönlicher Bereich"`
-	Tag    string `json:"tag,omitempty" jsonschema:"Optional: nur Einträge mit diesem Tag"`
-	Status string `json:"status,omitempty" jsonschema:"Optional: nur draft (wartet auf Freigabe), approved, rejected (zurückgegeben) oder archived (Archiv)"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"Anzahl, Standard 20, höchstens 100"`
+	Space  string `json:"space,omitempty" jsonschema:"Space (slug or name); empty = personal space"`
+	Tag    string `json:"tag,omitempty" jsonschema:"Optional: only entries with this tag"`
+	Status string `json:"status,omitempty" jsonschema:"Optional: only draft (waiting for approval), approved, rejected (returned) or archived (archive)"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Count, default 20, at most 100"`
 }
 type listOut struct {
 	Notice  string    `json:"notice,omitempty"`
@@ -590,7 +590,7 @@ func (s *Server) listKnowledge(ctx context.Context, c *call, in listIn) (listOut
 	sp, cands := matchSpace(visible, ref)
 	switch {
 	case sp == nil && len(cands) > 1:
-		return listOut{}, userErr(fmt.Sprintf("Der Bereich %q ist mehrdeutig: %s.", ref, spaceNames(cands)))
+		return listOut{}, userErr(fmt.Sprintf("The space %q is ambiguous: %s.", ref, spaceNames(cands)))
 	case sp == nil:
 		return listOut{}, docs.ErrNotFound
 	}
@@ -601,7 +601,7 @@ func (s *Server) listKnowledge(ctx context.Context, c *call, in listIn) (listOut
 	}
 	out := listOut{Space: sp.Name, Entries: make([]docInfo, 0, len(list)), Notice: untrustedNotice}
 	if sp.Type == "personal" {
-		out.Space = "Mein persönlicher Bereich"
+		out.Space = "My personal space"
 	}
 	for _, d := range list {
 		di, err := s.docInfo(ctx, d, false)
@@ -616,7 +616,7 @@ func (s *Server) listKnowledge(ctx context.Context, c *call, in listIn) (listOut
 // ---- set_default_space ------------------------------------------------------------
 
 type defaultSpaceIn struct {
-	Space string `json:"space,omitempty" jsonschema:"Bereich (Kürzel oder Name); leer = zurücksetzen"`
+	Space string `json:"space,omitempty" jsonschema:"Space (slug or name); empty = reset"`
 }
 
 func (s *Server) setDefaultSpace(ctx context.Context, c *call, in defaultSpaceIn) (messageOut, error) {
@@ -625,7 +625,7 @@ func (s *Server) setDefaultSpace(ctx context.Context, c *call, in defaultSpaceIn
 		if err := s.Users.SetDefaultSpace(ctx, a.User.ID, nil); err != nil {
 			return messageOut{}, err
 		}
-		return messageOut{Message: "Standardbereich zurückgesetzt, gespeichert wird wieder im persönlichen Bereich."}, nil
+		return messageOut{Message: "Default space reset, knowledge is saved to the personal space again."}, nil
 	}
 	writable, err := s.spacesAtLeast(ctx, a, authz.Author)
 	if err != nil {
@@ -634,26 +634,26 @@ func (s *Server) setDefaultSpace(ctx context.Context, c *call, in defaultSpaceIn
 	sp, cands := matchSpace(writable, in.Space)
 	if sp == nil {
 		if len(cands) > 1 {
-			return messageOut{}, userErr(fmt.Sprintf("Der Bereich %q ist mehrdeutig: %s.", in.Space, spaceNames(cands)))
+			return messageOut{}, userErr(fmt.Sprintf("The space %q is ambiguous: %s.", in.Space, spaceNames(cands)))
 		}
-		return messageOut{}, userErr(fmt.Sprintf("Bereich %q nicht gefunden oder nicht beschreibbar.", in.Space))
+		return messageOut{}, userErr(fmt.Sprintf("Space %q not found or not writable.", in.Space))
 	}
 	if err := s.Users.SetDefaultSpace(ctx, a.User.ID, &sp.ID); err != nil {
 		return messageOut{}, err
 	}
 	name := sp.Name
 	if sp.Type == "personal" {
-		name = "Mein persönlicher Bereich"
+		name = "My personal space"
 	}
-	return messageOut{Message: fmt.Sprintf("Standardbereich ist jetzt „%s“.", name)}, nil
+	return messageOut{Message: fmt.Sprintf("The default space is now \"%s\".", name)}, nil
 }
 
 // ---- handoffs ----------------------------------------------------------------------
 
 type handoffSaveIn struct {
-	Title   string `json:"title" jsonschema:"Kurzer Titel der Übergabe"`
-	Content string `json:"content" jsonschema:"Ziel, bisherige Ergebnisse, offene Punkte, nächste Schritte"`
-	TTLDays int    `json:"ttl_days,omitempty" jsonschema:"Aufbewahrung in Tagen (Standard laut Instanz, höchstens 90)"`
+	Title   string `json:"title" jsonschema:"Short title of the handoff"`
+	Content string `json:"content" jsonschema:"Goal, results so far, open points, next steps"`
+	TTLDays int    `json:"ttl_days,omitempty" jsonschema:"Retention in days (instance default, at most 90)"`
 }
 type handoffSaveOut struct {
 	Message string `json:"message"`
@@ -670,11 +670,11 @@ func (s *Server) handoffSave(ctx context.Context, c *call, in handoffSaveIn) (ha
 	if d.ExpiresAt != nil {
 		exp = d.ExpiresAt.Format(time.RFC3339)
 	}
-	return handoffSaveOut{Message: "Übergabe im persönlichen Bereich abgelegt. Sie kann in einem anderen Assistenten mit handoff_load geladen werden.", ID: d.ID.String(), Expires: exp}, nil
+	return handoffSaveOut{Message: "Handoff stored in the personal space. It can be loaded in another assistant with handoff_load.", ID: d.ID.String(), Expires: exp}, nil
 }
 
 type handoffListIn struct {
-	Limit int `json:"limit,omitempty" jsonschema:"Anzahl, Standard 20, höchstens 50"`
+	Limit int `json:"limit,omitempty" jsonschema:"Count, default 20, at most 50"`
 }
 type handoffListOut struct {
 	Handoffs []docInfo `json:"handoffs"`
@@ -697,7 +697,7 @@ func (s *Server) handoffList(ctx context.Context, c *call, in handoffListIn) (ha
 }
 
 type handoffLoadIn struct {
-	ID string `json:"id,omitempty" jsonschema:"ID der Übergabe; leer = neueste"`
+	ID string `json:"id,omitempty" jsonschema:"ID of the handoff; empty = newest"`
 }
 
 func (s *Server) handoffLoad(ctx context.Context, c *call, in handoffLoadIn) (docInfo, error) {

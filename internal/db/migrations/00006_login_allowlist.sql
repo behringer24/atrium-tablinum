@@ -1,7 +1,7 @@
 -- +goose Up
--- Zusätzliche Freigaben für den Login, vom Instanz-Admin zur Laufzeit gepflegt (ohne Neustart).
--- Sie erweitern nur, was die Konfiguration erlaubt. provider = '' gilt für alle Provider des
--- passenden Typs (Domains und Adressen: google/oidc, Tenants: entra).
+-- Additional login approvals, maintained at runtime by the instance admin (no restart).
+-- They only extend what the configuration allows. provider = '' applies to all providers of
+-- the matching type (domains and addresses: google/oidc, tenants: entra).
 CREATE TABLE login_allowlist (
     kind       text        NOT NULL CHECK (kind IN ('domain', 'email', 'tenant')),
     value      text        NOT NULL,

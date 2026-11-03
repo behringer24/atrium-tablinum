@@ -30,7 +30,7 @@ func (s *Store) MergePersonal(ctx context.Context, from uuid.UUID, to users.User
 		return 0, errNoPersonalSpace
 	}
 	if *to.PersonalSpaceID == from {
-		return 0, errors.Join(ingest.ErrInvalid, errors.New("quelle und ziel sind derselbe bereich"))
+		return 0, errors.Join(ingest.ErrInvalid, errors.New("source and target are the same space"))
 	}
 	var (
 		docs  int

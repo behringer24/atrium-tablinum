@@ -29,10 +29,10 @@ type ReviewParams struct {
 func (s *Store) Review(ctx context.Context, a Actor, p ReviewParams) (Document, error) {
 	note := strings.TrimSpace(p.Note)
 	if utf8.RuneCountInString(note) > maxReviewNoteLen {
-		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("die anmerkung ist zu lang"))
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("the note is too long"))
 	}
 	if !p.Approve && note == "" {
-		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("beim ablehnen ist eine anmerkung für den autor nötig"))
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("a note for the author is required when rejecting"))
 	}
 	cur, err := fetch(ctx, s.pool, a, p.ID, false)
 	if err != nil {
@@ -46,7 +46,7 @@ func (s *Store) Review(ctx context.Context, a Actor, p ReviewParams) (Document, 
 		return Document{}, ErrForbidden
 	}
 	if cur.Kind != "knowledge" || cur.Status != "draft" {
-		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("nur entwürfe können geprüft werden"))
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("only drafts can be reviewed"))
 	}
 	own := cur.AuthorID == a.User.ID
 	if own && role < authz.Admin {

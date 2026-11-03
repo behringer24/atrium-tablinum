@@ -30,18 +30,18 @@ func TestClaimsPolicy(t *testing.T) {
 		want string // substring of the rejection, "" = accepted
 	}{
 		{"google ok", google, nil, ""},
-		{"google unverified", google, func(c *claims) { c.EmailVerified = false }, "verifiziert"},
+		{"google unverified", google, func(c *claims) { c.EmailVerified = false }, "verified"},
 		{"google without hd (private account)", google, func(c *claims) { c.HostedDomain = "" }, "hd"},
 		{"google wrong hd", google, func(c *claims) { c.HostedDomain = "evil.com" }, "hd"},
 		{"google hd ok but email domain differs", google, func(c *claims) { c.Email = "a@evil.com" }, "domain"},
 		{"google gmail listed by email", googleMail, func(c *claims) { c.Email = "Me@Gmail.com"; c.HostedDomain = "" }, ""},
 		{"google gmail not listed", googleMail, func(c *claims) { c.Email = "other@gmail.com"; c.HostedDomain = "" }, "hd"},
-		{"google listed email still needs verification", googleMail, func(c *claims) { c.Email = "me@gmail.com"; c.HostedDomain = ""; c.EmailVerified = false }, "verifiziert"},
+		{"google listed email still needs verification", googleMail, func(c *claims) { c.Email = "me@gmail.com"; c.HostedDomain = ""; c.EmailVerified = false }, "verified"},
 		{"google emails only, domain account not listed", googleMail, nil, "hd"},
 		{"google domain and emails combined, domain member", googleBoth, nil, ""},
 		{"google domain and emails combined, listed gmail", googleBoth, func(c *claims) { c.Email = "me@gmail.com"; c.HostedDomain = "" }, ""},
 		{"oidc listed email without domains", oidcMail, func(c *claims) { c.Email = "me@gmail.com" }, ""},
-		{"oidc unlisted email without domains", oidcMail, nil, "freigegeben"},
+		{"oidc unlisted email without domains", oidcMail, nil, "approved"},
 		{"entra ok without verified flag", entra, func(c *claims) { c.EmailVerified = false }, ""},
 		{"entra tenant case-insensitive", entra, func(c *claims) { c.TenantID = "T-1" }, ""},
 		{"entra wrong tenant", entra, func(c *claims) { c.TenantID = "other" }, "tenant"},
@@ -49,7 +49,7 @@ func TestClaimsPolicy(t *testing.T) {
 		{"entra email from preferred_username", entra, func(c *claims) { c.Email = ""; c.PreferredUsername = "bob@example.com" }, ""},
 		{"entra wrong domain", entra, func(c *claims) { c.Email = "bob@evil.com" }, "domain"},
 		{"oidc ok", oidcCfg, nil, ""},
-		{"oidc unverified", oidcCfg, func(c *claims) { c.EmailVerified = false }, "verifiziert"},
+		{"oidc unverified", oidcCfg, func(c *claims) { c.EmailVerified = false }, "verified"},
 		{"oidc unverified allowed by config", config.Provider{Type: "oidc", AllowedDomains: []string{"example.com"}, AllowUnverifiedEmail: true},
 			func(c *claims) { c.EmailVerified = false }, ""},
 		{"no sub", oidcCfg, func(c *claims) { c.Subject = "" }, "sub"},
@@ -65,15 +65,15 @@ func TestClaimsPolicy(t *testing.T) {
 			id, err := c.check(tc.cfg)
 			if tc.want == "" {
 				if err != nil {
-					t.Fatalf("unerwartet abgelehnt: %v", err)
+					t.Fatalf("unexpectedly rejected: %v", err)
 				}
 				if id.Email != strings.ToLower(id.Email) {
-					t.Errorf("E-Mail nicht normalisiert: %s", id.Email)
+					t.Errorf("e-mail not normalised: %s", id.Email)
 				}
 				return
 			}
 			if !errors.Is(err, ErrNotAllowed) || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err = %v, erwartet %q", err, tc.want)
+				t.Fatalf("err = %v, expected %q", err, tc.want)
 			}
 		})
 	}
@@ -86,7 +86,7 @@ func TestEmailVerifiedAcceptsStrings(t *testing.T) {
 	}
 	c, _ = decodeClaims([]byte(`{"email_verified":false}`))
 	if c.EmailVerified {
-		t.Error("false wurde true")
+		t.Error("false became true")
 	}
 }
 
@@ -125,20 +125,20 @@ func TestOIDCProviderRoundTrip(t *testing.T) {
 	bad := req
 	bad.Nonce = "other"
 	if _, err := p.Exchange(ctx, code, bad); err == nil || !strings.Contains(err.Error(), "nonce") {
-		t.Errorf("falsche Nonce: %v", err)
+		t.Errorf("wrong nonce: %v", err)
 	}
 	// wrong PKCE verifier -> IdP refuses the exchange
 	code = approve(t, authURL)
 	bad = req
 	bad.Verifier = oauth2.GenerateVerifier()
 	if _, err := p.Exchange(ctx, code, bad); err == nil {
-		t.Error("falscher Verifier akzeptiert")
+		t.Error("wrong verifier accepted")
 	}
 	// policy applies: foreign domain
 	fake.SetClaims(map[string]any{"email": "eve@evil.com"})
 	code = approve(t, authURL)
 	if _, err := p.Exchange(ctx, code, req); !errors.Is(err, ErrNotAllowed) {
-		t.Errorf("fremde Domain: %v", err)
+		t.Errorf("foreign domain: %v", err)
 	}
 }
 
@@ -152,31 +152,31 @@ func TestGoogleTypeUsesIssuerOverrideAndHD(t *testing.T) {
 		t.Fatal(err)
 	}
 	if u, _ := url.Parse(authURL); u.Query().Get("hd") != "example.com" {
-		t.Errorf("hd-Hinweis fehlt: %s", authURL)
+		t.Errorf("hd hint missing: %s", authURL)
 	}
 	fake.SetClaims(map[string]any{"hd": "example.com"})
 	if _, err := p.Exchange(context.Background(), approve(t, authURL), req); err != nil {
-		t.Errorf("Workspace-Konto: %v", err)
+		t.Errorf("workspace account: %v", err)
 	}
-	fake.SetClaims(nil) // kein hd-Claim: privates Konto
+	fake.SetClaims(nil) // no hd claim: private account
 	if _, err := p.Exchange(context.Background(), approve(t, authURL), req); !errors.Is(err, ErrNotAllowed) {
-		t.Errorf("privates Konto: %v", err)
+		t.Errorf("private account: %v", err)
 	}
 }
 
 func TestDiscoveryFailureIsRetried(t *testing.T) {
 	p, _ := New(config.Provider{ID: "x", Type: "oidc", Issuer: "http://127.0.0.1:1", ClientID: "c", ClientSecret: "s"})
 	if _, err := p.AuthURL(context.Background(), AuthRequest{}); err == nil {
-		t.Fatal("Discovery gegen toten Port muss fehlschlagen")
+		t.Fatal("discovery against a dead port must fail")
 	}
 	if _, err := p.AuthURL(context.Background(), AuthRequest{}); err == nil {
-		t.Fatal("zweiter Versuch muss ebenfalls fehlschlagen, nicht den Fehler cachen")
+		t.Fatal("second attempt must also fail, not cache the error")
 	}
 }
 
 func TestUnknownType(t *testing.T) {
 	if _, err := New(config.Provider{Type: "saml"}); err == nil {
-		t.Fatal("unbekannter Typ")
+		t.Fatal("unknown type")
 	}
 }
 
@@ -191,7 +191,7 @@ func approve(t *testing.T, authURL string) string {
 	resp.Body.Close()
 	loc, err := resp.Location()
 	if err != nil {
-		t.Fatalf("keine Weiterleitung (Status %d)", resp.StatusCode)
+		t.Fatalf("no redirect (status %d)", resp.StatusCode)
 	}
 	return loc.Query().Get("code")
 }

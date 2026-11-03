@@ -84,11 +84,11 @@ func (p *oidcProvider) discover(ctx context.Context, eff config.Provider) (*vari
 			ctx = oidc.InsecureIssuerURLContext(ctx, entraBase+"/{tenantid}/v2.0")
 		}
 	default:
-		return nil, errors.New("issuer fehlt")
+		return nil, errors.New("issuer missing")
 	}
 	prov, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
-		return nil, fmt.Errorf("oidc-discovery für %s: %w", p.cfg.ID, err)
+		return nil, fmt.Errorf("oidc discovery for %s: %w", p.cfg.ID, err)
 	}
 	v := &variant{endpoint: prov.Endpoint(), verifier: prov.Verifier(oc)}
 	p.variants[multi] = v
@@ -113,7 +113,7 @@ func (p *oidcProvider) AuthURL(ctx context.Context, r AuthRequest) (string, erro
 		oauth2.S256ChallengeOption(r.Verifier),
 		oauth2.SetAuthURLParam("prompt", "select_account"),
 	}
-	// Mit freigegebenen Einzeladressen (evtl. Gmail ohne hd) wäre der Hinweis hinderlich.
+	// With individually approved addresses (possibly Gmail without hd) the hint would get in the way.
 	if p.cfg.Type == "google" && len(eff.AllowedDomains) == 1 && len(eff.AllowedEmails) == 0 {
 		opts = append(opts, oauth2.SetAuthURLParam("hd", eff.AllowedDomains[0])) // hint only
 	}
@@ -129,28 +129,28 @@ func (p *oidcProvider) Exchange(ctx context.Context, code string, r AuthRequest)
 	ctx = oidc.ClientContext(ctx, httpClient)
 	tok, err := p.oauthConfig(v, r.RedirectURL).Exchange(ctx, code, oauth2.VerifierOption(r.Verifier))
 	if err != nil {
-		return Identity{}, fmt.Errorf("code-austausch beim idp: %w", err)
+		return Identity{}, fmt.Errorf("code exchange at the idp: %w", err)
 	}
 	rawID, _ := tok.Extra("id_token").(string)
 	if rawID == "" {
-		return Identity{}, errors.New("idp lieferte kein id_token")
+		return Identity{}, errors.New("idp returned no id_token")
 	}
 	idt, err := v.verifier.Verify(ctx, rawID) // signature, audience, expiry (+ issuer unless multi-tenant)
 	if err != nil {
-		return Identity{}, fmt.Errorf("id_token ungültig: %w", err)
+		return Identity{}, fmt.Errorf("id_token invalid: %w", err)
 	}
 	var c claims
 	if err := idt.Claims(&c); err != nil {
 		return Identity{}, err
 	}
 	if c.Nonce == "" || c.Nonce != r.Nonce {
-		return Identity{}, errors.New("nonce stimmt nicht überein")
+		return Identity{}, errors.New("nonce does not match")
 	}
 	if p.multiTenant(eff) && idt.Issuer != fmt.Sprintf("%s/%s/v2.0", entraBase, c.TenantID) {
-		return Identity{}, reject("issuer %q passt nicht zum tenant", idt.Issuer)
+		return Identity{}, reject("issuer %q does not match the tenant", idt.Issuer)
 	}
 	if p.cfg.Type == "entra" && strings.TrimSpace(c.TenantID) == "" {
-		return Identity{}, reject("token ohne tid")
+		return Identity{}, reject("token without tid")
 	}
 	return c.check(eff)
 }

@@ -33,14 +33,14 @@ import (
 )
 
 func main() {
-	cfgPath := flag.String("config", "config.yaml", "Pfad zur config.yaml")
+	cfgPath := flag.String("config", "config.yaml", "path to config.yaml")
 	flag.Parse()
 
 	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	slog.SetDefault(log)
 
 	if err := run(*cfgPath, log); err != nil {
-		log.Error("Start fehlgeschlagen", "error", err)
+		log.Error("Startup failed", "error", err)
 		os.Exit(1)
 	}
 }
@@ -67,7 +67,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	log.Info("Embedding-Backend", "backend", cfg.Embedding.Backend, "model", cfg.Embedding.Model, "dimensions", cfg.Embedding.Dimensions)
+	log.Info("Embedding backend", "backend", cfg.Embedding.Backend, "model", cfg.Embedding.Model, "dimensions", cfg.Embedding.Dimensions)
 
 	userStore := users.New(pool, users.Options{BootstrapAdmins: cfg.Auth.BootstrapAdmins, PersonalEnabled: cfg.Spaces.Personal.Enabled, LinkByEmail: cfg.Auth.LinkAccountsByEmail})
 	spaceStore := spaces.New(pool)
@@ -101,7 +101,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	runner.AddPeriodic(jobs.Periodic{Name: "expire_handoffs", Every: time.Hour, Run: func(ctx context.Context) error {
 		n, err := docStore.ExpireHandoffs(ctx)
 		if n > 0 {
-			log.Info("Abgelaufene Übergaben gelöscht", "anzahl", n)
+			log.Info("Expired handoffs deleted", "count", n)
 		}
 		return err
 	}})
@@ -109,7 +109,7 @@ func run(cfgPath string, log *slog.Logger) error {
 		runner.AddPeriodic(jobs.Periodic{Name: "purge_offboarded", Every: time.Hour, Run: func(ctx context.Context) error {
 			n, err := docStore.PurgeOffboarded(ctx, days)
 			if n > 0 {
-				log.Info("Persönliche Bereiche gesperrter Konten nach Fristablauf gelöscht", "anzahl", n)
+				log.Info("Personal spaces of blocked accounts deleted after the grace period", "count", n)
 			}
 			return err
 		}})
@@ -179,7 +179,7 @@ func run(cfgPath string, log *slog.Logger) error {
 		resourceMetadataURL = oauthSrv.ResourceMetadataURL()
 	}
 	if cfg.Instance.DevMode {
-		log.Warn("dev_mode ist aktiv – nicht für den Produktivbetrieb geeignet", "user", cfg.Instance.DevUser)
+		log.Warn("dev_mode is active - not suitable for production", "user", cfg.Instance.DevUser)
 		verifier = devFirst(mcpserver.DevVerifier(userStore, cfg.Instance.DevToken, cfg.Instance.DevUser), verifier)
 	}
 
@@ -189,11 +189,11 @@ func run(cfgPath string, log *slog.Logger) error {
 		cctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()
 		if err := pool.Ping(cctx); err != nil {
-			http.Error(w, "datenbank nicht erreichbar", http.StatusServiceUnavailable)
+			http.Error(w, "database unreachable", http.StatusServiceUnavailable)
 			return
 		}
 		if err := emb.Ping(cctx); err != nil {
-			http.Error(w, "embedder nicht erreichbar", http.StatusServiceUnavailable)
+			http.Error(w, "embedder unreachable", http.StatusServiceUnavailable)
 			return
 		}
 		_, _ = w.Write([]byte("ok"))
@@ -212,7 +212,7 @@ func run(cfgPath string, log *slog.Logger) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Info("Server startet", "product", cfg.Instance.ProductName, "listen", cfg.Instance.Listen, "base_url", cfg.Instance.BaseURL)
+	log.Info("Server starting", "product", cfg.Instance.ProductName, "listen", cfg.Instance.Listen, "base_url", cfg.Instance.BaseURL)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

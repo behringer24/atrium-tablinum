@@ -58,16 +58,16 @@ func TestOpenAIRequestAndOrder(t *testing.T) {
 	}
 	for i, v := range vecs {
 		if int(v[0]) != len(texts[i]) {
-			t.Fatalf("Reihenfolge verletzt bei %d: %v", i, v)
+			t.Fatalf("order violated at %d: %v", i, v)
 		}
 	}
 	if len(*calls) != 3 {
-		t.Fatalf("%d Anfragen", len(*calls))
+		t.Fatalf("%d requests", len(*calls))
 	}
 	c := (*calls)[0]
 	if c.Path != "/v1/embeddings" || c.Auth != "Bearer sk-test" || c.Org != "org-1" ||
 		c.Body["model"] != "text-embedding-3-small" || c.Body["dimensions"] != float64(4) || c.Body["encoding_format"] != "float" {
-		t.Errorf("Anfrage: %+v", c)
+		t.Errorf("request: %+v", c)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestOpenAIDimensionsOnlyWhenAsked(t *testing.T) {
 	}
 	c := (*calls)[0]
 	if _, has := c.Body["dimensions"]; has || c.Auth != "" || c.Path != "/embeddings" {
-		t.Errorf("Anfrage: %+v", c)
+		t.Errorf("request: %+v", c)
 	}
 }
 
@@ -88,18 +88,18 @@ func TestOpenAIValidation(t *testing.T) {
 		s    Settings
 		want string
 	}{
-		"offizielle API braucht Schlüssel": {Settings{Backend: "openai", Model: "m", Dimensions: 4}, "api_key"},
-		"Modell fehlt":                     {Settings{Backend: "openai", APIKey: "k", Dimensions: 4}, "embedding.model"},
-		"URL ungültig":                     {Settings{Backend: "openai", URL: "nope", Model: "m", Dimensions: 4}, "http(s)"},
-		"unbekannte Option":                {Settings{Backend: "openai", APIKey: "k", Model: "m", Dimensions: 4, Options: map[string]string{"region": "x"}}, "unbekannte options"},
+		"official API needs a key": {Settings{Backend: "openai", Model: "m", Dimensions: 4}, "api_key"},
+		"model missing":            {Settings{Backend: "openai", APIKey: "k", Dimensions: 4}, "embedding.model"},
+		"URL invalid":              {Settings{Backend: "openai", URL: "nope", Model: "m", Dimensions: 4}, "http(s)"},
+		"unknown option":           {Settings{Backend: "openai", APIKey: "k", Model: "m", Dimensions: 4, Options: map[string]string{"region": "x"}}, "unknown options"},
 	} {
 		if err := Validate(tc.s); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	// ein eigener Endpunkt (Ollama, vLLM, ...) braucht keinen Schlüssel
+	// a custom endpoint (Ollama, vLLM, ...) needs no key
 	if err := Validate(Settings{Backend: "openai", URL: "http://localhost:11434/v1", Model: "m", Dimensions: 4}); err != nil {
-		t.Errorf("eigener Endpunkt: %v", err)
+		t.Errorf("custom endpoint: %v", err)
 	}
 }
 
@@ -112,27 +112,27 @@ func TestOpenAIPingChecksDimensionAndIsCached(t *testing.T) {
 		}
 	}
 	if len(*calls) != 1 {
-		t.Errorf("Ping kostet %d Anfragen, erwartet 1", len(*calls))
+		t.Errorf("ping costs %d requests, want 1", len(*calls))
 	}
 	wrong, _ := New(Settings{Backend: "openai", URL: srv.URL, Model: "m", Dimensions: 8})
-	if err := wrong.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "Dimensionen") {
-		t.Errorf("falsche Dimension: %v", err)
+	if err := wrong.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "dimensions") {
+		t.Errorf("wrong dimension: %v", err)
 	}
 }
 
 func TestOpenAIRejectsBrokenAnswers(t *testing.T) {
 	for name, answer := range map[string]string{
-		"Index doppelt":      `{"data":[{"index":0,"embedding":[1,2,3,4]},{"index":0,"embedding":[1,2,3,4]}]}`,
-		"Vektor fehlt":       `{"data":[{"index":0,"embedding":[1,2,3,4]}]}`,
-		"Index außerhalb":    `{"data":[{"index":5,"embedding":[1,2,3,4]},{"index":1,"embedding":[1,2,3,4]}]}`,
-		"kein JSON":          `<html>`,
-		"falsche Dimension":  `{"data":[{"index":0,"embedding":[1,2]},{"index":1,"embedding":[1,2]}]}`,
-		"leere Antwortliste": `{"data":[]}`,
+		"duplicate index":    `{"data":[{"index":0,"embedding":[1,2,3,4]},{"index":0,"embedding":[1,2,3,4]}]}`,
+		"vector missing":     `{"data":[{"index":0,"embedding":[1,2,3,4]}]}`,
+		"index out of range": `{"data":[{"index":5,"embedding":[1,2,3,4]},{"index":1,"embedding":[1,2,3,4]}]}`,
+		"not JSON":           `<html>`,
+		"wrong dimension":    `{"data":[{"index":0,"embedding":[1,2]},{"index":1,"embedding":[1,2]}]}`,
+		"empty answer list":  `{"data":[]}`,
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(answer)) }))
 		e, _ := New(Settings{Backend: "openai", URL: srv.URL, Model: "m", Dimensions: 4})
 		if _, err := e.Embed(context.Background(), []string{"a", "b"}); err == nil {
-			t.Errorf("%s: kein Fehler", name)
+			t.Errorf("%s: no error", name)
 		}
 		srv.Close()
 	}

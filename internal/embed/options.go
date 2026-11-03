@@ -42,7 +42,7 @@ func (o *options) integer(key string, def, min int) int {
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil || n < min {
-		o.fail("options.%s: %q ist keine ganze Zahl >= %d", key, v, min)
+		o.fail("options.%s: %q is not an integer >= %d", key, v, min)
 		return def
 	}
 	return n
@@ -56,7 +56,7 @@ func (o *options) boolean(key string, def bool) bool {
 	}
 	b, err := strconv.ParseBool(strings.TrimSpace(v))
 	if err != nil {
-		o.fail("options.%s: %q ist weder true noch false", key, v)
+		o.fail("options.%s: %q is neither true nor false", key, v)
 		return def
 	}
 	return b
@@ -77,11 +77,11 @@ func (o *options) done() error {
 			valid = append(valid, k)
 		}
 		sort.Strings(valid)
-		hint := "keine"
+		hint := "none"
 		if len(valid) > 0 {
 			hint = strings.Join(valid, ", ")
 		}
-		o.fail("unbekannte options: %s (gültig für %s: %s)", strings.Join(unknown, ", "), o.backend, hint)
+		o.fail("unknown options: %s (valid for %s: %s)", strings.Join(unknown, ", "), o.backend, hint)
 	}
 	if len(o.errs) == 0 {
 		return nil

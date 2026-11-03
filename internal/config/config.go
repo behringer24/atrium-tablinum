@@ -78,8 +78,8 @@ type Provider struct {
 	ClientID       string   `yaml:"client_id"`
 	ClientSecret   string   `yaml:"client_secret"`
 	AllowedDomains []string `yaml:"allowed_domains"`
-	// AllowedEmails gibt einzelne Adressen zusätzlich zu den Domains frei (google, oidc),
-	// z. B. private Gmail-Konten ohne Workspace-Domain.
+	// AllowedEmails admits individual addresses in addition to the domains (google, oidc),
+	// e.g. private Gmail accounts without a Workspace domain.
 	AllowedEmails  []string `yaml:"allowed_emails"`
 	AllowedTenants []string `yaml:"allowed_tenants"`
 	// GroupsClaim: for entra a bool-like switch (any non-empty value enables it),
@@ -214,7 +214,7 @@ var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("config lesen: %w", err)
+		return nil, fmt.Errorf("reading config: %w", err)
 	}
 	return Parse(raw, os.LookupEnv)
 }
@@ -234,14 +234,14 @@ func Parse(raw []byte, lookup func(string) (string, bool)) (*Config, error) {
 	// variables that survive in non-comment lines.
 	missing = filterUncommented(string(raw), missing)
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("fehlende Umgebungsvariablen: %s", strings.Join(dedupe(missing), ", "))
+		return nil, fmt.Errorf("missing environment variables: %s", strings.Join(dedupe(missing), ", "))
 	}
 
 	cfg := Defaults()
 	dec := yaml.NewDecoder(strings.NewReader(expanded))
 	dec.KnownFields(true)
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("config parsen: %w", err)
+		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	if cfg.Instance.ShortName == "" {
 		cfg.Instance.ShortName = cfg.Instance.ProductName
@@ -261,94 +261,94 @@ func (c *Config) Validate() error {
 	add := func(f string, a ...any) { errs = append(errs, fmt.Sprintf(f, a...)) }
 
 	if c.Instance.ProductName == "" {
-		add("instance.product_name darf nicht leer sein")
+		add("instance.product_name must not be empty")
 	}
 	if c.Instance.Listen == "" {
-		add("instance.listen darf nicht leer sein")
+		add("instance.listen must not be empty")
 	}
 	if u, err := url.Parse(c.Instance.BaseURL); err != nil || u.Host == "" {
-		add("instance.base_url muss eine absolute URL sein")
+		add("instance.base_url must be an absolute URL")
 	} else if u.Scheme != "https" && !(c.Instance.DevMode && isLoopback(u.Hostname())) {
-		add("instance.base_url muss https verwenden (http nur mit dev_mode und localhost)")
+		add("instance.base_url must use https (http only with dev_mode and localhost)")
 	}
 	for _, p := range c.Instance.TrustedProxies {
 		if !validIPOrCIDR(p) {
-			add("instance.trusted_proxies: %q ist weder IP noch CIDR", p)
+			add("instance.trusted_proxies: %q is neither an IP nor a CIDR", p)
 		}
 	}
 	if c.Instance.DevMode {
 		// A static token without expiry is only acceptable where nobody else can reach it.
 		if u, err := url.Parse(c.Instance.BaseURL); err == nil && !isLoopback(u.Hostname()) {
-			add("instance.dev_mode ist nur mit einer base_url auf localhost erlaubt")
+			add("instance.dev_mode is only allowed with a base_url on localhost")
 		}
 		if c.Instance.DevToken == "" {
-			add("instance.dev_mode braucht ein eigenes instance.dev_token (mindestens 16 Zeichen); es wird nicht mehr erzeugt und geloggt")
+			add("instance.dev_mode needs its own instance.dev_token (at least 16 characters); it is no longer generated and logged")
 		}
 	}
 	if c.Instance.DevToken != "" && !c.Instance.DevMode {
-		add("instance.dev_token ist nur mit dev_mode erlaubt")
+		add("instance.dev_token is only allowed with dev_mode")
 	}
 	if c.Instance.DevToken != "" && len(c.Instance.DevToken) < 16 {
-		add("instance.dev_token muss mindestens 16 Zeichen haben")
+		add("instance.dev_token must be at least 16 characters")
 	}
 	if c.Database.URL == "" {
-		add("database.url fehlt")
+		add("database.url is missing")
 	}
 
 	if len(c.Auth.Providers) == 0 && !c.Instance.DevMode {
-		add("auth.providers: mindestens ein Identity Provider erforderlich (oder dev_mode)")
+		add("auth.providers: at least one Identity Provider required (or dev_mode)")
 	}
 	seen := map[string]bool{}
 	for i, p := range c.Auth.Providers {
 		at := fmt.Sprintf("auth.providers[%d]", i)
 		if p.ID == "" || seen[p.ID] {
-			add("%s.id fehlt oder ist doppelt", at)
+			add("%s.id is missing or duplicated", at)
 		}
 		seen[p.ID] = true
 		if p.ClientID == "" || p.ClientSecret == "" {
-			add("%s: client_id und client_secret erforderlich", at)
+			add("%s: client_id and client_secret required", at)
 		}
 		switch p.Type {
 		case "google":
 			if len(p.AllowedDomains) == 0 && len(p.AllowedEmails) == 0 {
-				add("%s: allowed_domains oder allowed_emails erforderlich", at)
+				add("%s: allowed_domains or allowed_emails required", at)
 			}
 		case "entra":
 			if len(p.AllowedTenants) == 0 {
-				add("%s: allowed_tenants erforderlich", at)
+				add("%s: allowed_tenants required", at)
 			}
 			if len(p.AllowedEmails) > 0 {
-				add("%s: allowed_emails wird für entra nicht unterstützt", at)
+				add("%s: allowed_emails is not supported for entra", at)
 			}
 		case "oidc":
 			if p.Issuer == "" {
-				add("%s: issuer erforderlich", at)
+				add("%s: issuer required", at)
 			}
 			if len(p.AllowedDomains) == 0 && len(p.AllowedEmails) == 0 {
-				add("%s: allowed_domains oder allowed_emails erforderlich", at)
+				add("%s: allowed_domains or allowed_emails required", at)
 			}
 		default:
-			add("%s.type %q unbekannt (google | entra | oidc)", at, p.Type)
+			add("%s.type %q unknown (google | entra | oidc)", at, p.Type)
 		}
 	}
 	for _, u := range c.Auth.AllowedRedirectURIs {
 		base := strings.TrimSuffix(u, "*")
 		if pu, err := url.Parse(base); err != nil || pu.Scheme != "https" || pu.Host == "" || pu.Fragment != "" {
-			add("auth.allowed_redirect_uris: %q muss eine https-URL sein", u)
+			add("auth.allowed_redirect_uris: %q must be an https URL", u)
 		}
 	}
 	if c.Auth.AccessTokenTTL <= 0 || c.Auth.RefreshTokenTTL <= 0 {
-		add("auth: Token-TTLs müssen positiv sein")
+		add("auth: token TTLs must be positive")
 	}
 
 	if c.Embedding.Dimensions <= 0 || c.Embedding.Dimensions > 2000 {
 		// pgvector indexes at most 2000 dimensions with HNSW.
-		add("embedding.dimensions muss zwischen 1 und 2000 liegen")
+		add("embedding.dimensions must be between 1 and 2000")
 	} else if err := embed.Validate(c.Embedding.Settings()); err != nil {
 		add("%s", err)
 	}
 	if c.Reranker.Enabled && c.Reranker.URL == "" {
-		add("reranker.url fehlt")
+		add("reranker.url is missing")
 	}
 
 	hasSimple := false
@@ -358,29 +358,29 @@ func (c *Config) Validate() error {
 		}
 	}
 	if !hasSimple {
-		add(`search.fts_languages muss "simple" enthalten`)
+		add(`search.fts_languages must contain "simple"`)
 	}
 	if c.Search.DefaultLimit < 1 || c.Search.DefaultLimit > c.Search.MaxLimit {
-		add("search: default_limit muss zwischen 1 und max_limit liegen")
+		add("search: default_limit must be between 1 and max_limit")
 	}
 	if c.Search.CandidatesPerMethod < 1 || c.Search.RRFK < 1 {
-		add("search: candidates_per_method und rrf_k müssen positiv sein")
+		add("search: candidates_per_method and rrf_k must be positive")
 	}
 	if c.Chunking.TargetTokens < 1 || c.Chunking.MaxTokens < c.Chunking.TargetTokens {
-		add("chunking: max_tokens muss >= target_tokens > 0 sein")
+		add("chunking: max_tokens must be >= target_tokens > 0")
 	}
 	if c.Policy.DuplicateThreshold <= 0 || c.Policy.DuplicateThreshold > 1 {
-		add("policy.duplicate_threshold muss in (0, 1] liegen")
+		add("policy.duplicate_threshold must be in (0, 1]")
 	}
 	if c.Policy.MaxDocumentBytes < 1 {
-		add("policy.max_document_bytes muss positiv sein")
+		add("policy.max_document_bytes must be positive")
 	}
 	if c.Spaces.HandoffTTLDays < 1 {
-		add("spaces.handoff_ttl_days muss >= 1 sein")
+		add("spaces.handoff_ttl_days must be >= 1")
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("ungültige Konfiguration:\n  - %s", strings.Join(errs, "\n  - "))
+		return fmt.Errorf("invalid configuration:\n  - %s", strings.Join(errs, "\n  - "))
 	}
 	return nil
 }

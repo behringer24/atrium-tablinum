@@ -55,7 +55,7 @@ func TestEndpointAcceptsSessionlessProtocol(t *testing.T) {
 	status, body = e.post(t, "anna@x.de", map[string]string{"MCP-Protocol-Version": "2025-06-18"},
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	if status != http.StatusOK || !strings.Contains(body, `"list_spaces"`) {
-		t.Fatalf("tools/list ohne Sitzung: HTTP %d: %.300s", status, body)
+		t.Fatalf("tools/list without session: HTTP %d: %.300s", status, body)
 	}
 
 	// Without a token nothing is served.
@@ -63,6 +63,6 @@ func TestEndpointAcceptsSessionlessProtocol(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("ohne Token: %v %v", resp, err)
+		t.Fatalf("without token: %v %v", resp, err)
 	}
 }

@@ -17,10 +17,10 @@ func TestCreateTeamValidation(t *testing.T) {
 	ctx := context.Background()
 	s := spaces.New(dbtest.NewPool(t))
 	for _, p := range []spaces.CreateParams{
-		{Slug: "A", Name: "x"},            // wird zu "a": zu kurz
-		{Slug: "ok name", Name: "x"},      // Leerzeichen
-		{Slug: "personal-123", Name: "x"}, // reserviert
-		{Slug: "valid", Name: " "},        // Name leer
+		{Slug: "A", Name: "x"},            // becomes "a": too short
+		{Slug: "ok name", Name: "x"},      // whitespace
+		{Slug: "personal-123", Name: "x"}, // reserved
+		{Slug: "valid", Name: " "},        // empty name
 		{Slug: "valid", Name: "x", DefaultRole: authz.Curator},
 	} {
 		if _, err := s.CreateTeam(ctx, p); !errors.Is(err, spaces.ErrInvalid) {
@@ -30,19 +30,19 @@ func TestCreateTeamValidation(t *testing.T) {
 	if _, err := s.CreateTeam(ctx, spaces.CreateParams{Slug: "support", Name: "Support"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateTeam(ctx, spaces.CreateParams{Slug: "Support", Name: "Doppelt"}); !errors.Is(err, spaces.ErrSlugTaken) {
-		t.Errorf("Duplikat: %v", err)
+	if _, err := s.CreateTeam(ctx, spaces.CreateParams{Slug: "Support", Name: "Duplicate"}); !errors.Is(err, spaces.ErrSlugTaken) {
+		t.Errorf("duplicate: %v", err)
 	}
 }
 
 func TestUpdateAndDefaultRole(t *testing.T) {
 	ctx := context.Background()
 	s := spaces.New(dbtest.NewPool(t))
-	sp, _ := s.CreateTeam(ctx, spaces.CreateParams{Slug: "firma", Name: "Firma", DefaultRole: authz.Reader})
+	sp, _ := s.CreateTeam(ctx, spaces.CreateParams{Slug: "company", Name: "Company", DefaultRole: authz.Reader})
 	if sp.DefaultRole != authz.Reader {
 		t.Fatalf("default_role = %v", sp.DefaultRole)
 	}
-	name, yes, none := "Firmenweit", true, authz.None
+	name, yes, none := "Companywide", true, authz.None
 	up, err := s.Update(ctx, sp.ID, spaces.UpdateParams{Name: &name, RequireApproval: &yes, DefaultRole: &none})
 	if err != nil {
 		t.Fatal(err)
@@ -50,18 +50,18 @@ func TestUpdateAndDefaultRole(t *testing.T) {
 	if up.Name != name || !up.RequireApproval || up.DefaultRole != authz.None || up.Description != "" {
 		t.Errorf("%+v", up)
 	}
-	// ohne DefaultRole bleibt der Wert erhalten
+	// without DefaultRole the value is kept
 	author := authz.Author
 	if _, err := s.Update(ctx, sp.ID, spaces.UpdateParams{DefaultRole: &author}); err != nil {
 		t.Fatal(err)
 	}
-	desc := "neu"
+	desc := "new"
 	up, _ = s.Update(ctx, sp.ID, spaces.UpdateParams{Description: &desc})
-	if up.DefaultRole != authz.Author || up.Description != "neu" {
+	if up.DefaultRole != authz.Author || up.Description != "new" {
 		t.Errorf("%+v", up)
 	}
 	if _, err := s.Update(ctx, uuid.New(), spaces.UpdateParams{Name: &name}); !errors.Is(err, spaces.ErrNotFound) {
-		t.Errorf("unbekannt: %v", err)
+		t.Errorf("unknown: %v", err)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestMembers(t *testing.T) {
 	if err := ss.SetMember(ctx, sp.ID, spaces.PrincipalGroup, g.ID, authz.Reader, u.ID); err != nil {
 		t.Fatal(err)
 	}
-	// Rolle ändern statt doppelt anlegen
+	// change the role instead of creating a duplicate
 	if err := ss.SetMember(ctx, sp.ID, spaces.PrincipalUser, u.ID, authz.Curator, u.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -118,18 +118,18 @@ func TestMembers(t *testing.T) {
 		}
 	}
 	if err := ss.SetMember(ctx, sp.ID, spaces.PrincipalUser, uuid.New(), authz.Reader, u.ID); !errors.Is(err, spaces.ErrNotFound) {
-		t.Errorf("unbekannter Nutzer: %v", err)
+		t.Errorf("unknown user: %v", err)
 	}
 	if err := ss.SetMember(ctx, sp.ID, spaces.PrincipalGroup, u.ID, authz.Reader, u.ID); !errors.Is(err, spaces.ErrNotFound) {
-		t.Errorf("Nutzer-ID als Gruppe: %v", err)
+		t.Errorf("user ID as group: %v", err)
 	}
 	if err := ss.SetMember(ctx, sp.ID, spaces.PrincipalUser, u.ID, authz.None, u.ID); !errors.Is(err, spaces.ErrInvalid) {
-		t.Errorf("ohne Rolle: %v", err)
+		t.Errorf("without role: %v", err)
 	}
 	if err := ss.RemoveMember(ctx, sp.ID, spaces.PrincipalGroup, g.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := ss.RemoveMember(ctx, sp.ID, spaces.PrincipalGroup, g.ID); !errors.Is(err, spaces.ErrNotFound) {
-		t.Errorf("zweites Entfernen: %v", err)
+		t.Errorf("second removal: %v", err)
 	}
 }

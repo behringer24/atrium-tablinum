@@ -22,16 +22,16 @@ import (
 var (
 	// ErrNotFound is returned both for missing documents/spaces and for ones the caller
 	// may not see, so the two cannot be told apart.
-	ErrNotFound = errors.New("nicht gefunden")
+	ErrNotFound = errors.New("not found")
 	// ErrForbidden means the caller can see the space but lacks the role for the action.
-	ErrForbidden = errors.New("dazu fehlt die berechtigung in diesem bereich")
-	ErrQuota     = errors.New("kontingent des persönlichen bereichs überschritten")
-	ErrConflict  = errors.New("der eintrag wurde zwischenzeitlich geändert, bitte erneut laden")
+	ErrForbidden = errors.New("you do not have permission for this in this space")
+	ErrQuota     = errors.New("personal space quota exceeded")
+	ErrConflict  = errors.New("the entry was changed in the meantime, please reload it")
 	// ErrNeedsApproval: authors cannot yet change approved entries of approval spaces
 	// (a draft next to the approved version is not implemented).
-	ErrNeedsApproval = errors.New("freigegebene einträge in bereichen mit freigabepflicht können derzeit nur kuratoren ändern")
+	ErrNeedsApproval = errors.New("approved entries in spaces that require approval can currently only be changed by curators")
 	// ErrOwnDraft: curators cannot release their own draft, admins can.
-	ErrOwnDraft = errors.New("einen eigenen entwurf kann nur ein admin des bereichs selbst freigeben, sonst muss das ein anderer kurator tun")
+	ErrOwnDraft = errors.New("only a space admin can approve their own draft, otherwise another curator has to do it")
 )
 
 type Options struct {
@@ -149,7 +149,7 @@ func (s *Store) List(ctx context.Context, a Actor, p ListParams) ([]Document, er
 	switch p.Status {
 	case "", "draft", "approved", "rejected", "archived":
 	default:
-		return nil, errors.Join(ingest.ErrInvalid, errors.New("status muss draft, approved, rejected oder archived sein"))
+		return nil, errors.Join(ingest.ErrInvalid, errors.New("status must be draft, approved, rejected or archived"))
 	}
 	if p.Limit < 1 || p.Limit > 100 {
 		p.Limit = 20

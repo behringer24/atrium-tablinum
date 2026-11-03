@@ -10,12 +10,15 @@ import (
 )
 
 var personalAliases = map[string]bool{
+	// German and English spellings of the personal space.
 	"personal": true, "persönlich": true, "persönlicher bereich": true, "persoenlich": true,
 	"privat": true, "mein": true, "mein bereich": true, "mein persönlicher bereich": true,
 	"mein privater bereich": true, "me": true, "my": true,
+	"personal space": true, "my personal space": true, "my space": true,
+	"private": true, "private space": true, "my private space": true,
 }
 
-// matchSpace resolves a user-supplied reference (slug, name, "mein persönlicher Bereich"
+// matchSpace resolves a user-supplied reference (slug, name, "mein persönlicher Bereich" / "my personal space"
 // or a fragment) against candidate spaces. Exactly one hit returns it; several hits
 // return them as candidates; none returns neither.
 func matchSpace(list []spaces.Space, ref string) (*spaces.Space, []spaces.Space) {

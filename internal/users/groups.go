@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	ErrGroupExists   = errors.New("gruppe existiert bereits")
-	ErrGroupReadOnly = errors.New("idp-gruppen sind schreibgeschützt")
+	ErrGroupExists   = errors.New("group already exists")
+	ErrGroupReadOnly = errors.New("idp groups are read-only")
 )
 
 type Group struct {
@@ -30,7 +30,7 @@ FROM groups g `
 func (s *Store) CreateGroup(ctx context.Context, name string) (Group, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return Group{}, errors.New("gruppenname fehlt")
+		return Group{}, errors.New("group name missing")
 	}
 	var g Group
 	err := s.pool.QueryRow(ctx, `INSERT INTO groups (name, source) VALUES ($1, 'local') RETURNING id, name, source`,
@@ -38,7 +38,7 @@ func (s *Store) CreateGroup(ctx context.Context, name string) (Group, error) {
 	if isUniqueViolation(err) {
 		return Group{}, ErrGroupExists
 	}
-	return g, wrap("gruppe anlegen", err)
+	return g, wrap("create group", err)
 }
 
 func (s *Store) ListGroups(ctx context.Context) ([]Group, error) {

@@ -10,7 +10,7 @@ import (
 
 func TestRoleOrderAndParse(t *testing.T) {
 	if !(None < Reader && Reader < Author && Author < Curator && Curator < Admin) {
-		t.Fatal("Rangfolge verletzt")
+		t.Fatal("ranking violated")
 	}
 	for _, s := range []string{"reader", "author", "curator", "admin"} {
 		r, ok := ParseRole(s)
@@ -20,7 +20,7 @@ func TestRoleOrderAndParse(t *testing.T) {
 	}
 	for _, s := range []string{"", "root", "Admin"} {
 		if _, ok := ParseRole(s); ok {
-			t.Errorf("ParseRole(%q) darf nicht gelingen", s)
+			t.Errorf("ParseRole(%q) must not succeed", s)
 		}
 	}
 }
@@ -29,16 +29,16 @@ func TestRolesCan(t *testing.T) {
 	a := uuid.New()
 	r := Roles{a: Author}
 	if !r.Can(a, Reader) || !r.Can(a, Author) || r.Can(a, Curator) {
-		t.Error("Can falsch")
+		t.Error("Can wrong")
 	}
 	if r.Can(uuid.New(), Reader) {
-		t.Error("unbekannter Bereich darf nichts erlauben")
+		t.Error("unknown space must not allow anything")
 	}
 	if r.Can(a, None) {
-		t.Error("None als Mindestrolle darf nie erlauben")
+		t.Error("None as minimum role must never allow")
 	}
 	if !r.Any(Author) || r.Any(Admin) {
-		t.Error("Any falsch")
+		t.Error("Any wrong")
 	}
 }
 
@@ -60,41 +60,41 @@ func TestCompute(t *testing.T) {
 		row  spaceRow
 		want Role
 	}{
-		{"kein Zugriff", user, team(None, None, false), None},
-		{"Mitglied", user, team(Curator, None, false), Curator},
+		{"no access", user, team(None, None, false), None},
+		{"member", user, team(Curator, None, false), Curator},
 		{"default reader", user, team(None, Reader, false), Reader},
 		{"default author", user, team(None, Author, false), Author},
-		{"höchste gewinnt: Mitglied über default", user, team(Admin, Reader, false), Admin},
-		{"höchste gewinnt: default über Mitglied", user, team(Reader, Author, false), Author},
-		{"archiviert für Nutzer unsichtbar", user, team(Admin, Reader, true), None},
-		{"archiviert für Instanz-Admin", admin, team(None, None, true), Admin},
-		{"Instanz-Admin auf Team", admin, team(None, None, false), Admin},
-		{"eigener persönlicher Bereich", user, personal(me), Admin},
-		{"fremder persönlicher Bereich", user, personal(other), None},
-		{"Instanz-Admin nie in fremdem persönlichen Bereich", admin, personal(other), None},
+		{"highest wins: member over default", user, team(Admin, Reader, false), Admin},
+		{"highest wins: default over member", user, team(Reader, Author, false), Author},
+		{"archived invisible to user", user, team(Admin, Reader, true), None},
+		{"archived for instance admin", admin, team(None, None, true), Admin},
+		{"instance admin on team", admin, team(None, None, false), Admin},
+		{"own personal space", user, personal(me), Admin},
+		{"foreign personal space", user, personal(other), None},
+		{"instance admin never in foreign personal space", admin, personal(other), None},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := compute(tc.u, []spaceRow{tc.row}).Role(tc.row.ID)
 			if got != tc.want {
-				t.Errorf("Rolle = %v, erwartet %v", got, tc.want)
+				t.Errorf("role = %v, expected %v", got, tc.want)
 			}
 		})
 	}
 
-	t.Run("Mitgliedschaft in persönlichem Bereich wird ignoriert", func(t *testing.T) {
+	t.Run("membership in personal space is ignored", func(t *testing.T) {
 		row := personal(other)
 		row.MemberRole, row.DefaultRole = Admin, Author
 		if compute(user, []spaceRow{row}).Can(row.ID, Reader) {
-			t.Error("Zugriff auf fremden persönlichen Bereich")
+			t.Error("access to foreign personal space")
 		}
 	})
-	t.Run("deaktivierter Nutzer hat nichts", func(t *testing.T) {
+	t.Run("disabled user has nothing", func(t *testing.T) {
 		u := users.User{ID: me, Active: false, InstanceAdmin: true}
 		row := team(Admin, Author, false)
 		own := personal(me)
 		if got := compute(u, []spaceRow{row, own}); len(got) != 0 {
-			t.Errorf("Rollen: %v", got)
+			t.Errorf("roles: %v", got)
 		}
 	})
 }

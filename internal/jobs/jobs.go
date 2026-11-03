@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrNotFound = errors.New("nicht gefunden")
+var ErrNotFound = errors.New("not found")
 
 // Periodic is a maintenance task run at start and then every Every.
 type Periodic struct {
@@ -104,7 +104,7 @@ func (r *Runner) runOnce(ctx context.Context, p Periodic) {
 	st := PeriodicStatus{Name: p.Name, LastRun: start, Duration: time.Since(start)}
 	if err != nil && ctx.Err() == nil {
 		st.LastErr = err.Error()
-		r.log.Error("Hintergrundaufgabe fehlgeschlagen", "task", p.Name, "error", err)
+		r.log.Error("background task failed", "task", p.Name, "error", err)
 	}
 	r.mu.Lock()
 	r.status[p.Name] = st
@@ -134,7 +134,7 @@ func (r *Runner) runQueue(ctx context.Context) {
 		for { // drain
 			ok, err := r.processOne(ctx)
 			if err != nil {
-				r.log.Error("Job-Queue", "error", err)
+				r.log.Error("job queue", "error", err)
 			}
 			if !ok || err != nil {
 				break
@@ -165,7 +165,7 @@ RETURNING id, kind, COALESCE(params, 'null'::jsonb)`).Scan(&j.ID, &j.Kind, &j.Pa
 	h, ok := r.handlers[j.Kind]
 	var runErr error
 	if !ok {
-		runErr = fmt.Errorf("unbekannte Job-Art %q", j.Kind)
+		runErr = fmt.Errorf("unknown job kind %q", j.Kind)
 	} else {
 		runErr = safely(func() error { return h(ctx, j) })
 	}
@@ -173,7 +173,7 @@ RETURNING id, kind, COALESCE(params, 'null'::jsonb)`).Scan(&j.ID, &j.Kind, &j.Pa
 	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	if runErr != nil {
-		r.log.Error("Job fehlgeschlagen", "kind", j.Kind, "id", j.ID, "error", runErr)
+		r.log.Error("job failed", "kind", j.Kind, "id", j.ID, "error", runErr)
 		_, err = r.pool.Exec(fctx, `UPDATE jobs SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`, j.ID, runErr.Error())
 	} else {
 		_, err = r.pool.Exec(fctx, `UPDATE jobs SET status = 'done', progress = COALESCE(total, progress), finished_at = now() WHERE id = $1`, j.ID)

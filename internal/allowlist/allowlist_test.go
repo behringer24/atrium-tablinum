@@ -32,7 +32,7 @@ func TestNormalize(t *testing.T) {
 	}
 	for _, c := range bad {
 		if _, err := allowlist.Normalize(c.kind, c.in); !errors.Is(err, allowlist.ErrInvalid) {
-			t.Errorf("%s %q sollte ungültig sein: %v", c.kind, c.in, err)
+			t.Errorf("%s %q should be invalid: %v", c.kind, c.in, err)
 		}
 	}
 }
@@ -45,7 +45,7 @@ func TestStoreAddListRemoveAndProviderScope(t *testing.T) {
 		t.Fatalf("add: %v %v", added, err)
 	}
 	if added, err := s.Add(ctx, "domain", "partner.de", "", uuid.Nil); err != nil || added {
-		t.Errorf("doppelt: %v %v", added, err)
+		t.Errorf("duplicate: %v %v", added, err)
 	}
 	if _, err := s.Add(ctx, "email", "gast@gmail.com", "google", uuid.Nil); err != nil {
 		t.Fatal(err)
@@ -70,12 +70,12 @@ func TestStoreAddListRemoveAndProviderScope(t *testing.T) {
 	}
 
 	if err := s.Remove(ctx, "domain", "nur-keycloak.de", ""); !errors.Is(err, allowlist.ErrNotFound) {
-		t.Errorf("Entfernen mit falschem Provider: %v", err)
+		t.Errorf("removal with wrong provider: %v", err)
 	}
 	if err := s.Remove(ctx, "domain", "nur-keycloak.de", "kc"); err != nil {
 		t.Fatal(err)
 	}
 	if kc, _ = s.Additions(ctx, "kc"); len(kc.Domains) != 1 {
-		t.Errorf("kc nach dem Entfernen: %+v", kc)
+		t.Errorf("kc after removal: %+v", kc)
 	}
 }

@@ -38,11 +38,11 @@ type Embedding struct {
 func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, url)
 	if err != nil {
-		return nil, fmt.Errorf("db verbinden: %w", err)
+		return nil, fmt.Errorf("connecting to db: %w", err)
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("db erreichbar? %w", err)
+		return nil, fmt.Errorf("db reachable? %w", err)
 	}
 	return pool, nil
 }
@@ -52,7 +52,7 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 // configured dimension differs from the one the database was created with.
 func Migrate(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
 	if emb.Dimensions < 1 || emb.Dimensions > maxIndexableDimensions {
-		return fmt.Errorf("embedding.dimensions %d außerhalb von 1..%d", emb.Dimensions, maxIndexableDimensions)
+		return fmt.Errorf("embedding.dimensions %d out of range 1..%d", emb.Dimensions, maxIndexableDimensions)
 	}
 	if err := checkDimension(ctx, pool, emb); err != nil {
 		return err
@@ -64,14 +64,14 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
 	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, mustSub(),
 		goose.WithGoMigrations(chunksMigration(emb.Dimensions)))
 	if err != nil {
-		return fmt.Errorf("migrationen vorbereiten: %w", err)
+		return fmt.Errorf("preparing migrations: %w", err)
 	}
 	results, err := provider.Up(ctx)
 	if err != nil {
-		return fmt.Errorf("migrationen ausführen: %w", err)
+		return fmt.Errorf("running migrations: %w", err)
 	}
 	for _, r := range results {
-		slog.Info("Migration angewendet", "version", r.Source.Version, "dauer", r.Duration)
+		slog.Info("Migration applied", "version", r.Source.Version, "duration", r.Duration)
 	}
 
 	return recordEmbedding(ctx, pool, emb)
@@ -82,7 +82,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
 func checkDimension(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
 	var exists bool
 	if err := pool.QueryRow(ctx, `SELECT to_regclass('meta') IS NOT NULL`).Scan(&exists); err != nil {
-		return fmt.Errorf("meta prüfen: %w", err)
+		return fmt.Errorf("checking meta: %w", err)
 	}
 	if !exists {
 		return nil
@@ -92,8 +92,8 @@ func checkDimension(ctx context.Context, pool *pgxpool.Pool, emb Embedding) erro
 		return err
 	}
 	if stored != fmt.Sprint(emb.Dimensions) {
-		return fmt.Errorf("embedding.dimensions=%d passt nicht zur Datenbank (angelegt mit %s). "+
-			"Ein Modellwechsel erfordert eine Migration und admin_reembed", emb.Dimensions, stored)
+		return fmt.Errorf("embedding.dimensions=%d does not match the database (created with %s). "+
+			"A model change requires a migration and admin_reembed", emb.Dimensions, stored)
 	}
 	return nil
 }
@@ -102,7 +102,7 @@ func recordEmbedding(ctx context.Context, pool *pgxpool.Pool, emb Embedding) err
 	_, err := pool.Exec(ctx, `INSERT INTO meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`,
 		metaEmbeddingDimensions, fmt.Sprint(emb.Dimensions))
 	if err != nil {
-		return fmt.Errorf("meta schreiben: %w", err)
+		return fmt.Errorf("writing meta: %w", err)
 	}
 	stored, ok, err := getMeta(ctx, pool, metaEmbeddingModel)
 	if err != nil {
@@ -114,8 +114,8 @@ func recordEmbedding(ctx context.Context, pool *pgxpool.Pool, emb Embedding) err
 	}
 	if stored != emb.Model {
 		// Same dimension, different model: vectors are incomparable until re-embedded.
-		slog.Warn("Embedding-Modell weicht vom gespeicherten ab – admin_reembed ausführen",
-			"gespeichert", stored, "konfiguriert", emb.Model)
+		slog.Warn("embedding model differs from the stored one - run admin_reembed",
+			"stored", stored, "configured", emb.Model)
 	}
 	return nil
 }
@@ -127,7 +127,7 @@ func getMeta(ctx context.Context, pool *pgxpool.Pool, key string) (string, bool,
 		return "", false, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("meta lesen: %w", err)
+		return "", false, fmt.Errorf("reading meta: %w", err)
 	}
 	return v, true, nil
 }

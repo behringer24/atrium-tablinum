@@ -27,14 +27,14 @@ func TestProvisionCreatesUserAndPersonalSpaceOnce(t *testing.T) {
 	}
 	u2, err := s.Provision(ctx, id)
 	if err != nil || u2.ID != u1.ID || *u2.PersonalSpaceID != *u1.PersonalSpaceID {
-		t.Fatalf("zweiter Login: %+v %v", u2, err)
+		t.Fatalf("second login: %+v %v", u2, err)
 	}
-	// Ein zweiter IdP mit gleicher E-Mail übernimmt das Konto standardmäßig NICHT
+	// A second IdP with the same e-mail does NOT take over the account by default
 	if _, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "anna@X.de"}); !errors.Is(err, users.ErrEmailTaken) {
-		t.Fatalf("zweiter IdP ohne Verknüpfung: %v", err)
+		t.Fatalf("second IdP without linking: %v", err)
 	}
 	if all, _ := s.List(ctx); len(all) != 1 {
-		t.Errorf("Nutzer = %d", len(all))
+		t.Errorf("users = %d", len(all))
 	}
 }
 
@@ -46,17 +46,17 @@ func TestLinkByEmailIsOptInAndAudited(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// E-Mail-Abgleich ist case-insensitive und gilt dann über IdPs hinweg
+	// E-mail matching is case-insensitive and then applies across IdPs
 	linked, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "BOSS@x.de"})
 	if err != nil || linked.ID != first.ID {
-		t.Fatalf("zweiter IdP: %+v %v", linked, err)
+		t.Fatalf("second IdP: %+v %v", linked, err)
 	}
 	var n int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_log WHERE action = 'account_linked' AND user_id = $1`, first.ID).Scan(&n); err != nil || n != 1 {
 		t.Errorf("Audit account_linked: %d %v", n, err)
 	}
-	// ein weiterer Login mit demselben Subject ist keine neue Verknüpfung mehr nötig? Er läuft wieder über die E-Mail:
-	// entscheidend ist, dass jeder Fall im Audit-Log steht.
+	// A login with a new subject but a known e-mail goes through the e-mail path again;
+	// what matters is that every case appears in the audit log.
 	if _, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "boss@x.de"}); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestProvisionWithoutPersonalSpaces(t *testing.T) {
 func TestProvisionRejectsIncompleteIdentity(t *testing.T) {
 	s := newStore(t, true)
 	if _, err := s.Provision(context.Background(), users.Identity{IDP: "g", Subject: "1"}); err == nil {
-		t.Fatal("ohne E-Mail muss abgelehnt werden")
+		t.Fatal("without e-mail must be rejected")
 	}
 }
 
@@ -83,22 +83,22 @@ func TestBootstrapAndInstanceAdmin(t *testing.T) {
 	boss, _ := s.Provision(ctx, users.Identity{IDP: "g", Subject: "b", Email: "boss@x.de"})
 	anna, _ := s.Provision(ctx, users.Identity{IDP: "g", Subject: "a", Email: "anna@x.de"})
 	if !boss.InstanceAdmin || anna.InstanceAdmin {
-		t.Fatal("Bootstrap-Admin falsch erkannt")
+		t.Fatal("bootstrap admin wrongly detected")
 	}
 	if err := s.SetInstanceAdmin(ctx, boss.ID, false); !errors.Is(err, users.ErrBootstrap) {
-		t.Errorf("Bootstrap-Admin änderbar: %v", err)
+		t.Errorf("bootstrap admin changeable: %v", err)
 	}
 	if err := s.SetInstanceAdmin(ctx, anna.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if a, _ := s.Get(ctx, anna.ID); !a.InstanceAdmin {
-		t.Error("Admin-Flag nicht gesetzt")
+		t.Error("admin flag not set")
 	}
 	if err := s.SetInstanceAdmin(ctx, anna.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if a, _ := s.Get(ctx, anna.ID); a.InstanceAdmin {
-		t.Error("Admin-Flag nicht entfernt")
+		t.Error("admin flag not removed")
 	}
 }
 
@@ -131,7 +131,7 @@ func TestGroups(t *testing.T) {
 	}
 	for _, dup := range []string{"Support", "support", "SUPPORT"} {
 		if _, err := s.CreateGroup(ctx, dup); !errors.Is(err, users.ErrGroupExists) {
-			t.Errorf("Duplikat %q: %v", dup, err)
+			t.Errorf("duplicate %q: %v", dup, err)
 		}
 	}
 	if got, err := s.GroupByName(ctx, "support"); err != nil || got.ID != g.ID {
@@ -141,10 +141,10 @@ func TestGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.AddGroupMember(ctx, g.ID, u.ID); err != nil {
-		t.Fatalf("zweites Hinzufügen muss idempotent sein: %v", err)
+		t.Fatalf("second add must be idempotent: %v", err)
 	}
 	if m, _ := s.GroupMembers(ctx, g.ID); len(m) != 1 || m[0] != "a@x.de" {
-		t.Errorf("Mitglieder = %v", m)
+		t.Errorf("members = %v", m)
 	}
 	if err := s.RenameGroup(ctx, g.ID, "Kundendienst"); err != nil {
 		t.Fatal(err)

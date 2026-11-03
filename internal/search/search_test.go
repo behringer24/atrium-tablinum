@@ -168,14 +168,14 @@ func TestHybridFindsByMeaningAndByExactToken(t *testing.T) {
 	e.put(t, anna, *anna.User.PersonalSpaceID, "Fehlercodes", "Der Fehler ERR-4711 tritt beim Export auf")
 	e.put(t, anna, *anna.User.PersonalSpaceID, "Unrelated", "nothing relevant here")
 
-	// "alfa" teilt kein Wort mit "alpha": nur der Vektor kann treffen
+	// "alfa" shares no word with "alpha": only the vector can match
 	if rs := e.find(t, anna, "alfa Anleitung"); !has(rs, "Englischer Eintrag") {
-		t.Errorf("Vektortreffer fehlt: %v", titles(rs))
+		t.Errorf("vector hit missing: %v", titles(rs))
 	}
-	// exakter Token: nur Volltext (simple) kann treffen
+	// exact token: only full text (simple) can match
 	rs := e.find(t, anna, "ERR-4711")
 	if len(rs) == 0 || rs[0].Title != "Fehlercodes" {
-		t.Errorf("Volltexttreffer fehlt: %v", titles(rs))
+		t.Errorf("full-text hit missing: %v", titles(rs))
 	}
 }
 
@@ -194,7 +194,7 @@ func TestResultMetadata(t *testing.T) {
 	}
 }
 
-// Konzept 17.3: Support findet nichts aus "Geschäftsführung".
+// Concept 17.3: support finds nothing from "Geschäftsführung" (management).
 func TestUnrelatedSpaceIsInvisible(t *testing.T) {
 	e := setup(t, false)
 	gf := e.actor(t, "gf@x.de")
@@ -204,31 +204,31 @@ func TestUnrelatedSpaceIsInvisible(t *testing.T) {
 	e.put(t, gf, gfSpace.ID, "Gehaltsbänder", "alpha vertraulich ERR-4711")
 
 	if rs := e.find(t, sup, "alpha"); len(rs) != 0 {
-		t.Errorf("Vektor-Leck: %v", titles(rs))
+		t.Errorf("vector leak: %v", titles(rs))
 	}
 	if rs := e.find(t, sup, "Gehaltsbänder ERR-4711"); len(rs) != 0 {
-		t.Errorf("Volltext-Leck: %v", titles(rs))
+		t.Errorf("full-text leak: %v", titles(rs))
 	}
-	// Filter auf einen unsichtbaren Bereich ergibt nichts, auch ohne Fehler
+	// a filter on an invisible space yields nothing, without an error too
 	rs := e.find(t, sup, "alpha", func(p *search.Params) { p.Spaces = []uuid.UUID{gfSpace.ID} })
 	if len(rs) != 0 {
-		t.Errorf("Bereichsfilter-Leck: %v", titles(rs))
+		t.Errorf("space filter leak: %v", titles(rs))
 	}
 	if rs := e.find(t, gf, "alpha"); len(rs) != 1 {
-		t.Errorf("Berechtigte finden nichts: %v", titles(rs))
+		t.Errorf("authorized user finds nothing: %v", titles(rs))
 	}
 }
 
 func TestPersonalSpacesStayPrivate(t *testing.T) {
 	e := setup(t, false)
 	anna := e.actor(t, "anna@x.de")
-	boss := e.actor(t, "boss@x.de") // Instanz-Admin
+	boss := e.actor(t, "boss@x.de") // instance admin
 	e.put(t, anna, *anna.User.PersonalSpaceID, "Privat", "alpha ERR-4711")
 	if rs := e.find(t, boss, "alpha ERR-4711"); len(rs) != 0 {
-		t.Errorf("Instanz-Admin findet persönlichen Eintrag: %v", titles(rs))
+		t.Errorf("instance admin finds personal entry: %v", titles(rs))
 	}
 	if rs := e.find(t, anna, "ERR-4711"); len(rs) != 1 {
-		t.Errorf("Besitzerin findet eigenen Eintrag nicht")
+		t.Errorf("owner does not find own entry")
 	}
 }
 
@@ -245,24 +245,24 @@ func TestDraftsArchivedAndHandoffs(t *testing.T) {
 	if err := e.docs.Archive(e.ctx, cur, gone.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.docs.SaveHandoff(e.ctx, author, "Übergabe", "alpha handoff", 0); err != nil {
+	if _, err := e.docs.SaveHandoff(e.ctx, author, "Handoff", "alpha handoff", 0); err != nil {
 		t.Fatal(err)
 	}
 
 	if rs := e.find(t, reader, "alpha"); len(rs) != 1 || rs[0].DocumentID != approved.ID {
-		t.Errorf("Reader: %v", titles(rs))
+		t.Errorf("reader: %v", titles(rs))
 	}
-	rs := e.find(t, author, "alpha") // eigener Entwurf + freigegeben; kein Handoff, kein Archiv
+	rs := e.find(t, author, "alpha") // own draft + approved; no handoff, no archive
 	if !has(rs, "Entwurf") || !has(rs, "Freigegeben") || len(rs) != 2 {
-		t.Errorf("Autor: %v", titles(rs))
+		t.Errorf("author: %v", titles(rs))
 	}
 	for _, r := range rs {
 		if r.Title == "Entwurf" && r.Status != "draft" {
-			t.Errorf("Entwurf nicht gekennzeichnet: %s", r.Status)
+			t.Errorf("draft not marked: %s", r.Status)
 		}
 	}
 	if rs := e.find(t, cur, "alpha"); len(rs) != 2 || !has(rs, "Entwurf") {
-		t.Errorf("Kurator: %v", titles(rs))
+		t.Errorf("curator: %v", titles(rs))
 	}
 }
 
@@ -273,7 +273,7 @@ func TestExpiredHandoffNeverSearched(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rs := e.find(t, anna, "alpha"); len(rs) != 0 {
-		t.Errorf("Übergabe in Suche: %v", titles(rs))
+		t.Errorf("handoff in search: %v", titles(rs))
 	}
 }
 
@@ -286,31 +286,31 @@ func TestTagAndSpaceFilters(t *testing.T) {
 	e.put(t, anna, b.ID, "In B", "alpha", "anders")
 
 	if rs := e.find(t, anna, "alpha"); len(rs) != 2 {
-		t.Fatalf("ohne Filter: %v", titles(rs))
+		t.Fatalf("without filter: %v", titles(rs))
 	}
 	if rs := e.find(t, anna, "alpha", func(p *search.Params) { p.Tags = []string{"wichtig"} }); len(rs) != 1 || rs[0].Title != "In A" {
-		t.Errorf("Tag-Filter: %v", titles(rs))
+		t.Errorf("tag filter: %v", titles(rs))
 	}
 	if rs := e.find(t, anna, "alpha", func(p *search.Params) { p.Spaces = []uuid.UUID{b.ID} }); len(rs) != 1 || rs[0].Title != "In B" {
-		t.Errorf("Bereichsfilter: %v", titles(rs))
+		t.Errorf("space filter: %v", titles(rs))
 	}
 }
 
-// Viele unsichtbare, näher liegende Dokumente dürfen die Trefferliste nicht leerräumen.
+// Many invisible, closer documents must not empty the hit list.
 func TestFilteredSearchStillFindsEnoughHits(t *testing.T) {
 	e := setup(t, false)
 	boss := e.actor(t, "boss@x.de")
 	anna := e.actor(t, "anna@x.de")
 	hidden := e.team(t, "hidden", false, authz.None, map[*docs.Actor]authz.Role{&boss: authz.Author})
 	shown := e.team(t, "shown", false, authz.None, map[*docs.Actor]authz.Role{&anna: authz.Author})
-	for i := 0; i < 70; i++ { // mehr als candidates_per_method
+	for i := 0; i < 70; i++ { // more than candidates_per_method
 		e.put(t, boss, hidden.ID, fmt.Sprintf("Versteckt %d", i), "alpha versteckt")
 	}
 	for i := 0; i < 3; i++ {
 		e.put(t, anna, shown.ID, fmt.Sprintf("Sichtbar %d", i), "alpha sichtbar")
 	}
 	if rs := e.find(t, anna, "alpha"); len(rs) != 3 {
-		t.Errorf("Treffer = %d, erwartet 3: %v", len(rs), titles(rs))
+		t.Errorf("hits = %d, want 3: %v", len(rs), titles(rs))
 	}
 }
 
@@ -321,13 +321,13 @@ func TestLimit(t *testing.T) {
 		e.put(t, anna, *anna.User.PersonalSpaceID, fmt.Sprintf("E%d", i), "alpha")
 	}
 	if n := len(e.find(t, anna, "alpha")); n != 5 {
-		t.Errorf("Standardlimit: %d", n)
+		t.Errorf("default limit: %d", n)
 	}
 	if n := len(e.find(t, anna, "alpha", func(p *search.Params) { p.Limit = 2 })); n != 2 {
 		t.Errorf("limit 2: %d", n)
 	}
 	if n := len(e.find(t, anna, "alpha", func(p *search.Params) { p.Limit = 999 })); n != 8 {
-		t.Errorf("Maximum: %d", n)
+		t.Errorf("maximum: %d", n)
 	}
 }
 
@@ -337,7 +337,7 @@ func TestFallsBackToFullTextWhenEmbedderIsDown(t *testing.T) {
 	e.put(t, anna, *anna.User.PersonalSpaceID, "Fehler", "ERR-4711 beim Export")
 	rs := e.find(t, anna, "ERR-4711")
 	if len(rs) != 1 {
-		t.Fatalf("Fallback: %v", titles(rs))
+		t.Fatalf("fallback: %v", titles(rs))
 	}
 }
 
@@ -350,13 +350,13 @@ func TestInvalidQueries(t *testing.T) {
 			t.Errorf("%.10q: %v", q, err)
 		}
 	}
-	// nur Stoppwörter ergibt eine leere tsquery, aber keinen Fehler
+	// stop words only yield an empty tsquery, but no error
 	if _, err := e.search.Search(e.ctx, caller, search.Params{Query: "und der die"}); err != nil {
-		t.Errorf("Stoppwörter: %v", err)
+		t.Errorf("stop words: %v", err)
 	}
-	// Syntax, die in to_tsquery kaputtginge, ist mit websearch_to_tsquery harmlos
+	// syntax that would break in to_tsquery is harmless with websearch_to_tsquery
 	if _, err := e.search.Search(e.ctx, caller, search.Params{Query: `"offen & | ! ( :* <->`}); err != nil {
-		t.Errorf("Sonderzeichen: %v", err)
+		t.Errorf("special characters: %v", err)
 	}
 }
 
@@ -373,18 +373,18 @@ func TestSearchAudit(t *testing.T) {
 		}
 		return n
 	}
-	// Suche über alle Bereiche (inkl. persönlichem): nur Trefferzahl, kein Suchtext
+	// search across all spaces (incl. personal): only the hit count, no search text
 	e.find(t, anna, "geheimer suchtext")
 	if n := count(`SELECT count(*) FROM audit_log WHERE action='search' AND details ? 'hits' AND NOT details ? 'query'`); n != 1 {
-		t.Errorf("Audit mit persönlichem Bereich: %d", n)
+		t.Errorf("audit with personal space: %d", n)
 	}
-	// Suche nur im Team-Bereich: Suchtext darf protokolliert werden
+	// search in the team space only: the search text may be logged
 	e.find(t, anna, "teamsuche", func(p *search.Params) { p.Spaces = []uuid.UUID{sp.ID} })
 	if n := count(`SELECT count(*) FROM audit_log WHERE action='search' AND details->>'query' = 'teamsuche'`); n != 1 {
-		t.Errorf("Audit Team-Suche: %d", n)
+		t.Errorf("audit team search: %d", n)
 	}
 	if n := count(`SELECT count(*) FROM audit_log WHERE details::text LIKE '%geheimer suchtext%'`); n != 0 {
-		t.Errorf("Suchtext aus persönlichem Scope im Audit")
+		t.Errorf("search text from personal scope in audit")
 	}
 }
 
@@ -405,29 +405,29 @@ func TestArchiveSearch(t *testing.T) {
 	onlyArchive := func(p *search.Params) { p.Archive = true }
 
 	if rs := e.find(t, cur, "alpha"); len(rs) != 1 || rs[0].Title != "Aktiv" {
-		t.Errorf("normale Suche: %v", titles(rs))
+		t.Errorf("normal search: %v", titles(rs))
 	}
 	for _, a := range []docs.Actor{author, cur} {
 		rs := e.find(t, a, "alpha", onlyArchive)
 		if len(rs) != 1 || rs[0].Title != "Alt" || rs[0].Status != "archived" {
-			t.Errorf("Archivsuche: %v", titles(rs))
+			t.Errorf("archive search: %v", titles(rs))
 		}
 	}
 	if rs := e.find(t, reader, "alpha", onlyArchive); len(rs) != 0 {
-		t.Errorf("Leser findet Archiv: %v", titles(rs))
+		t.Errorf("reader finds archive: %v", titles(rs))
 	}
-	// Volltext (exaktes Wort) funktioniert im Archiv genauso wie bei aktiven Einträgen
+	// full text (exact word) works in the archive just like for active entries
 	if rs := e.find(t, cur, "veraltet", onlyArchive); len(rs) != 1 {
-		t.Errorf("Archiv-Volltext: %v", titles(rs))
+		t.Errorf("archive full text: %v", titles(rs))
 	}
-	// zurückgeholt: wieder normal auffindbar, nicht mehr im Archiv
+	// restored: findable normally again, no longer in the archive
 	if _, err := e.docs.Unarchive(e.ctx, author, old.ID); err != nil {
 		t.Fatal(err)
 	}
 	if rs := e.find(t, reader, "alpha"); len(rs) != 2 {
-		t.Errorf("nach dem Zurückholen: %v", titles(rs))
+		t.Errorf("after restore: %v", titles(rs))
 	}
 	if rs := e.find(t, cur, "alpha", onlyArchive); len(rs) != 0 {
-		t.Errorf("Archiv nach dem Zurückholen: %v", titles(rs))
+		t.Errorf("archive after restore: %v", titles(rs))
 	}
 }

@@ -25,7 +25,7 @@ type Member struct {
 // space_members.principal_id has no foreign key, existence is checked here.
 func (s *Store) SetMember(ctx context.Context, space uuid.UUID, principalType string, principal uuid.UUID, role authz.Role, by uuid.UUID) error {
 	if role == authz.None {
-		return errors.Join(ErrInvalid, errors.New("rolle fehlt"))
+		return errors.Join(ErrInvalid, errors.New("role is missing"))
 	}
 	var table string
 	switch principalType {
@@ -34,7 +34,7 @@ func (s *Store) SetMember(ctx context.Context, space uuid.UUID, principalType st
 	case PrincipalGroup:
 		table = "groups"
 	default:
-		return errors.Join(ErrInvalid, errors.New("principal_type"))
+		return errors.Join(ErrInvalid, errors.New("invalid principal_type"))
 	}
 	if err := s.requireTeam(ctx, space); err != nil {
 		return err
