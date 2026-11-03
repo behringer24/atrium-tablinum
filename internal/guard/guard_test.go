@@ -16,17 +16,17 @@ func kinds(text string) []string {
 
 func TestRejectsSecrets(t *testing.T) {
 	cases := map[string]string{
-		"privater Schlüssel":      "-----BEGIN RSA PRIVATE KEY-----\nMIIE",
-		"AWS-Zugangsschlüssel":    "key AKIAIOSFODNN7EXAMPLE1"[:4] + "AKIAIOSFODNN7ABCDEFG",
-		"GitHub-Token":            "token ghp_" + strings.Repeat("a1B2", 9),
-		"Slack-Token":             "xoxb-1234567890-abcdefghij",
-		"Google-API-Schlüssel":    "AIza" + strings.Repeat("a1_-", 8) + "abc",
-		"JSON Web Token":          "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop",
-		"Bearer-Token":            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345",
-		"Zugangsdaten in URL":     "postgres://app:S3cr3tPw@db.internal:5432/x",
-		"Passwort oder Geheimnis": "Das Passwort: Tr0ub4dor&3 gilt für den Server",
-		"IBAN":                    "Konto DE89 3704 0044 0532 0130 00 bitte nutzen",
-		"Kartennummer":            "Visa 4111 1111 1111 1111 läuft ab",
+		"private key":        "-----BEGIN RSA PRIVATE KEY-----\nMIIE",
+		"AWS access key":     "key AKIAIOSFODNN7EXAMPLE1"[:4] + "AKIAIOSFODNN7ABCDEFG",
+		"GitHub token":       "token ghp_" + strings.Repeat("a1B2", 9),
+		"Slack token":        "xoxb-1234567890-abcdefghij",
+		"Google API key":     "AIza" + strings.Repeat("a1_-", 8) + "abc",
+		"JSON Web Token":     "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop",
+		"bearer token":       "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345",
+		"credentials in URL": "postgres://app:S3cr3tPw@db.internal:5432/x",
+		"password or secret": "Das Passwort: Tr0ub4dor&3 gilt für den Server",
+		"IBAN":               "Konto DE89 3704 0044 0532 0130 00 bitte nutzen",
+		"card number":        "Visa 4111 1111 1111 1111 läuft ab",
 	}
 	for kind, text := range cases {
 		t.Run(kind, func(t *testing.T) {
@@ -36,10 +36,10 @@ func TestRejectsSecrets(t *testing.T) {
 				found = found || k == kind
 			}
 			if !found {
-				t.Errorf("%q nicht erkannt (gefunden: %v)", kind, got)
+				t.Errorf("%q not detected (found: %v)", kind, got)
 			}
 			if Check(text) == nil {
-				t.Error("Check muss Fehler liefern")
+				t.Error("Check must return an error")
 			}
 		})
 	}
@@ -62,23 +62,23 @@ func TestAcceptsOrdinaryText(t *testing.T) {
 		"commit 3f786850e387550fdab836ed7e6dc881de23001b",
 	} {
 		if f := Scan(text); len(f) > 0 {
-			t.Errorf("%q fälschlich abgelehnt: %v", text, f)
+			t.Errorf("%q wrongly rejected: %v", text, f)
 		}
 	}
 }
 
 func TestFindingsNeverContainTheSecret(t *testing.T) {
 	secret := "Tr0ub4dor&3xyz"
-	err := Check("Zeile 1\npassword: " + secret)
+	err := Check("Line 1\npassword: " + secret)
 	var ge *Error
 	if !errors.As(err, &ge) {
-		t.Fatal("kein *Error")
+		t.Fatal("not an *Error")
 	}
 	if strings.Contains(err.Error(), secret) {
-		t.Error("Fehlermeldung enthält das Geheimnis")
+		t.Error("error message contains the secret")
 	}
 	if ge.Findings[0].Line != 2 {
-		t.Errorf("Zeile = %d", ge.Findings[0].Line)
+		t.Errorf("line = %d", ge.Findings[0].Line)
 	}
 }
 

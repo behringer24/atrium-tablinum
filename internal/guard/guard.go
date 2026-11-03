@@ -22,10 +22,10 @@ type Error struct{ Findings []Finding }
 func (e *Error) Error() string {
 	parts := make([]string, len(e.Findings))
 	for i, f := range e.Findings {
-		parts[i] = fmt.Sprintf("%s (Zeile %d)", f.Kind, f.Line)
+		parts[i] = fmt.Sprintf("%s (line %d)", f.Kind, f.Line)
 	}
-	return "Inhalt abgelehnt, er enthält vermutlich: " + strings.Join(parts, "; ") +
-		". Zugangsdaten, Schlüssel und Zahlungsdaten gehören nicht in den Wissensspeicher – bitte entfernen oder durch einen Platzhalter ersetzen."
+	return "Content rejected, it probably contains: " + strings.Join(parts, "; ") +
+		". Credentials, keys and payment data do not belong in the knowledge store - please remove them or replace them with a placeholder."
 }
 
 type pattern struct {
@@ -36,21 +36,21 @@ type pattern struct {
 }
 
 var patterns = []pattern{
-	{kind: "privater Schlüssel", re: regexp.MustCompile(`-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----`)},
-	{kind: "AWS-Zugangsschlüssel", re: regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`)},
-	{kind: "GitHub-Token", re: regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b`)},
-	{kind: "Slack-Token", re: regexp.MustCompile(`\bxox[abprs]-[A-Za-z0-9-]{10,}\b`)},
-	{kind: "Google-API-Schlüssel", re: regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`)},
-	{kind: "API-Schlüssel (sk-…)", re: regexp.MustCompile(`\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b|\bsk-[A-Za-z0-9_-]{32,}\b`)},
+	{kind: "private key", re: regexp.MustCompile(`-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----`)},
+	{kind: "AWS access key", re: regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`)},
+	{kind: "GitHub token", re: regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b`)},
+	{kind: "Slack token", re: regexp.MustCompile(`\bxox[abprs]-[A-Za-z0-9-]{10,}\b`)},
+	{kind: "Google API key", re: regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{35}\b`)},
+	{kind: "API key (sk-…)", re: regexp.MustCompile(`\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b|\bsk-[A-Za-z0-9_-]{32,}\b`)},
 	{kind: "JSON Web Token", re: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b`)},
-	{kind: "Bearer-Token", re: regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{24,}`)},
+	{kind: "bearer token", re: regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{24,}`)},
 	{
-		kind: "Zugangsdaten in URL",
+		kind: "credentials in URL",
 		re:   regexp.MustCompile(`\b[a-z][a-z0-9+.-]*://[^\s:/@]+:([^\s@/]+)@`),
 		ok:   func(m []string) bool { return !placeholder(m[1]) },
 	},
 	{
-		kind: "Passwort oder Geheimnis",
+		kind: "password or secret",
 		re:   regexp.MustCompile(`(?i)\b(?:password|passwort|passwd|pwd|kennwort|secret|client[_-]?secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|private[_-]?key|token)\b["']?\s*[:=]\s*["']?([^\s"',;]{8,})`),
 		ok:   func(m []string) bool { return looksSecret(m[1]) },
 	},
@@ -84,7 +84,7 @@ func Scan(text string) []Finding {
 	}
 	for _, loc := range cardRe.FindAllStringIndex(text, -1) {
 		if validCard(text[loc[0]:loc[1]]) {
-			add("Kartennummer", loc[0])
+			add("card number", loc[0])
 		}
 	}
 

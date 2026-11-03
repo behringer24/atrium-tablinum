@@ -33,17 +33,17 @@ func TestQueryFiltersAndPrivacy(t *testing.T) {
 	ins(audit.Event{UserID: &ben.ID, Client: "chatgpt", Action: "admin_create_space", SpaceID: &team.ID})
 	ins(audit.Event{UserID: &ben.ID, Client: "chatgpt", Action: "admin_archive_space", SpaceID: &team.ID})
 	// personal space: details are already dropped when writing
-	ins(audit.Event{UserID: &anna.ID, Action: "store", SpaceID: anna.PersonalSpaceID, Personal: true, Details: map[string]any{"title": "GEHEIM"}})
+	ins(audit.Event{UserID: &anna.ID, Action: "store", SpaceID: anna.PersonalSpaceID, Personal: true, Details: map[string]any{"title": "SECRET"}})
 
 	all, err := audit.Query(ctx, pool, audit.Filter{})
 	if err != nil || len(all) != 4 {
-		t.Fatalf("%d Einträge, %v", len(all), err)
+		t.Fatalf("%d entries, %v", len(all), err)
 	}
 	if all[0].Space != audit.PersonalLabel || all[0].SpaceID != nil || all[0].Details != nil {
-		t.Errorf("persönlicher Eintrag verrät zu viel: %+v", all[0])
+		t.Errorf("personal entry reveals too much: %+v", all[0])
 	}
 	if all[3].Details["status"] != "approved" || all[3].UserEmail != "anna@x.de" || all[3].Space != "Support" || all[3].Client != "claude" {
-		t.Errorf("Team-Eintrag: %+v", all[3])
+		t.Errorf("team entry: %+v", all[3])
 	}
 
 	count := func(f audit.Filter) int {
@@ -58,22 +58,22 @@ func TestQueryFiltersAndPrivacy(t *testing.T) {
 		f    audit.Filter
 		want int
 	}{
-		"Nutzer":          {audit.Filter{UserEmail: "ben@x.de"}, 2},
-		"Aktion exakt":    {audit.Filter{Action: "store"}, 2},
-		"Aktion Präfix":   {audit.Filter{Action: "admin_*"}, 2},
-		"Bereich":         {audit.Filter{SpaceID: &team.ID}, 3},
-		"Dokument":        {audit.Filter{DocumentID: &doc}, 1},
-		"Kombination":     {audit.Filter{UserEmail: "anna@x.de", Action: "store", SpaceID: &team.ID}, 1},
-		"Limit":           {audit.Filter{Limit: 2}, 2},
-		"nichts":          {audit.Filter{Action: "gibtsnicht"}, 0},
-		"Limit gedeckelt": {audit.Filter{Limit: 100000}, 4},
+		"user":          {audit.Filter{UserEmail: "ben@x.de"}, 2},
+		"exact action":  {audit.Filter{Action: "store"}, 2},
+		"action prefix": {audit.Filter{Action: "admin_*"}, 2},
+		"space":         {audit.Filter{SpaceID: &team.ID}, 3},
+		"document":      {audit.Filter{DocumentID: &doc}, 1},
+		"combination":   {audit.Filter{UserEmail: "anna@x.de", Action: "store", SpaceID: &team.ID}, 1},
+		"Limit":         {audit.Filter{Limit: 2}, 2},
+		"nothing":       {audit.Filter{Action: "doesnotexist"}, 0},
+		"limit capped":  {audit.Filter{Limit: 100000}, 4},
 	} {
 		if got := count(tc.f); got != tc.want {
-			t.Errorf("%s: %d, erwartet %d", name, got, tc.want)
+			t.Errorf("%s: %d, want %d", name, got, tc.want)
 		}
 	}
 	future, past := time.Now().Add(time.Hour), time.Now().Add(-time.Hour)
 	if count(audit.Filter{Since: &future}) != 0 || count(audit.Filter{Until: &past}) != 0 || count(audit.Filter{Since: &past, Until: &future}) != 4 {
-		t.Error("Zeitfilter")
+		t.Error("time filter")
 	}
 }

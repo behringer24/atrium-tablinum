@@ -38,7 +38,7 @@ func Query(ctx context.Context, e Embedder, text string) ([]float32, error) {
 		return nil, err
 	}
 	if len(vecs) != 1 {
-		return nil, fmt.Errorf("embedder lieferte %d Vektoren für 1 Text", len(vecs))
+		return nil, fmt.Errorf("embedder returned %d vectors for 1 text", len(vecs))
 	}
 	return vecs[0], nil
 }
@@ -106,10 +106,10 @@ func Validate(s Settings) error {
 func build(s Settings, client *http.Client) (backend, error) {
 	f, ok := registry[s.Backend]
 	if !ok {
-		return nil, fmt.Errorf("embedding.backend %q unbekannt (%s)", s.Backend, strings.Join(Backends(), " | "))
+		return nil, fmt.Errorf("embedding.backend %q unknown (%s)", s.Backend, strings.Join(Backends(), " | "))
 	}
 	if s.Dimensions <= 0 {
-		return nil, fmt.Errorf("embedding.dimensions muss positiv sein")
+		return nil, fmt.Errorf("embedding.dimensions must be positive")
 	}
 	b, err := f(s, newOptions(s.Backend, s.Options), client)
 	if err != nil {
@@ -173,11 +173,11 @@ func (w *wrapped) run(ctx context.Context, texts []string, p purpose) ([][]float
 		return nil, err
 	}
 	if len(vecs) != len(texts) {
-		return nil, fmt.Errorf("embedder lieferte %d Vektoren für %d Texte", len(vecs), len(texts))
+		return nil, fmt.Errorf("embedder returned %d vectors for %d texts", len(vecs), len(texts))
 	}
 	for i, v := range vecs {
 		if len(v) != w.s.Dimensions {
-			return nil, fmt.Errorf("vektor %d hat %d Dimensionen, konfiguriert sind %d", i, len(v), w.s.Dimensions)
+			return nil, fmt.Errorf("vector %d has %d dimensions, %d configured", i, len(v), w.s.Dimensions)
 		}
 	}
 	return vecs, nil

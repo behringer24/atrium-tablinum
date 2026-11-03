@@ -17,10 +17,10 @@ import (
 )
 
 var (
-	ErrNotFound  = errors.New("nicht gefunden")
-	ErrSlugTaken = errors.New("kürzel ist bereits vergeben")
-	ErrInvalid   = errors.New("ungültige eingabe")
-	ErrNotTeam   = errors.New("nur für team-bereiche")
+	ErrNotFound  = errors.New("not found")
+	ErrSlugTaken = errors.New("slug is already taken")
+	ErrInvalid   = errors.New("invalid input")
+	ErrNotTeam   = errors.New("team spaces only")
 )
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,62}$`)
@@ -110,13 +110,13 @@ type CreateParams struct {
 func (p *CreateParams) validate() error {
 	p.Slug = strings.ToLower(strings.TrimSpace(p.Slug))
 	if !slugRe.MatchString(p.Slug) || strings.HasPrefix(p.Slug, "personal-") {
-		return errors.Join(ErrInvalid, errors.New("kürzel: 2-63 Zeichen aus a-z, 0-9, '-'; Präfix 'personal-' ist reserviert"))
+		return errors.Join(ErrInvalid, errors.New("slug: 2-63 characters from a-z, 0-9, '-'; prefix 'personal-' is reserved"))
 	}
 	if strings.TrimSpace(p.Name) == "" {
-		return errors.Join(ErrInvalid, errors.New("name fehlt"))
+		return errors.Join(ErrInvalid, errors.New("name is missing"))
 	}
 	if p.DefaultRole != authz.None && p.DefaultRole != authz.Reader && p.DefaultRole != authz.Author {
-		return errors.Join(ErrInvalid, errors.New("default_role: nur reader oder author"))
+		return errors.Join(ErrInvalid, errors.New("default_role: reader or author only"))
 	}
 	return nil
 }
@@ -149,12 +149,12 @@ type UpdateParams struct {
 
 func (s *Store) Update(ctx context.Context, id uuid.UUID, p UpdateParams) (Space, error) {
 	if p.Name != nil && strings.TrimSpace(*p.Name) == "" {
-		return Space{}, errors.Join(ErrInvalid, errors.New("name fehlt"))
+		return Space{}, errors.Join(ErrInvalid, errors.New("name is missing"))
 	}
 	setDef, def := false, ""
 	if p.DefaultRole != nil {
 		if r := *p.DefaultRole; r != authz.None && r != authz.Reader && r != authz.Author {
-			return Space{}, errors.Join(ErrInvalid, errors.New("default_role: nur reader oder author"))
+			return Space{}, errors.Join(ErrInvalid, errors.New("default_role: reader or author only"))
 		}
 		setDef, def = true, p.DefaultRole.String()
 	}

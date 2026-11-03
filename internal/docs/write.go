@@ -83,7 +83,7 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 		return StoreResult{}, err
 	}
 	if p.Draft && sp.Type == "personal" {
-		return StoreResult{}, errors.Join(ingest.ErrInvalid, errors.New("entwürfe gibt es nur in team-bereichen"))
+		return StoreResult{}, errors.Join(ingest.ErrInvalid, errors.New("drafts exist only in team spaces"))
 	}
 	n, err := s.ing.Validate(p.Title, p.Content, p.Tags)
 	if err != nil {
@@ -165,7 +165,7 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 		return Document{}, err
 	}
 	if cur.Kind != "knowledge" {
-		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("übergaben werden nicht über update_knowledge geändert"))
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("handoffs are not changed through update_knowledge"))
 	}
 	if err := canEdit(a, cur); err != nil {
 		return Document{}, err
@@ -291,7 +291,7 @@ func (s *Store) Unarchive(ctx context.Context, a Actor, id uuid.UUID) (Document,
 		return Document{}, err
 	}
 	if cur.Kind != "knowledge" || cur.Status != "archived" {
-		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("der eintrag ist nicht archiviert"))
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("the entry is not archived"))
 	}
 	if err := canEdit(a, cur); err != nil {
 		return Document{}, err
@@ -378,10 +378,10 @@ FROM documents WHERE space_id = $1 AND status <> 'archived' AND (expires_at IS N
 		return err
 	}
 	if maxDocs > 0 && addDocs > 0 && docs+addDocs > maxDocs {
-		return errors.Join(ErrQuota, errors.New("zu viele einträge"))
+		return errors.Join(ErrQuota, errors.New("too many entries"))
 	}
 	if maxBytes > 0 && addBytes > 0 && bytes+addBytes > maxBytes {
-		return errors.Join(ErrQuota, errors.New("speichergrenze erreicht"))
+		return errors.Join(ErrQuota, errors.New("storage limit reached"))
 	}
 	return nil
 }

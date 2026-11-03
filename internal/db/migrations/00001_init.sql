@@ -1,6 +1,6 @@
 -- +goose Up
--- Schema aus Konzept Abschnitt 9. Die Tabelle `chunks` hängt von der konfigurierten
--- Embedding-Dimension ab und wird in Migration 00002 (Go) angelegt.
+-- Schema from concept section 9. The `chunks` table depends on the configured
+-- embedding dimension and is created in migration 00002 (Go).
 
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -11,7 +11,7 @@ CREATE TABLE meta (
     value text NOT NULL
 );
 
--- Benutzer und Gruppen ------------------------------------------------------
+-- Users and groups -----------------------------------------------------------
 
 CREATE TABLE users (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -48,7 +48,7 @@ CREATE TABLE group_members (
     PRIMARY KEY (group_id, user_id)
 );
 
--- Bereiche ------------------------------------------------------------------
+-- Spaces -------------------------------------------------------------------
 
 CREATE TABLE spaces (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -81,8 +81,8 @@ CREATE TABLE space_members (
     PRIMARY KEY (space_id, principal_type, principal_id)
 );
 
--- principal_id verweist je nach principal_type auf users oder groups (kein FK möglich).
--- Beim Löschen von Nutzern/Gruppen werden Mitgliedschaften per Trigger entfernt.
+-- principal_id refers to users or groups depending on principal_type (no FK possible).
+-- When users/groups are deleted, memberships are removed by trigger.
 -- +goose StatementBegin
 CREATE FUNCTION remove_principal_memberships() RETURNS trigger AS $$
 BEGIN
@@ -98,7 +98,7 @@ CREATE TRIGGER users_remove_memberships  AFTER DELETE ON users
 CREATE TRIGGER groups_remove_memberships AFTER DELETE ON groups
     FOR EACH ROW EXECUTE FUNCTION remove_principal_memberships('group');
 
--- Dokumente -----------------------------------------------------------------
+-- Documents ------------------------------------------------------------------
 
 CREATE TABLE documents (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -181,7 +181,7 @@ CREATE TABLE oauth_tokens (
 );
 CREATE INDEX oauth_tokens_user_idx ON oauth_tokens (user_id);
 
--- Betrieb -------------------------------------------------------------------
+-- Operations --------------------------------------------------------------------
 
 CREATE TABLE audit_log (
     id          bigserial PRIMARY KEY,

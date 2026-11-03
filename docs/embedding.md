@@ -134,11 +134,11 @@ Bei `openai` und `bedrock` geht der Text **jedes** Eintrags an den Anbieter, auc
 
 | Meldung | Ursache |
 |---|---|
-| „Zugangsdaten prüfen“ (Status 401 oder 403) | Schlüssel falsch oder ohne Recht |
-| „bedrock verweigert den Zugriff“ | IAM-Recht oder Modellzugriff in der Region fehlt |
-| „drosselt“ | Ratenlimit des Dienstes |
-| „liefert andere Dimensionen“ | `dimensions` passt nicht zum Modell |
-| „aws-konfiguration“, „no EC2 IMDS role“ | keine AWS-Zugangsdaten gefunden |
+| „check credentials“ (Status 401 oder 403) | Schlüssel falsch oder ohne Recht |
+| „bedrock denies access“ | IAM-Recht oder Modellzugriff in der Region fehlt |
+| „throttles“ | Ratenlimit des Dienstes |
+| „returns different dimensions“ | `dimensions` passt nicht zum Modell |
+| „aws config“, „no EC2 IMDS role“ | keine AWS-Zugangsdaten gefunden |
 
 ## Ein neues Backend hinzufügen
 

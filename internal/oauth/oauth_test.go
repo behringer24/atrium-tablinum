@@ -216,10 +216,10 @@ func TestMetadata(t *testing.T) {
 	_ = json.Unmarshal([]byte(body), &m)
 	if m["issuer"] != e.http.URL || m["authorization_endpoint"] != e.http.URL+"/oauth/authorize" ||
 		m["registration_endpoint"] != e.http.URL+"/oauth/register" || m["authorization_response_iss_parameter_supported"] != true {
-		t.Errorf("AS-Metadaten: %v", m)
+		t.Errorf("AS metadata: %v", m)
 	}
 	if methods := m["code_challenge_methods_supported"].([]any); len(methods) != 1 || methods[0] != "S256" {
-		t.Errorf("PKCE-Methoden: %v", methods)
+		t.Errorf("PKCE methods: %v", methods)
 	}
 	// 401 points to the resource metadata
 	resp, _ := e.do(http.MethodPost, "/mcp", nil, nil)
@@ -275,7 +275,7 @@ func TestRegistrationRateLimit(t *testing.T) {
 		}
 	}
 	if !limited {
-		t.Error("kein Rate Limit bei 25 Registrierungen")
+		t.Error("no rate limit at 25 registrations")
 	}
 }
 
@@ -293,30 +293,30 @@ func TestFullFlowAndTokenUse(t *testing.T) {
 		t.Errorf("Redirect: %s", loc)
 	}
 	if loc.Scheme+"://"+loc.Host+loc.Path != claudeRedirect {
-		t.Errorf("falsches Ziel: %s", loc)
+		t.Errorf("wrong target: %s", loc)
 	}
 
 	status, uid := e.mcpStatus(tok["access_token"].(string))
 	if status != 200 || uid == "" {
-		t.Fatalf("MCP mit Token: %d %s", status, uid)
+		t.Fatalf("MCP with token: %d %s", status, uid)
 	}
 	u, err := e.users.GetByEmail(e.ctx, "anna@example.com")
 	if err != nil || uid != u.ID.String() {
-		t.Errorf("Token gehört nicht zu Anna: %s vs %v", uid, u.ID)
+		t.Errorf("token does not belong to Anna: %s vs %v", uid, u.ID)
 	}
 	if status, _ := e.mcpStatus("at_unknown"); status != 401 {
-		t.Errorf("unbekanntes Token: %d", status)
+		t.Errorf("unknown token: %d", status)
 	}
 	// A refresh token is not an access token
 	if status, _ := e.mcpStatus(tok["refresh_token"].(string)); status != 401 {
-		t.Errorf("Refresh-Token als Access-Token: %d", status)
+		t.Errorf("refresh token as access token: %d", status)
 	}
 	// Token is bound to the resource (audience)
 	if _, err := e.pool.Exec(e.ctx, `UPDATE oauth_tokens SET resource = 'https://other.example/mcp'`); err != nil {
 		t.Fatal(err)
 	}
 	if status, _ := e.mcpStatus(tok["access_token"].(string)); status != 401 {
-		t.Errorf("Token für fremde Ressource akzeptiert: %d", status)
+		t.Errorf("token for foreign resource accepted: %d", status)
 	}
 }
 
@@ -326,7 +326,7 @@ func TestSecretsAreStoredHashed(t *testing.T) {
 	var n int
 	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM oauth_tokens WHERE token_hash IN ($1, $2)`,
 		tok["access_token"], tok["refresh_token"]).Scan(&n); err != nil || n != 0 {
-		t.Errorf("Klartext-Token in der Datenbank (%d, %v)", n, err)
+		t.Errorf("plaintext token in the database (%d, %v)", n, err)
 	}
 }
 
@@ -341,51 +341,51 @@ func TestCodeExchangeChecks(t *testing.T) {
 	p := newPKCE()
 	code := get(p)
 	if resp, m := e.exchange(clientID, claudeRedirect, code, newPKCE().verifier); resp.StatusCode != 400 || m["error"] != "invalid_grant" {
-		t.Errorf("falscher Verifier: %d %v", resp.StatusCode, m)
+		t.Errorf("wrong verifier: %d %v", resp.StatusCode, m)
 	}
 	// Code is used up after the failed attempt
 	if resp, m := e.exchange(clientID, claudeRedirect, code, p.verifier); resp.StatusCode != 400 || m["error"] != "invalid_grant" {
-		t.Errorf("Code wiederverwendbar: %d %v", resp.StatusCode, m)
+		t.Errorf("code reusable: %d %v", resp.StatusCode, m)
 	}
 	code = get(p)
 	if resp, _ := e.exchange(clientID, "https://claude.ai/other", code, p.verifier); resp.StatusCode != 400 {
-		t.Errorf("falsche redirect_uri: %d", resp.StatusCode)
+		t.Errorf("wrong redirect_uri: %d", resp.StatusCode)
 	}
 	code = get(p)
 	if resp, _ := e.exchange(other, claudeRedirect, code, p.verifier); resp.StatusCode != 400 {
-		t.Errorf("fremder Client: %d", resp.StatusCode)
+		t.Errorf("foreign client: %d", resp.StatusCode)
 	}
 	code = get(p)
 	if resp, _ := e.exchange(clientID, claudeRedirect, code, ""); resp.StatusCode != 400 {
-		t.Errorf("ohne Verifier: %d", resp.StatusCode)
+		t.Errorf("without verifier: %d", resp.StatusCode)
 	}
 	// expired code
 	code = get(p)
 	_, _ = e.pool.Exec(e.ctx, `UPDATE oauth_codes SET expires_at = now() - interval '1 second'`)
 	if resp, _ := e.exchange(clientID, claudeRedirect, code, p.verifier); resp.StatusCode != 400 {
-		t.Errorf("abgelaufener Code: %d", resp.StatusCode)
+		t.Errorf("expired code: %d", resp.StatusCode)
 	}
 	// Success remains possible
 	code = get(p)
 	if resp, _ := e.exchange(clientID, claudeRedirect, code, p.verifier); resp.StatusCode != 200 {
-		t.Errorf("gültiger Austausch: %d", resp.StatusCode)
+		t.Errorf("valid exchange: %d", resp.StatusCode)
 	}
 	// Resource parameter for a foreign server
 	code = get(p)
 	resp, body := e.do(http.MethodPost, "/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {code},
 		"redirect_uri": {claudeRedirect}, "client_id": {clientID}, "code_verifier": {p.verifier}, "resource": {"https://other.example/mcp"}}, nil)
 	if resp.StatusCode != 400 || !strings.Contains(body, "invalid_target") {
-		t.Errorf("fremde resource: %d %s", resp.StatusCode, body)
+		t.Errorf("foreign resource: %d %s", resp.StatusCode, body)
 	}
 	// unknown client / grant
 	if resp, _ := e.do(http.MethodPost, "/oauth/token", url.Values{"grant_type": {"authorization_code"}, "client_id": {"nope"}}, nil); resp.StatusCode != 400 {
-		t.Errorf("unbekannter Client: %d", resp.StatusCode)
+		t.Errorf("unknown client: %d", resp.StatusCode)
 	}
 	if resp, body := e.do(http.MethodPost, "/oauth/token", url.Values{"grant_type": {"password"}, "client_id": {clientID}}, nil); resp.StatusCode != 400 || !strings.Contains(body, "unsupported_grant_type") {
 		t.Errorf("password-Grant: %d %s", resp.StatusCode, body)
 	}
 	if resp, _ := e.do(http.MethodGet, "/oauth/token", nil, nil); resp.StatusCode != http.StatusMethodNotAllowed {
-		t.Errorf("GET auf Token-Endpunkt: %d", resp.StatusCode)
+		t.Errorf("GET on token endpoint: %d", resp.StatusCode)
 	}
 }
 
@@ -396,12 +396,12 @@ func TestAuthorizeRequestValidation(t *testing.T) {
 
 	// Error without a trusted redirect: page instead of redirect
 	for name, u := range map[string]string{
-		"unbekannter Client":     e.authorizeURL("nope", claudeRedirect, p, nil),
-		"nicht registrierte URI": e.authorizeURL(clientID, "https://claude.ai/other", p, nil),
-		"URI ohne Registrierung": e.authorizeURL(clientID, "http://localhost:9/cb", p, nil),
+		"unknown client":           e.authorizeURL("nope", claudeRedirect, p, nil),
+		"unregistered URI":         e.authorizeURL(clientID, "https://claude.ai/other", p, nil),
+		"URI without registration": e.authorizeURL(clientID, "http://localhost:9/cb", p, nil),
 	} {
 		resp, body := e.do(http.MethodGet, u, nil, nil)
-		if resp.StatusCode != 400 || resp.Header.Get("Location") != "" || !strings.Contains(body, "Anmeldung nicht möglich") {
+		if resp.StatusCode != 400 || resp.Header.Get("Location") != "" || !strings.Contains(body, "Login not possible") {
 			t.Errorf("%s: %d %q", name, resp.StatusCode, resp.Header.Get("Location"))
 		}
 	}
@@ -410,10 +410,10 @@ func TestAuthorizeRequestValidation(t *testing.T) {
 		extra url.Values
 		want  string
 	}{
-		"ohne PKCE":        {url.Values{"code_challenge": nil}, "invalid_request"},
-		"plain statt S256": {url.Values{"code_challenge_method": {"plain"}}, "invalid_request"},
-		"falscher Typ":     {url.Values{"response_type": {"token"}}, "unsupported_response_type"},
-		"fremde Resource":  {url.Values{"resource": {"https://other.example/mcp"}}, "invalid_target"},
+		"without PKCE":          {url.Values{"code_challenge": nil}, "invalid_request"},
+		"plain instead of S256": {url.Values{"code_challenge_method": {"plain"}}, "invalid_request"},
+		"wrong type":            {url.Values{"response_type": {"token"}}, "unsupported_response_type"},
+		"foreign resource":      {url.Values{"resource": {"https://other.example/mcp"}}, "invalid_target"},
 	} {
 		u := e.authorizeURL(clientID, claudeRedirect, p, nil)
 		parsed, _ := url.Parse(u)
@@ -434,12 +434,12 @@ func TestAuthorizeRequestValidation(t *testing.T) {
 	// Resource without a path (origin only) is allowed
 	resp, _ := e.do(http.MethodGet, e.authorizeURL(clientID, claudeRedirect, p, url.Values{"resource": {e.http.URL}}), nil, nil)
 	if resp.StatusCode != 302 || !strings.HasPrefix(resp.Header.Get("Location"), e.idp.URL) {
-		t.Errorf("Origin als resource: %d %s", resp.StatusCode, resp.Header.Get("Location"))
+		t.Errorf("origin as resource: %d %s", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	// redirect_uri may be omitted if exactly one is registered
 	q := url.Values{"response_type": {"code"}, "client_id": {clientID}, "code_challenge": {p.challenge}, "code_challenge_method": {"S256"}}
 	if resp, _ := e.do(http.MethodGet, "/oauth/authorize?"+q.Encode(), nil, nil); resp.StatusCode != 302 {
-		t.Errorf("ohne redirect_uri: %d", resp.StatusCode)
+		t.Errorf("without redirect_uri: %d", resp.StatusCode)
 	}
 }
 
@@ -450,7 +450,7 @@ func TestIdPRequestUsesPKCEAndNonce(t *testing.T) {
 	last := e.idp.Last
 	if last.Get("code_challenge_method") != "S256" || last.Get("code_challenge") == "" || last.Get("nonce") == "" ||
 		last.Get("redirect_uri") != e.http.URL+"/oauth/callback/kc" {
-		t.Errorf("Anfrage an den IdP: %v", last)
+		t.Errorf("request to the IdP: %v", last)
 	}
 }
 
@@ -468,17 +468,17 @@ func TestRefreshRotationAndReuseDetection(t *testing.T) {
 		t.Fatalf("Rotation: %d %v", resp.StatusCode, second)
 	}
 	if status, _ := e.mcpStatus(second["access_token"].(string)); status != 200 {
-		t.Errorf("neues Access-Token: %d", status)
+		t.Errorf("new access token: %d", status)
 	}
 	// old refresh token again: suspected theft -> revoke everything
 	if resp, m := refresh(tok["refresh_token"].(string)); resp.StatusCode != 400 || m["error"] != "invalid_grant" {
-		t.Errorf("Wiederverwendung: %d %v", resp.StatusCode, m)
+		t.Errorf("reuse: %d %v", resp.StatusCode, m)
 	}
 	if status, _ := e.mcpStatus(second["access_token"].(string)); status != 401 {
-		t.Errorf("Access-Token nach Reuse-Erkennung noch gültig: %d", status)
+		t.Errorf("access token still valid after reuse detection: %d", status)
 	}
 	if resp, _ := refresh(second["refresh_token"].(string)); resp.StatusCode != 400 {
-		t.Errorf("neues Refresh-Token nach Reuse-Erkennung noch gültig: %d", resp.StatusCode)
+		t.Errorf("new refresh token still valid after reuse detection: %d", resp.StatusCode)
 	}
 }
 
@@ -492,17 +492,17 @@ func TestRefreshChecks(t *testing.T) {
 		return resp.StatusCode
 	}
 	if post(otherClient, rt) != 400 {
-		t.Error("Refresh-Token mit fremdem Client")
+		t.Error("refresh token with foreign client")
 	}
 	if post(clientID, tok["access_token"].(string)) != 400 {
-		t.Error("Access-Token als Refresh-Token")
+		t.Error("access token as refresh token")
 	}
 	if post(clientID, "rt_unknown") != 400 {
-		t.Error("unbekanntes Refresh-Token")
+		t.Error("unknown refresh token")
 	}
 	_, _ = e.pool.Exec(e.ctx, `UPDATE oauth_tokens SET expires_at = now() - interval '1 second' WHERE kind = 'refresh'`)
 	if post(clientID, rt) != 400 {
-		t.Error("abgelaufenes Refresh-Token")
+		t.Error("expired refresh token")
 	}
 }
 
@@ -517,19 +517,19 @@ func TestRevoke(t *testing.T) {
 		t.Errorf("Status %d", resp.StatusCode)
 	}
 	if status, _ := e.mcpStatus(access); status != 200 {
-		t.Error("Token durch fremden Client widerrufen")
+		t.Error("token revoked by foreign client")
 	}
 	if resp, _ := e.do(http.MethodPost, "/oauth/revoke", url.Values{"token": {"rt_unknown"}, "client_id": {clientID}}, nil); resp.StatusCode != 200 {
-		t.Errorf("unbekanntes Token: %d", resp.StatusCode)
+		t.Errorf("unknown token: %d", resp.StatusCode)
 	}
 	// Revoking the refresh token also revokes the access token
 	e.do(http.MethodPost, "/oauth/revoke", url.Values{"token": {refresh}, "client_id": {clientID}}, nil)
 	if status, _ := e.mcpStatus(access); status != 401 {
-		t.Errorf("Access-Token nach Revoke des Refresh-Tokens: %d", status)
+		t.Errorf("access token after revoking the refresh token: %d", status)
 	}
 	resp, _ := e.do(http.MethodPost, "/oauth/token", url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}, "client_id": {clientID}}, nil)
 	if resp.StatusCode != 400 {
-		t.Errorf("Refresh nach Revoke: %d", resp.StatusCode)
+		t.Errorf("refresh after revoke: %d", resp.StatusCode)
 	}
 }
 
@@ -544,11 +544,11 @@ func TestLoginPolicyAndDisabledUsers(t *testing.T) {
 	}
 
 	e.idp.SetClaims(map[string]any{"email": "eve@evil.com"})
-	denied(e.login(e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil)), "fremde Domain")
+	denied(e.login(e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil)), "foreign domain")
 	e.idp.SetClaims(map[string]any{"email_verified": false})
 	denied(e.login(e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil)), "unverifizierte E-Mail")
 	if n := countUsers(t, e); n != 0 {
-		t.Errorf("abgelehnte Logins haben %d Konten angelegt", n)
+		t.Errorf("denied logins created %d accounts", n)
 	}
 
 	e.idp.SetClaims(nil)
@@ -559,12 +559,12 @@ func TestLoginPolicyAndDisabledUsers(t *testing.T) {
 	}
 	// existing tokens are worthless immediately, new logins are rejected
 	if status, _ := e.mcpStatus(tok["access_token"].(string)); status != 401 {
-		t.Errorf("Token eines deaktivierten Nutzers: %d", status)
+		t.Errorf("token of a disabled user: %d", status)
 	}
-	denied(e.login(e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil)), "deaktiviertes Konto")
+	denied(e.login(e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil)), "disabled account")
 	resp, _ := e.do(http.MethodPost, "/oauth/token", url.Values{"grant_type": {"refresh_token"}, "refresh_token": {tok["refresh_token"].(string)}, "client_id": {clientID}}, nil)
 	if resp.StatusCode != 400 {
-		t.Errorf("Refresh eines deaktivierten Nutzers: %d", resp.StatusCode)
+		t.Errorf("refresh of a disabled user: %d", resp.StatusCode)
 	}
 }
 
@@ -584,10 +584,10 @@ func TestStateIsSingleUseAndBoundToProvider(t *testing.T) {
 	callback := resp.Header.Get("Location")
 
 	if resp, _ = e.do(http.MethodGet, callback, nil, nil); resp.StatusCode != 302 {
-		t.Fatalf("erster Aufruf: %d", resp.StatusCode)
+		t.Fatalf("first call: %d", resp.StatusCode)
 	}
 	if resp, body := e.do(http.MethodGet, callback, nil, nil); resp.StatusCode != 400 || strings.Contains(resp.Header.Get("Location"), "code=") {
-		t.Errorf("State wiederverwendbar: %d %s", resp.StatusCode, body)
+		t.Errorf("state reusable: %d %s", resp.StatusCode, body)
 	}
 	for _, u := range []string{"/oauth/callback/kc", "/oauth/callback/kc?state=garbage&code=x", "/oauth/callback/unknown?state=x"} {
 		if resp, _ := e.do(http.MethodGet, u, nil, nil); resp.StatusCode != 400 {
@@ -600,7 +600,7 @@ func TestStateIsSingleUseAndBoundToProvider(t *testing.T) {
 	cb := e.http.URL + "/oauth/callback/kc?" + url.Values{"state": {idpAuth.Query().Get("state")}, "error": {"access_denied"}}.Encode()
 	resp, _ = e.do(http.MethodGet, cb, nil, nil)
 	if loc, _ := url.Parse(resp.Header.Get("Location")); loc.Query().Get("error") != "access_denied" {
-		t.Errorf("IdP-Abbruch: %s", loc)
+		t.Errorf("IdP cancellation: %s", loc)
 	}
 }
 
@@ -609,23 +609,23 @@ func TestProviderChooser(t *testing.T) {
 	clientID := e.register(claudeRedirect)
 	resp, body := e.do(http.MethodGet, e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil), nil, nil)
 	if resp.StatusCode != 200 || !strings.Contains(body, "kc2") || !strings.Contains(body, "/oauth/login?") {
-		t.Fatalf("Auswahlseite: %d %s", resp.StatusCode, body)
+		t.Fatalf("chooser page: %d %s", resp.StatusCode, body)
 	}
 	href := body[strings.Index(body, "/oauth/login?"):]
 	href = strings.ReplaceAll(href[:strings.Index(href, `"`)], "&amp;", "&")
 	resp, _ = e.do(http.MethodGet, href, nil, nil)
 	if resp.StatusCode != 302 || !strings.HasPrefix(resp.Header.Get("Location"), e.idp.URL) {
-		t.Fatalf("Weiterleitung zum IdP: %d %s", resp.StatusCode, resp.Header.Get("Location"))
+		t.Fatalf("redirect to the IdP: %d %s", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	// the same link a second time: the state is already bound
 	if resp, _ = e.do(http.MethodGet, href, nil, nil); resp.StatusCode != 400 {
-		t.Errorf("Link wiederverwendbar: %d", resp.StatusCode)
+		t.Errorf("link reusable: %d", resp.StatusCode)
 	}
 	if resp, _ = e.do(http.MethodGet, "/oauth/login?s=x&p=kc", nil, nil); resp.StatusCode != 400 {
-		t.Errorf("unbekannter State: %d", resp.StatusCode)
+		t.Errorf("unknown state: %d", resp.StatusCode)
 	}
 	if resp, _ = e.do(http.MethodGet, "/oauth/login?s=x&p=nope", nil, nil); resp.StatusCode != 400 {
-		t.Errorf("unbekannter Provider: %d", resp.StatusCode)
+		t.Errorf("unknown provider: %d", resp.StatusCode)
 	}
 }
 
@@ -634,7 +634,7 @@ func TestIdPOutageShowsErrorPage(t *testing.T) {
 	clientID := e.register(claudeRedirect)
 	e.idp.Close()
 	resp, body := e.do(http.MethodGet, e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil), nil, nil)
-	if resp.StatusCode != http.StatusBadGateway || !strings.Contains(body, "nicht erreichbar") {
+	if resp.StatusCode != http.StatusBadGateway || !strings.Contains(body, "unreachable") {
 		t.Errorf("%d %s", resp.StatusCode, body)
 	}
 }
@@ -654,13 +654,13 @@ func TestCleanup(t *testing.T) {
 		return n
 	}
 	if n := count(`SELECT count(*) FROM oauth_clients`); n != 1 {
-		t.Errorf("Clients nach Cleanup: %d (erwartet 1: nur der mit Tokens)", n)
+		t.Errorf("clients after cleanup: %d (expected 1: only the one with tokens)", n)
 	}
 	if n := count(`SELECT count(*) FROM oauth_tokens WHERE kind = 'access'`); n != 0 {
-		t.Errorf("alte Access-Tokens: %d", n)
+		t.Errorf("old access tokens: %d", n)
 	}
 	if n := count(`SELECT count(*) FROM oauth_tokens WHERE kind = 'refresh'`); n != 1 {
-		t.Errorf("gültiges Refresh-Token verloren: %d", n)
+		t.Errorf("valid refresh token lost: %d", n)
 	}
 }
 
@@ -680,18 +680,18 @@ func TestSessionsAndAbsoluteLifetime(t *testing.T) {
 		t.Fatal(err)
 	}
 	if list, _ = store.Sessions(e.ctx, u.ID); len(list) != 1 {
-		t.Errorf("Sessions nach Rotation: %+v", list)
+		t.Errorf("sessions after rotation: %+v", list)
 	}
 	// after the maximum age even a valid refresh token no longer helps
 	if _, err := e.pool.Exec(e.ctx, `UPDATE oauth_tokens SET session_started_at = now() - interval '48 hours'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Rotate(e.ctx, res.Pair.Refresh, clientID); !errors.Is(err, oauth.ErrInvalidGrant) {
-		t.Errorf("Rotation nach der Höchstdauer: %v", err)
+		t.Errorf("rotation after the maximum lifetime: %v", err)
 	}
 	// without a maximum age (0) the previous behavior remains
 	if _, err := oauth.NewStore(e.pool, time.Hour, 720*time.Hour).Rotate(e.ctx, res.Pair.Refresh, clientID); err != nil {
-		t.Errorf("Rotation ohne Höchstdauer: %v", err)
+		t.Errorf("rotation without maximum lifetime: %v", err)
 	}
 
 	n, err := store.RevokeClient(e.ctx, u.ID, clientID)
@@ -699,7 +699,7 @@ func TestSessionsAndAbsoluteLifetime(t *testing.T) {
 		t.Fatalf("RevokeClient: %d %v", n, err)
 	}
 	if list, _ = store.Sessions(e.ctx, u.ID); len(list) != 0 {
-		t.Errorf("Sessions nach dem Beenden: %+v", list)
+		t.Errorf("sessions after ending: %+v", list)
 	}
 }
 
@@ -711,33 +711,33 @@ func TestAllowlistAtRuntime(t *testing.T) {
 
 	e.idp.SetClaims(map[string]any{"email": "bob@partner.de"})
 	if loc := attempt(); loc.Query().Get("error") != "access_denied" {
-		t.Fatalf("fremde Domain wurde nicht abgelehnt: %s", loc)
+		t.Fatalf("foreign domain was not rejected: %s", loc)
 	}
 	if n := countUsers(t, e); n != 0 {
-		t.Errorf("abgelehnter Login hat %d Konten angelegt", n)
+		t.Errorf("denied login created %d accounts", n)
 	}
 	var reason string
 	if err := e.pool.QueryRow(e.ctx, `SELECT details->>'reason' FROM audit_log WHERE action = 'login_denied'`).Scan(&reason); err != nil {
-		t.Fatalf("kein Audit-Eintrag login_denied: %v", err)
+		t.Fatalf("no audit entry login_denied: %v", err)
 	}
 	if !strings.Contains(reason, "partner.de") || strings.Contains(reason, "bob@") {
-		t.Errorf("Grund im Audit-Log: %q (Domain ja, Adresse nein)", reason)
+		t.Errorf("reason in audit log: %q (domain yes, address no)", reason)
 	}
 
 	if _, err := e.allow.Add(e.ctx, "domain", "partner.de", "", uuid.Nil); err != nil {
 		t.Fatal(err)
 	}
 	if loc := attempt(); loc.Query().Get("code") == "" {
-		t.Fatalf("nach der Freigabe kein Login: %s", loc)
+		t.Fatalf("no login after approval: %s", loc)
 	}
 	if n := countUsers(t, e); n != 1 {
-		t.Errorf("Konten nach der Freigabe: %d", n)
+		t.Errorf("accounts after approval: %d", n)
 	}
 
 	if err := e.allow.Remove(e.ctx, "domain", "partner.de", ""); err != nil {
 		t.Fatal(err)
 	}
 	if loc := attempt(); loc.Query().Get("error") != "access_denied" {
-		t.Errorf("nach dem Entfernen wieder abgelehnt erwartet: %s", loc)
+		t.Errorf("expected denial again after removal: %s", loc)
 	}
 }

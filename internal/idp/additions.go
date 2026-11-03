@@ -35,7 +35,7 @@ func effective(ctx context.Context, cfg config.Provider, extra Additions) config
 	}
 	e, err := extra.Additions(ctx, cfg.ID)
 	if err != nil {
-		slog.Error("Freigabeliste nicht lesbar, es gilt nur die Konfiguration", "provider", cfg.ID, "error", err)
+		slog.Error("allowlist not readable, only the configuration applies", "provider", cfg.ID, "error", err)
 		return cfg
 	}
 	out := cfg

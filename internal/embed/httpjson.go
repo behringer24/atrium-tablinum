@@ -51,9 +51,9 @@ func postJSON(ctx context.Context, c *http.Client, endpoint string, headers map[
 		resp, err := c.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
-				return fmt.Errorf("embedding-anfrage: %w", ctx.Err())
+				return fmt.Errorf("embedding request: %w", ctx.Err())
 			}
-			last = fmt.Errorf("embedding-anfrage: %w", stripURL(err))
+			last = fmt.Errorf("embedding request: %w", stripURL(err))
 			continue
 		}
 		status := resp.StatusCode
@@ -62,7 +62,7 @@ func postJSON(ctx context.Context, c *http.Client, endpoint string, headers map[
 			err = json.NewDecoder(resp.Body).Decode(out)
 			resp.Body.Close()
 			if err != nil {
-				return fmt.Errorf("embedding-antwort lesen: %w", err)
+				return fmt.Errorf("reading embedding response: %w", err)
 			}
 			return nil
 		}
@@ -82,11 +82,11 @@ func postJSON(ctx context.Context, c *http.Client, endpoint string, headers map[
 func statusError(status int) error {
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Errorf("embedder lehnt die Anmeldung ab (Status %d), Zugangsdaten prüfen", status)
+		return fmt.Errorf("embedder rejects authentication (status %d), check credentials", status)
 	case http.StatusTooManyRequests:
-		return fmt.Errorf("embedder drosselt die Anfragen (Status 429)")
+		return fmt.Errorf("embedder throttles requests (status 429)")
 	}
-	return fmt.Errorf("embedder antwortet mit Status %d", status)
+	return fmt.Errorf("embedder responded with status %d", status)
 }
 
 // stripURL drops the request URL from a transport error, keeping only the cause.

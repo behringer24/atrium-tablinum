@@ -69,7 +69,7 @@ type Entry struct {
 const (
 	defaultQueryLimit = 50
 	maxQueryLimit     = 200
-	PersonalLabel     = "persönlicher Bereich"
+	PersonalLabel     = "personal space"
 )
 
 // Query returns audit entries, newest first. Personal spaces are shown only as a label,

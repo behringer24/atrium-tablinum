@@ -32,7 +32,7 @@ func newTEI(s Settings, o *options, c *http.Client) (backend, error) {
 		client:    c,
 	}
 	if !validHTTPURL(t.url) {
-		o.fail("embedding.url fehlt oder ist keine http(s)-Adresse")
+		o.fail("embedding.url is missing or not an http(s) address")
 	}
 	if err := o.done(); err != nil {
 		return nil, err
@@ -61,11 +61,11 @@ func (t *tei) ping(ctx context.Context) error {
 	}
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("embedder nicht erreichbar: %w", stripURL(err))
+		return fmt.Errorf("embedder unreachable: %w", stripURL(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("embedder meldet Status %d", resp.StatusCode)
+		return fmt.Errorf("embedder reports status %d", resp.StatusCode)
 	}
 	return nil
 }

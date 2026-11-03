@@ -23,7 +23,7 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	base := os.Getenv("ATRIUM_TEST_DATABASE_URL")
 	if base == "" {
-		t.Skip("ATRIUM_TEST_DATABASE_URL nicht gesetzt")
+		t.Skip("ATRIUM_TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, base)

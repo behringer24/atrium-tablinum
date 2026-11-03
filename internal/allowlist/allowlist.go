@@ -27,9 +27,9 @@ const (
 )
 
 var (
-	ErrInvalid  = errors.New("ungültiger eintrag")
-	ErrTooMany  = errors.New("zu viele einträge")
-	ErrNotFound = errors.New("eintrag nicht gefunden")
+	ErrInvalid  = errors.New("invalid entry")
+	ErrTooMany  = errors.New("too many entries")
+	ErrNotFound = errors.New("entry not found")
 
 	domainRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
 )
@@ -53,21 +53,21 @@ func Normalize(kind, value string) (string, error) {
 	switch kind {
 	case KindDomain:
 		if !domainRe.MatchString(v) {
-			return "", fmt.Errorf("%w: %q ist keine Domain (ohne @ und ohne *, z. B. example.com)", ErrInvalid, value)
+			return "", fmt.Errorf("%w: %q is not a domain (without @ and without *, e.g. example.com)", ErrInvalid, value)
 		}
 	case KindEmail:
 		a, err := mail.ParseAddress(v)
 		if err != nil || a.Address != v || a.Name != "" || strings.Count(v, "@") != 1 {
-			return "", fmt.Errorf("%w: %q ist keine einzelne E-Mail-Adresse", ErrInvalid, value)
+			return "", fmt.Errorf("%w: %q is not a single e-mail address", ErrInvalid, value)
 		}
 	case KindTenant:
 		id, err := uuid.Parse(v)
 		if err != nil {
-			return "", fmt.Errorf("%w: %q ist keine Tenant-ID (GUID)", ErrInvalid, value)
+			return "", fmt.Errorf("%w: %q is not a tenant ID (GUID)", ErrInvalid, value)
 		}
 		v = id.String()
 	default:
-		return "", fmt.Errorf("%w: kind muss domain, email oder tenant sein", ErrInvalid)
+		return "", fmt.Errorf("%w: kind must be domain, email or tenant", ErrInvalid)
 	}
 	return v, nil
 }

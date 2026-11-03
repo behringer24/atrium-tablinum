@@ -131,11 +131,11 @@ func (s *Server) Handler(verifier auth.TokenVerifier, resourceMetadataURL string
 func (s *Server) instructions() string {
 	name := s.set.ProductName
 	if s.set.ShortName != "" && s.set.ShortName != name {
-		name += " (kurz: " + s.set.ShortName + ")"
+		name += " (short: " + s.set.ShortName + ")"
 	}
-	return "Dies ist der zentrale Wissensspeicher " + name + ". Spricht der Nutzer von „" + s.shortName() +
-		"“, ist dieser Speicher gemeint. Speichere nur dann etwas, wenn der Nutzer es ausdrücklich verlangt. " +
-		"Nenne dem Nutzer nach dem Speichern immer, in welchem Bereich der Eintrag liegt. " +
+	return "This is the central knowledge store " + name + ". When the user mentions \"" + s.shortName() +
+		"\", this store is meant. Only save something when the user explicitly asks for it. " +
+		"After saving, always tell the user which space the entry is in. " +
 		untrustedHint
 }
 
@@ -156,7 +156,7 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 	}
 	roles, err := s.Checker.EffectiveRoles(r.Context(), u)
 	if err != nil {
-		slog.Error("Rollen für Tool-Liste nicht ermittelbar", "error", err)
+		slog.Error("Roles for tool list could not be determined", "error", err)
 		return nil
 	}
 	a := docs.Actor{User: u, Roles: roles}
@@ -177,18 +177,18 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 // userFromToken resolves the authenticated user live, so disabling takes effect at once.
 func (s *Server) userFromToken(ctx context.Context, ti *auth.TokenInfo) (users.User, error) {
 	if ti == nil {
-		return users.User{}, errors.New("nicht angemeldet")
+		return users.User{}, errors.New("not logged in")
 	}
 	id, err := uuid.Parse(ti.UserID)
 	if err != nil {
-		return users.User{}, errors.New("nicht angemeldet")
+		return users.User{}, errors.New("not logged in")
 	}
 	u, err := s.Users.Get(ctx, id)
 	if err != nil {
-		return users.User{}, errors.New("nicht angemeldet")
+		return users.User{}, errors.New("not logged in")
 	}
 	if !u.Active {
-		return users.User{}, errors.New("konto deaktiviert")
+		return users.User{}, errors.New("account disabled")
 	}
 	return u, nil
 }
@@ -222,17 +222,17 @@ func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tie
 			}
 			roles, err := s.Checker.EffectiveRoles(ctx, u)
 			if err != nil {
-				slog.Error("Rollen nicht ermittelbar", "tool", name, "error", err)
-				return nil, zero, errors.New("interner Fehler")
+				slog.Error("Roles could not be determined", "tool", name, "error", err)
+				return nil, zero, errors.New("internal error")
 			}
 			if !s.allowed(ctx, min, docs.Actor{User: u, Roles: roles}) {
 				return nil, zero, errNoPermission
 			}
 			if write && !s.limiter.allow(u.ID) {
-				return nil, zero, errors.New("zu viele Schreibvorgänge in kurzer Zeit, bitte in einer Minute erneut versuchen")
+				return nil, zero, errors.New("too many write operations in a short time, please try again in a minute")
 			}
 			if !write && !s.reads.allow(u.ID) {
-				return nil, zero, errors.New("zu viele Abfragen in kurzer Zeit, bitte in einer Minute erneut versuchen")
+				return nil, zero, errors.New("too many requests in a short time, please try again in a minute")
 			}
 			out, err := fn(ctx, &call{Actor: docs.Actor{User: u, Roles: roles, Client: clientName(req)}}, in)
 			if err != nil {
@@ -242,7 +242,7 @@ func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tie
 		})
 }
 
-var errNoPermission = errors.New("dazu fehlt die Berechtigung")
+var errNoPermission = errors.New("you do not have permission for this")
 
 // allowed re-checks the tool tier on every call; the tool list is only a convenience.
 func (s *Server) allowed(ctx context.Context, min tier, a docs.Actor) bool {
@@ -280,7 +280,7 @@ func (s *Server) teamSpacesAtLeast(ctx context.Context, a docs.Actor, min authz.
 	return out, nil
 }
 
-// translate turns internal errors into short German messages; unknown errors are
+// translate turns internal errors into short English messages; unknown errors are
 // logged and replaced so nothing internal reaches the model.
 func translate(tool string, err error) error {
 	var ge *guard.Error
@@ -288,7 +288,7 @@ func translate(tool string, err error) error {
 	case errors.As(err, &ge):
 		return err
 	case errors.Is(err, docs.ErrNotFound), errors.Is(err, spaces.ErrNotFound), errors.Is(err, users.ErrNotFound):
-		return errors.New("nicht gefunden")
+		return errors.New("not found")
 	case errors.Is(err, docs.ErrForbidden), errors.Is(err, docs.ErrQuota), errors.Is(err, docs.ErrConflict),
 		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, docs.ErrOwnDraft), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
@@ -296,12 +296,12 @@ func translate(tool string, err error) error {
 		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap):
 		return err
 	}
-	slog.Error("Tool-Fehler", "tool", tool, "error", err)
-	return errors.New("interner Fehler")
+	slog.Error("Tool error", "tool", tool, "error", err)
+	return errors.New("internal error")
 }
 
 // errUser marks messages written for the user/model (not internal failures).
-var errUser = errors.New("eingabe")
+var errUser = errors.New("input")
 
 func userErr(msg string) error { return errors.Join(errUser, errors.New(msg)) }
 
@@ -372,7 +372,7 @@ func (s *Server) renderDescriptions() map[string]string {
 		}
 		rendered, err := renderTemplate(name, text, data)
 		if err != nil {
-			slog.Warn("Tool-Beschreibung ungültig, Standard wird verwendet", "tool", name, "error", err)
+			slog.Warn("Tool description invalid, using default", "tool", name, "error", err)
 			rendered, _ = renderTemplate(name, def, data)
 		}
 		out[name] = rendered

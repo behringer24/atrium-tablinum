@@ -12,14 +12,14 @@ import (
 // registerCuratorTools adds what only curators (and admins) of a team space need. Like all
 // tiers it is a convenience for the tool list; docs.Review re-checks the role per entry.
 func (s *Server) registerCuratorTools(ms *mcp.Server) {
-	addTool(s, ms, "review_knowledge", "Entwurf prüfen", tierCurator, true, s.reviewKnowledge)
+	addTool(s, ms, "review_knowledge", "Review draft", tierCurator, true, s.reviewKnowledge)
 }
 
 type reviewIn struct {
-	ID       string `json:"id" jsonschema:"ID des Entwurfs"`
-	Decision string `json:"decision" jsonschema:"approve = freigeben, reject = mit Anmerkung an den Autor zurückgeben"`
-	Note     string `json:"note,omitempty" jsonschema:"Anmerkung für den Autor; beim Zurückgeben Pflicht"`
-	Confirm  bool   `json:"confirm,omitempty" jsonschema:"Bei approve: true erst nach ausdrücklicher Bestätigung durch den Nutzer"`
+	ID       string `json:"id" jsonschema:"ID of the draft"`
+	Decision string `json:"decision" jsonschema:"approve = approve, reject = return to the author with a note"`
+	Note     string `json:"note,omitempty" jsonschema:"Note for the author; required when returning"`
+	Confirm  bool   `json:"confirm,omitempty" jsonschema:"For approve: true only after explicit confirmation by the user"`
 }
 
 type reviewOut struct {
@@ -38,10 +38,10 @@ func (s *Server) reviewKnowledge(ctx context.Context, c *call, in reviewIn) (rev
 		approve = true
 	case "reject":
 	default:
-		return reviewOut{}, userErr("decision muss approve oder reject sein.")
+		return reviewOut{}, userErr("decision must be approve or reject.")
 	}
 	if approve && !in.Confirm {
-		return reviewOut{}, userErr("Die Freigabe macht den Eintrag für alle Leser des Bereichs sichtbar: den Entwurf dem Nutzer vorlegen, nach seiner Bestätigung fragen und danach mit confirm=true erneut aufrufen.")
+		return reviewOut{}, userErr("Approval makes the entry visible to all readers of the space: present the draft to the user, ask for their confirmation and then call again with confirm=true.")
 	}
 	d, err := s.Docs.Review(ctx, c.Actor, docs.ReviewParams{ID: id, Approve: approve, Note: in.Note})
 	if err != nil {
@@ -51,9 +51,9 @@ func (s *Server) reviewKnowledge(ctx context.Context, c *call, in reviewIn) (rev
 	if err != nil {
 		return reviewOut{}, err
 	}
-	msg := "Der Entwurf wurde freigegeben und ist jetzt für alle Leser des Bereichs sichtbar."
+	msg := "The draft has been approved and is now visible to all readers of the space."
 	if !approve {
-		msg = "Der Entwurf wurde mit deiner Anmerkung zurückgegeben. Der Autor sieht sie am Eintrag und kann ihn überarbeiten, danach geht er erneut in die Prüfung."
+		msg = "The draft has been returned with your note. The author sees it on the entry and can revise it, after which it goes back into review."
 	}
 	return reviewOut{Message: msg, Document: info}, nil
 }

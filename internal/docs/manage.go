@@ -25,7 +25,7 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 		return Document{}, err
 	}
 	if cur.Kind != "knowledge" {
-		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("übergaben können nicht verschoben werden"))
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("handoffs cannot be moved"))
 	}
 	if err := canEdit(a, cur); err != nil {
 		return Document{}, err
@@ -35,7 +35,7 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 		return Document{}, err
 	}
 	if cur.Status != "approved" {
-		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("nur freigegebene einträge können verschoben werden"))
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("only approved entries can be moved"))
 	}
 	// Authors may not take approved entries out of an approval space on their own.
 	if src.Type == "team" && src.RequireApproval && srcRole < authz.Curator {
@@ -46,7 +46,7 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 		return Document{}, err
 	}
 	if dst.ID == src.ID {
-		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("der eintrag liegt bereits in diesem bereich"))
+		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("the entry is already in this space"))
 	}
 	if dst.Type == "personal" {
 		if err := s.checkQuota(ctx, a, dst.ID, 1, int64(len(cur.Content))); err != nil {

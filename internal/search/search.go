@@ -22,7 +22,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/visibility"
 )
 
-var ErrInvalid = errors.New("ungültige suchanfrage")
+var ErrInvalid = errors.New("invalid search request")
 
 const maxQueryRunes = 500
 
@@ -82,17 +82,17 @@ type Service struct {
 
 func New(pool *pgxpool.Pool, emb embed.Embedder, cfg Config) (*Service, error) {
 	if len(cfg.FTSLanguages) == 0 {
-		return nil, errors.New("mindestens eine fts-sprache erforderlich")
+		return nil, errors.New("at least one FTS language is required")
 	}
 	parts := make([]string, len(cfg.FTSLanguages))
 	for i, l := range cfg.FTSLanguages {
 		if !langRe.MatchString(l) { // inlined into SQL below
-			return nil, fmt.Errorf("ungültige fts-sprache %q", l)
+			return nil, fmt.Errorf("invalid FTS language %q", l)
 		}
 		parts[i] = fmt.Sprintf("websearch_to_tsquery('%s'::regconfig, $2)", l)
 	}
 	if cfg.CandidatesPerMethod < 1 || cfg.RRFK < 1 || cfg.DefaultLimit < 1 || cfg.MaxLimit < cfg.DefaultLimit {
-		return nil, errors.New("ungültige such-konfiguration")
+		return nil, errors.New("invalid search configuration")
 	}
 	return &Service{pool: pool, emb: emb, cfg: cfg, tsq: strings.Join(parts, " || ")}, nil
 }
@@ -144,7 +144,7 @@ ORDER BY f.score DESC, c.id`
 func (s *Service) Search(ctx context.Context, c Caller, p Params) ([]Result, error) {
 	q := strings.TrimSpace(p.Query)
 	if q == "" || utf8.RuneCountInString(q) > maxQueryRunes || strings.ContainsRune(q, 0) {
-		return nil, fmt.Errorf("%w: suchtext fehlt oder ist länger als %d zeichen", ErrInvalid, maxQueryRunes)
+		return nil, fmt.Errorf("%w: query text is missing or longer than %d characters", ErrInvalid, maxQueryRunes)
 	}
 	limit := p.Limit
 	if limit < 1 {
@@ -167,7 +167,7 @@ func (s *Service) Search(ctx context.Context, c Caller, p Params) ([]Result, err
 func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UUID, tags []string, limit int, archive bool) ([]Result, error) {
 	var vec *string
 	if v, err := embed.Query(ctx, s.emb, q); err != nil {
-		slog.Warn("Embedding der Suchanfrage fehlgeschlagen, nur Volltextsuche", "error", err)
+		slog.Warn("query embedding failed, using full-text search only", "error", err)
 	} else {
 		lit := ingest.VectorLiteral(v)
 		vec = &lit
@@ -227,7 +227,7 @@ func (s *Service) audit(ctx context.Context, c Caller, q string, visible []uuid.
 	}
 	uid := c.Scope.Actor
 	if err := audit.Insert(ctx, s.pool, audit.Event{UserID: &uid, Client: c.Client, Action: "search", Details: details}); err != nil {
-		slog.Warn("Audit-Eintrag für Suche fehlgeschlagen", "error", err)
+		slog.Warn("audit entry for search failed", "error", err)
 	}
 }
 

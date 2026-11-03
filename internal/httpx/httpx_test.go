@@ -38,10 +38,10 @@ func TestClientIP(t *testing.T) {
 		}
 	}
 	if got := ClientIP(req("10.0.0.2:80", "1.1.1.1"), nil); got != "10.0.0.2" {
-		t.Errorf("ohne Proxys: %s", got)
+		t.Errorf("without proxies: %s", got)
 	}
 	if _, err := ParseProxies([]string{"x"}); err == nil {
-		t.Error("ungültiger Eintrag")
+		t.Error("invalid entry")
 	}
 }
 
@@ -53,10 +53,10 @@ func TestLimiter(t *testing.T) {
 		t.Fatal("Limit 2")
 	}
 	if !l.Allow("b") {
-		t.Error("anderer Schlüssel")
+		t.Error("other key")
 	}
 	now = now.Add(2 * time.Minute)
 	if !l.Allow("a") {
-		t.Error("Fenster")
+		t.Error("window")
 	}
 }

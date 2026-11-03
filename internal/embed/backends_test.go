@@ -23,7 +23,7 @@ func TestRegistryListsBackendsAndRejectsUnknown(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if err := Validate(Settings{Backend: "tei", URL: "http://x", Dimensions: 0}); err == nil {
-		t.Fatal("Dimension 0 muss abgelehnt werden")
+		t.Fatal("dimension 0 must be rejected")
 	}
 }
 
@@ -33,11 +33,11 @@ func TestOptionsAreValidated(t *testing.T) {
 		opts map[string]string
 		want string
 	}{
-		"unbekannter Schlüssel": {map[string]string{"batchsize": "4"}, "batch_size"}, // names the valid keys
-		"keine Zahl":            {map[string]string{"batch_size": "viele"}, "ganze Zahl"},
-		"zu klein":              {map[string]string{"batch_size": "0"}, ">= 1"},
-		"kein Wahrheitswert":    {map[string]string{"normalize": "vielleicht"}, "true noch false"},
-		"mehrere Fehler":        {map[string]string{"batch_size": "x", "foo": "1"}, "unbekannte options"},
+		"unknown key":     {map[string]string{"batchsize": "4"}, "batch_size"}, // names the valid keys
+		"not a number":    {map[string]string{"batch_size": "many"}, "integer"},
+		"too small":       {map[string]string{"batch_size": "0"}, ">= 1"},
+		"not a boolean":   {map[string]string{"normalize": "maybe"}, "neither true nor false"},
+		"multiple errors": {map[string]string{"batch_size": "x", "foo": "1"}, "unknown options"},
 	} {
 		s := base
 		s.Options = tc.opts
@@ -48,10 +48,10 @@ func TestOptionsAreValidated(t *testing.T) {
 	s := base
 	s.Options = map[string]string{"batch_size": "4", "normalize": "false", "truncate": "true"}
 	if err := Validate(s); err != nil {
-		t.Errorf("gültige Optionen: %v", err)
+		t.Errorf("valid options: %v", err)
 	}
 	if err := Validate(Settings{Backend: "tei", Dimensions: 4}); err == nil || !strings.Contains(err.Error(), "embedding.url") {
-		t.Errorf("tei ohne URL: %v", err)
+		t.Errorf("tei without URL: %v", err)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestPrefixesDistinguishQueryFromDocument(t *testing.T) {
 	}
 	got := *batches
 	if len(got) != 2 || got[0][0] != "passage: alpha" || got[0][1] != "passage: beta" || got[1][0] != "query: frage" {
-		t.Fatalf("Eingaben: %v", got)
+		t.Fatalf("inputs: %v", got)
 	}
 }
 
@@ -118,7 +118,7 @@ func TestQueryFallsBackToEmbed(t *testing.T) {
 
 func TestTEIOptionsAndAuth(t *testing.T) {
 	srv, batches, auth := capturingTEI(t, 4)
-	e, err := New(Settings{Backend: "tei", URL: srv.URL, Dimensions: 4, APIKey: "geheim", Options: map[string]string{"batch_size": "2"}})
+	e, err := New(Settings{Backend: "tei", URL: srv.URL, Dimensions: 4, APIKey: "secret", Options: map[string]string{"batch_size": "2"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestTEIOptionsAndAuth(t *testing.T) {
 		t.Errorf("Batches = %v", *batches)
 	}
 	for _, a := range *auth {
-		if a != "Bearer geheim" {
+		if a != "Bearer secret" {
 			t.Errorf("Authorization = %q", a)
 		}
 	}
@@ -154,7 +154,7 @@ func TestRetriesRateLimitsThenGivesUp(t *testing.T) {
 		mu.Unlock()
 		if n < 3 {
 			w.Header().Set("Retry-After", "0")
-			http.Error(w, "zu viele Anfragen für geheimen Text", http.StatusTooManyRequests)
+			http.Error(w, "too many requests with secret text", http.StatusTooManyRequests)
 			return
 		}
 		_ = json.NewEncoder(w).Encode([][]float32{{1, 2, 3, 4}})
@@ -162,16 +162,16 @@ func TestRetriesRateLimitsThenGivesUp(t *testing.T) {
 	defer srv.Close()
 	e, _ := New(Settings{Backend: "tei", URL: srv.URL, Dimensions: 4})
 	if _, err := e.Embed(context.Background(), []string{"x"}); err != nil || hits != 3 {
-		t.Fatalf("nach Drosselung: hits=%d err=%v", hits, err)
+		t.Fatalf("after throttling: hits=%d err=%v", hits, err)
 	}
 
 	always := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "geheimer Inhalt", http.StatusServiceUnavailable)
+		http.Error(w, "secret content", http.StatusServiceUnavailable)
 	}))
 	defer always.Close()
 	e2, _ := New(Settings{Backend: "tei", URL: always.URL, Dimensions: 4})
 	_, err := e2.Embed(context.Background(), []string{"x"})
-	if err == nil || !strings.Contains(err.Error(), "503") || strings.Contains(err.Error(), "geheim") {
+	if err == nil || !strings.Contains(err.Error(), "503") || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -185,7 +185,7 @@ func TestAuthErrorsAreNotRetriedAndAreExplained(t *testing.T) {
 	defer srv.Close()
 	e, _ := New(Settings{Backend: "tei", URL: srv.URL, Dimensions: 4})
 	_, err := e.Embed(context.Background(), []string{"x"})
-	if err == nil || !strings.Contains(err.Error(), "Zugangsdaten") || hits != 1 {
+	if err == nil || !strings.Contains(err.Error(), "credentials") || hits != 1 {
 		t.Fatalf("hits=%d err=%v", hits, err)
 	}
 }

@@ -32,10 +32,10 @@ func TestParseMinimalAppliesDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cfg.Instance.ProductName != "Atrium Tablinum" || cfg.Instance.ShortName != "Atrium" || cfg.Instance.Listen != ":8080" {
-		t.Errorf("defaults fehlen: %+v", cfg.Instance)
+		t.Errorf("defaults missing: %+v", cfg.Instance)
 	}
 	if cfg.Auth.Providers[0].ClientSecret != "s" || cfg.Database.URL != "postgres://x" {
-		t.Error("Umgebungsvariablen nicht expandiert")
+		t.Error("environment variables not expanded")
 	}
 	if cfg.Embedding.Dimensions != 1024 {
 		t.Errorf("dimensions = %d", cfg.Embedding.Dimensions)
@@ -61,7 +61,7 @@ func TestEmbeddingSectionFromYAML(t *testing.T) {
 	e := cfg.Embedding
 	if e.Backend != "openai" || e.Dimensions != 1536 || e.QueryPrefix != "query: " || e.DocumentPrefix != "passage: " ||
 		e.Timeout != 15*time.Second || e.Options["send_dimensions"] != "true" || e.Options["batch_size"] != "8" {
-		t.Errorf("Embedding-Abschnitt: %+v", e)
+		t.Errorf("embedding section: %+v", e)
 	}
 	if s := e.Settings(); s.Options["batch_size"] != "8" || s.Timeout != 15*time.Second || s.QueryPrefix != "query: " {
 		t.Errorf("Settings: %+v", s)
@@ -70,15 +70,15 @@ func TestEmbeddingSectionFromYAML(t *testing.T) {
 	bad := strings.Replace(raw, "batch_size: 8", "batchsize: 8", 1)
 	if _, err := Parse([]byte(bad), env(map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "postgres://x"})); err == nil ||
 		!strings.Contains(err.Error(), "batch_size") {
-		t.Errorf("Tippfehler in options: %v", err)
+		t.Errorf("typo in options: %v", err)
 	}
 }
 
 func TestShortName(t *testing.T) {
 	for name, tc := range map[string]struct{ yaml, product, short string }{
-		"Standard":                   {"", "Atrium Tablinum", "Atrium"},
-		"eigener Name ohne Kurzform": {"  product_name: \"Wissens-Hub\"\n", "Wissens-Hub", "Wissens-Hub"},
-		"eigene Kurzform":            {"  product_name: \"Wissens-Hub Pro\"\n  short_name: \"Hub\"\n", "Wissens-Hub Pro", "Hub"},
+		"Standard":                       {"", "Atrium Tablinum", "Atrium"},
+		"custom name without short name": {"  product_name: \"Knowledge-Hub\"\n", "Knowledge-Hub", "Knowledge-Hub"},
+		"custom short name":              {"  product_name: \"Knowledge-Hub Pro\"\n  short_name: \"Hub\"\n", "Knowledge-Hub Pro", "Hub"},
 	} {
 		raw := strings.Replace(minimal, "instance:\n", "instance:\n"+tc.yaml, 1)
 		cfg, err := Parse([]byte(raw), env(map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "postgres://x"}))
@@ -108,7 +108,7 @@ func TestEnvInCommentIgnored(t *testing.T) {
 func TestUnknownFieldRejected(t *testing.T) {
 	_, err := Parse([]byte(minimal+"\nbogus: 1\n"), env(map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "x"}))
 	if err == nil {
-		t.Fatal("unbekanntes Feld muss abgelehnt werden")
+		t.Fatal("unknown field must be rejected")
 	}
 }
 
@@ -153,7 +153,7 @@ func TestValidate(t *testing.T) {
 		{"dev token ok", func(c *Config) { devLocal(c) }, ""},
 		{"openai needs key", func(c *Config) { c.Embedding.Backend = "openai"; c.Embedding.URL = "" }, "api_key"},
 		{"openai custom url without key", func(c *Config) { c.Embedding.Backend = "openai" }, ""},
-		{"unknown embedding backend", func(c *Config) { c.Embedding.Backend = "ollama" }, "unbekannt"},
+		{"unknown embedding backend", func(c *Config) { c.Embedding.Backend = "ollama" }, "unknown"},
 		{"bedrock ok", func(c *Config) {
 			c.Embedding.Backend, c.Embedding.URL = "bedrock", ""
 			c.Embedding.Model, c.Embedding.Options = "amazon.titan-embed-text-v2:0", map[string]string{"region": "eu-central-1"}
@@ -161,9 +161,9 @@ func TestValidate(t *testing.T) {
 		{"bedrock wrong dimensions", func(c *Config) {
 			c.Embedding.Backend, c.Embedding.URL, c.Embedding.Dimensions = "bedrock", "", 768
 			c.Embedding.Model, c.Embedding.Options = "amazon.titan-embed-text-v2:0", map[string]string{"region": "eu-central-1"}
-		}, "möglich"},
+		}, "possible"},
 		{"embedding dimensions too large", func(c *Config) { c.Embedding.Dimensions = 3072 }, "2000"},
-		{"embedding unknown option", func(c *Config) { c.Embedding.Options = map[string]string{"batchsize": "4"} }, "unbekannte options"},
+		{"embedding unknown option", func(c *Config) { c.Embedding.Options = map[string]string{"batchsize": "4"} }, "unknown options"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -172,9 +172,9 @@ func TestValidate(t *testing.T) {
 			err := c.Validate()
 			switch {
 			case tc.want == "" && err != nil:
-				t.Fatalf("unerwarteter Fehler: %v", err)
+				t.Fatalf("unexpected error: %v", err)
 			case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
-				t.Fatalf("erwartet %q, bekam %v", tc.want, err)
+				t.Fatalf("want %q, got %v", tc.want, err)
 			}
 		})
 	}

@@ -19,9 +19,9 @@ import (
 )
 
 var (
-	ErrNotFound  = errors.New("nicht gefunden")
-	ErrDisabled  = errors.New("benutzer ist deaktiviert")
-	ErrBootstrap = errors.New("bootstrap-admins stehen in der Konfiguration und sind nicht änderbar")
+	ErrNotFound  = errors.New("not found")
+	ErrDisabled  = errors.New("user is disabled")
+	ErrBootstrap = errors.New("bootstrap admins are defined in the configuration and cannot be changed")
 )
 
 type User struct {
@@ -155,7 +155,7 @@ func (s *Store) InstanceAdminEmails(ctx context.Context) ([]string, error) {
 // get ErrDisabled.
 func (s *Store) Provision(ctx context.Context, id Identity) (User, error) {
 	if id.IDP == "" || id.Subject == "" || id.Email == "" {
-		return User{}, errors.New("identität unvollständig")
+		return User{}, errors.New("identity incomplete")
 	}
 	uid, err := s.provision(ctx, id)
 	if isUniqueViolation(err) { // concurrent first login of the same person
@@ -194,7 +194,7 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 			return uuid.Nil, ErrEmailTaken
 		}
 		if taken {
-			slog.Warn("Konto per E-Mail verknüpft", "idp", id.IDP, "user", uid)
+			slog.Warn("Account linked by e-mail", "idp", id.IDP, "user", uid)
 			if aerr := audit.Insert(ctx, tx, audit.Event{UserID: &uid, Client: "system", Action: "account_linked",
 				Details: map[string]any{"idp": id.IDP, "email": id.Email}}); aerr != nil {
 				return uuid.Nil, aerr

@@ -14,7 +14,7 @@ import (
 
 const maxHandoffTTLDays = 90
 
-var errNoPersonalSpace = errors.Join(ingest.ErrInvalid, errors.New("persönliche bereiche sind auf dieser instanz deaktiviert"))
+var errNoPersonalSpace = errors.Join(ingest.ErrInvalid, errors.New("personal spaces are disabled on this instance"))
 
 // SaveHandoff stores a hand-over note in the caller's personal space. Handoffs are not
 // chunked or embedded: they are excluded from search and loaded by their own tools.

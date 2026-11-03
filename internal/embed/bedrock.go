@@ -86,20 +86,20 @@ func newBedrock(s Settings, o *options, _ *http.Client) (backend, error) {
 	fam, dims, ok := familyOf(s.Model)
 	switch {
 	case s.Model == "":
-		o.fail("embedding.model fehlt (z. B. amazon.titan-embed-text-v2:0)")
+		o.fail("embedding.model is missing (e.g. amazon.titan-embed-text-v2:0)")
 	case !ok:
-		o.fail("modell %q wird nicht unterstützt (amazon.titan-embed-text-v2:0, cohere.embed-multilingual-v3, cohere.embed-english-v3, cohere.embed-v4:0)", s.Model)
+		o.fail("model %q is not supported (amazon.titan-embed-text-v2:0, cohere.embed-multilingual-v3, cohere.embed-english-v3, cohere.embed-v4:0)", s.Model)
 	default:
 		b.family = fam
 		if !contains(dims, s.Dimensions) {
-			o.fail("embedding.dimensions %d passt nicht zu %s (möglich: %v)", s.Dimensions, s.Model, dims)
+			o.fail("embedding.dimensions %d does not match %s (possible: %v)", s.Dimensions, s.Model, dims)
 		}
 		if fam != titanV2 && b.batch > 96 {
-			o.fail("options.batch_size: Cohere erlaubt höchstens 96 Texte je Anfrage")
+			o.fail("options.batch_size: Cohere allows at most 96 texts per request")
 		}
 	}
 	if b.region == "" {
-		o.fail("options.region fehlt (oder die Umgebungsvariable AWS_REGION setzen)")
+		o.fail("options.region is missing (or set the AWS_REGION environment variable)")
 	}
 	if err := o.done(); err != nil {
 		return nil, err
@@ -134,7 +134,7 @@ func (b *bedrock) client() (invoker, error) {
 		}
 		cfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(b.region))
 		if err != nil {
-			b.initErr = fmt.Errorf("aws-konfiguration: %w", err)
+			b.initErr = fmt.Errorf("aws config: %w", err)
 			return
 		}
 		b.inv = bedrockruntime.NewFromConfig(cfg, func(o *bedrockruntime.Options) {
@@ -153,7 +153,7 @@ func (b *bedrock) ping(ctx context.Context) error {
 			return err
 		}
 		if len(vecs) != 1 || len(vecs[0]) != b.dim {
-			return fmt.Errorf("embedder liefert andere Dimensionen als konfiguriert (%d)", b.dim)
+			return fmt.Errorf("embedder returns different dimensions than configured (%d)", b.dim)
 		}
 		return nil
 	})
@@ -188,7 +188,7 @@ func (b *bedrock) invoke(ctx context.Context, inv invoker, body, out any) error 
 		return bedrockError(ctx, err)
 	}
 	if err := json.Unmarshal(res.Body, out); err != nil {
-		return fmt.Errorf("embedding-antwort lesen: %w", err)
+		return fmt.Errorf("reading embedding response: %w", err)
 	}
 	return nil
 }
@@ -196,19 +196,19 @@ func (b *bedrock) invoke(ctx context.Context, inv invoker, body, out any) error 
 // bedrockError names the AWS error code but not its message, which can echo the input.
 func bedrockError(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
-		return fmt.Errorf("bedrock-anfrage: %w", ctx.Err())
+		return fmt.Errorf("bedrock request: %w", ctx.Err())
 	}
 	var ae smithy.APIError
 	if errors.As(err, &ae) {
 		switch ae.ErrorCode() {
 		case "AccessDeniedException":
-			return errors.New("bedrock verweigert den Zugriff (AccessDeniedException): IAM-Rechte und Modellzugriff in dieser Region prüfen")
+			return errors.New("bedrock denies access (AccessDeniedException): check IAM permissions and model access in this region")
 		case "ThrottlingException":
-			return errors.New("bedrock drosselt die Anfragen (ThrottlingException)")
+			return errors.New("bedrock throttles requests (ThrottlingException)")
 		}
-		return fmt.Errorf("bedrock-anfrage fehlgeschlagen (%s)", ae.ErrorCode())
+		return fmt.Errorf("bedrock request failed (%s)", ae.ErrorCode())
 	}
-	return fmt.Errorf("bedrock-anfrage: %w", err)
+	return fmt.Errorf("bedrock request: %w", err)
 }
 
 func (b *bedrock) embedTitan(ctx context.Context, inv invoker, texts []string) ([][]float32, error) {
@@ -291,7 +291,7 @@ func parseCohereEmbeddings(raw json.RawMessage) ([][]float32, error) {
 		Float [][]float32 `json:"float"`
 	}
 	if err := json.Unmarshal(raw, &byType); err != nil || byType.Float == nil {
-		return nil, errors.New("embedding-antwort lesen: unerwartetes Format")
+		return nil, errors.New("reading embedding response: unexpected format")
 	}
 	return byType.Float, nil
 }

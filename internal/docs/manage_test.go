@@ -25,19 +25,19 @@ func TestMoveNeedsWriteAccessInTarget(t *testing.T) {
 	chunks := queryInt(t, e, `SELECT count(*) FROM chunks WHERE document_id = $1`, d.ID)
 
 	if _, err := e.docs.Move(e.ctx, anna, docs.MoveParams{ID: d.ID, SpaceID: readSp.ID}); !errors.Is(err, docs.ErrForbidden) {
-		t.Errorf("Ziel nur lesbar: %v", err)
+		t.Errorf("target read-only: %v", err)
 	}
 	if _, err := e.docs.Move(e.ctx, anna, docs.MoveParams{ID: d.ID, SpaceID: hidden.ID}); !errors.Is(err, docs.ErrNotFound) {
-		t.Errorf("Ziel unsichtbar: %v", err)
+		t.Errorf("target invisible: %v", err)
 	}
 	if _, err := e.docs.Move(e.ctx, anna, docs.MoveParams{ID: d.ID, SpaceID: uuid.New()}); !errors.Is(err, docs.ErrNotFound) {
-		t.Errorf("Ziel unbekannt: %v", err)
+		t.Errorf("target unknown: %v", err)
 	}
 	if _, err := e.docs.Move(e.ctx, anna, docs.MoveParams{ID: d.ID, SpaceID: personal(anna)}); !errors.Is(err, ingest.ErrInvalid) {
-		t.Errorf("gleicher Bereich: %v", err)
+		t.Errorf("same space: %v", err)
 	}
 	if got, _ := e.docs.Get(e.ctx, anna, d.ID); got.SpaceID != personal(anna) {
-		t.Fatal("fehlgeschlagene Verschiebungen haben den Eintrag verändert")
+		t.Fatal("failed moves changed the entry")
 	}
 
 	moved, err := e.docs.Move(e.ctx, anna, docs.MoveParams{ID: d.ID, SpaceID: writeSp.ID})
@@ -48,19 +48,19 @@ func TestMoveNeedsWriteAccessInTarget(t *testing.T) {
 		t.Errorf("%+v", moved)
 	}
 	if list, _ := e.docs.List(e.ctx, anna, docs.ListParams{SpaceID: personal(anna)}); len(list) != 0 {
-		t.Errorf("Eintrag noch im alten Bereich: %d", len(list))
+		t.Errorf("entry still in old space: %d", len(list))
 	}
 	if list, _ := e.docs.List(e.ctx, anna, docs.ListParams{SpaceID: writeSp.ID}); len(list) != 1 {
-		t.Errorf("Eintrag nicht im Zielbereich: %d", len(list))
+		t.Errorf("entry not in target space: %d", len(list))
 	}
 	if n := queryInt(t, e, `SELECT count(*) FROM chunks WHERE document_id = $1`, d.ID); n != chunks {
 		t.Errorf("Chunks %d -> %d", chunks, n)
 	}
 	if n := queryInt(t, e, `SELECT count(*) FROM document_versions WHERE document_id = $1 AND space_id = $2`, d.ID, writeSp.ID); n != 1 {
-		t.Errorf("Versionsstand im Zielbereich: %d", n)
+		t.Errorf("version count in target space: %d", n)
 	}
 	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = 'move' AND document_id = $1`, d.ID); n != 1 {
-		t.Errorf("Audit-Einträge: %d", n)
+		t.Errorf("audit entries: %d", n)
 	}
 }
 
@@ -82,7 +82,7 @@ func TestMoveRespectsEditRightsAndApproval(t *testing.T) {
 
 	// an author may not move other people's entries
 	if _, err := e.docs.Move(e.ctx, other, docs.MoveParams{ID: d.ID, SpaceID: review.ID}); !errors.Is(err, docs.ErrForbidden) {
-		t.Errorf("fremder Eintrag: %v", err)
+		t.Errorf("other's entry: %v", err)
 	}
 	// into a space with approval required: becomes a draft
 	moved, err := e.docs.Move(e.ctx, author, docs.MoveParams{ID: d.ID, SpaceID: review.ID})
@@ -91,7 +91,7 @@ func TestMoveRespectsEditRightsAndApproval(t *testing.T) {
 	}
 	// drafts cannot be moved
 	if _, err := e.docs.Move(e.ctx, author, docs.MoveParams{ID: d.ID, SpaceID: open.ID}); !errors.Is(err, ingest.ErrInvalid) {
-		t.Errorf("Entwurf: %v", err)
+		t.Errorf("draft: %v", err)
 	}
 	// a curator may move into an approval space without draft status
 	d2 := mustStore(t, e, curator, open.ID, "Zweiter", "Inhalt beta")
@@ -108,7 +108,7 @@ func TestMoveRespectsEditRightsAndApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := e.docs.Move(e.ctx, author, docs.MoveParams{ID: d3.ID, SpaceID: open.ID}); !errors.Is(err, docs.ErrNeedsApproval) {
-		t.Errorf("Author nimmt Freigegebenes heraus: %v", err)
+		t.Errorf("author moves approved entry out: %v", err)
 	}
 }
 
@@ -123,7 +123,7 @@ func TestMoveIntoPersonalSpaceChecksQuota(t *testing.T) {
 	}
 	d := mustStore(t, e, anna, sp.ID, "Team", "x")
 	if _, err := e.docs.Move(e.ctx, anna, docs.MoveParams{ID: d.ID, SpaceID: personal(anna)}); !errors.Is(err, docs.ErrQuota) {
-		t.Errorf("Kontingent: %v", err)
+		t.Errorf("quota: %v", err)
 	}
 }
 
@@ -148,32 +148,32 @@ func TestDeleteIsAdminOnly(t *testing.T) {
 		}
 	}
 	if err := e.docs.Delete(e.ctx, outsider, d.ID); !errors.Is(err, docs.ErrNotFound) {
-		t.Errorf("Außenstehender: %v", err)
+		t.Errorf("outsider: %v", err)
 	}
 	if _, err := e.docs.Get(e.ctx, author, d.ID); err != nil {
-		t.Fatalf("Eintrag trotz abgelehntem Löschen weg: %v", err)
+		t.Fatalf("entry gone despite rejected deletion: %v", err)
 	}
 
 	if err := e.docs.Delete(e.ctx, spaceAdmin, d.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.docs.Get(e.ctx, author, d.ID); !errors.Is(err, docs.ErrNotFound) {
-		t.Errorf("Eintrag noch lesbar: %v", err)
+		t.Errorf("entry still readable: %v", err)
 	}
 	for _, table := range []string{"chunks", "document_versions"} {
 		if n := queryInt(t, e, `SELECT count(*) FROM `+table+` WHERE document_id = $1`, d.ID); n != 0 {
-			t.Errorf("%s: %d Zeilen übrig", table, n)
+			t.Errorf("%s: %d rows left", table, n)
 		}
 	}
 	// title is in the audit log of the team space
 	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = 'delete' AND details->>'title' = 'Wichtig'`); n != 1 {
-		t.Errorf("Audit mit Titel: %d", n)
+		t.Errorf("audit with title: %d", n)
 	}
 
 	// an instance admin may delete in every team space
 	d2 := mustStore(t, e, author, sp.ID, "Zweiter", "Inhalt beta")
 	if err := e.docs.Delete(e.ctx, boss, d2.ID); err != nil {
-		t.Errorf("Instanz-Admin: %v", err)
+		t.Errorf("instance admin: %v", err)
 	}
 }
 
@@ -185,15 +185,15 @@ func TestDeleteInPersonalSpace(t *testing.T) {
 
 	// even instance admins cannot reach other people's personal entries
 	if err := e.docs.Delete(e.ctx, boss, d.ID); !errors.Is(err, docs.ErrNotFound) {
-		t.Errorf("Instanz-Admin: %v", err)
+		t.Errorf("instance admin: %v", err)
 	}
 	if err := e.docs.Delete(e.ctx, anna, d.ID); err != nil {
-		t.Fatalf("Eigentümer: %v", err)
+		t.Fatalf("owner: %v", err)
 	}
 	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = 'delete' AND details IS NOT NULL`); n != 0 {
-		t.Errorf("persönliches Löschen hat Details im Audit-Log hinterlassen")
+		t.Errorf("personal deletion left details in the audit log")
 	}
 	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = 'delete'`); n != 1 {
-		t.Errorf("Audit-Einträge: %d", n)
+		t.Errorf("audit entries: %d", n)
 	}
 }

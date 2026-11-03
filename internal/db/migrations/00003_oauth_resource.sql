@@ -1,6 +1,6 @@
 -- +goose Up
--- Tokens und Codes sind an die Ziel-Ressource gebunden (RFC 8707); der Login-State
--- speichert zusätzlich den PKCE-Verifier für den Identity Provider.
+-- Tokens and codes are bound to the target resource (RFC 8707); the login state
+-- additionally stores the PKCE verifier for the identity provider.
 ALTER TABLE oauth_login_states
     ADD COLUMN resource     text NOT NULL DEFAULT '',
     ADD COLUMN idp_verifier text;

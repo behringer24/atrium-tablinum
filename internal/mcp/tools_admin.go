@@ -18,26 +18,26 @@ import (
 )
 
 func (s *Server) registerSpaceAdminTools(ms *mcp.Server) {
-	addTool(s, ms, "space_members", "Mitglieder anzeigen", tierSpaceAdmin, false, s.spaceMembers)
-	addTool(s, ms, "space_add_member", "Mitglied hinzufügen", tierSpaceAdmin, true, s.spaceAddMember)
-	addTool(s, ms, "space_remove_member", "Mitglied entfernen", tierSpaceAdmin, true, s.spaceRemoveMember)
+	addTool(s, ms, "space_members", "Show members", tierSpaceAdmin, false, s.spaceMembers)
+	addTool(s, ms, "space_add_member", "Add member", tierSpaceAdmin, true, s.spaceAddMember)
+	addTool(s, ms, "space_remove_member", "Remove member", tierSpaceAdmin, true, s.spaceRemoveMember)
 }
 
 func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
-	addTool(s, ms, "admin_create_space", "Bereich anlegen", tierInstanceAdmin, true, s.adminCreateSpace)
-	addTool(s, ms, "admin_update_space", "Bereich ändern", tierInstanceAdmin, true, s.adminUpdateSpace)
-	addTool(s, ms, "admin_archive_space", "Bereich archivieren", tierInstanceAdmin, true, s.adminArchiveSpace)
-	addTool(s, ms, "admin_restore_space", "Bereich wiederherstellen", tierInstanceAdmin, true, s.adminRestoreSpace)
-	addTool(s, ms, "admin_list_users", "Nutzer auflisten", tierInstanceAdmin, false, s.adminListUsers)
-	addTool(s, ms, "admin_offboard_user", "Nutzer offboarden", tierInstanceAdmin, true, s.adminOffboardUser)
-	addTool(s, ms, "admin_transfer_personal_space", "Persönlichen Bereich übertragen", tierInstanceAdmin, true, s.adminTransferPersonalSpace)
-	addTool(s, ms, "admin_reactivate_user", "Nutzer reaktivieren", tierInstanceAdmin, true, s.adminReactivateUser)
-	addTool(s, ms, "admin_groups", "Gruppen verwalten", tierInstanceAdmin, true, s.adminGroups)
-	addTool(s, ms, "admin_revoke_sessions", "Anmeldungen eines Nutzers beenden", tierInstanceAdmin, true, s.adminRevokeSessions)
-	addTool(s, ms, "admin_allowlist", "Login-Freigaben verwalten", tierInstanceAdmin, true, s.adminAllowlist)
-	addTool(s, ms, "admin_context", "Kontext verwalten", tierInstanceAdmin, true, s.adminContext)
-	addTool(s, ms, "admin_audit_log", "Audit-Log abfragen", tierInstanceAdmin, false, s.adminAuditLog)
-	addTool(s, ms, "admin_health", "Systemzustand", tierInstanceAdmin, false, s.adminHealth)
+	addTool(s, ms, "admin_create_space", "Create space", tierInstanceAdmin, true, s.adminCreateSpace)
+	addTool(s, ms, "admin_update_space", "Update space", tierInstanceAdmin, true, s.adminUpdateSpace)
+	addTool(s, ms, "admin_archive_space", "Archive space", tierInstanceAdmin, true, s.adminArchiveSpace)
+	addTool(s, ms, "admin_restore_space", "Restore space", tierInstanceAdmin, true, s.adminRestoreSpace)
+	addTool(s, ms, "admin_list_users", "List users", tierInstanceAdmin, false, s.adminListUsers)
+	addTool(s, ms, "admin_offboard_user", "Offboard user", tierInstanceAdmin, true, s.adminOffboardUser)
+	addTool(s, ms, "admin_transfer_personal_space", "Transfer personal space", tierInstanceAdmin, true, s.adminTransferPersonalSpace)
+	addTool(s, ms, "admin_reactivate_user", "Reactivate user", tierInstanceAdmin, true, s.adminReactivateUser)
+	addTool(s, ms, "admin_groups", "Manage groups", tierInstanceAdmin, true, s.adminGroups)
+	addTool(s, ms, "admin_revoke_sessions", "End a user's sessions", tierInstanceAdmin, true, s.adminRevokeSessions)
+	addTool(s, ms, "admin_allowlist", "Manage login allowlist", tierInstanceAdmin, true, s.adminAllowlist)
+	addTool(s, ms, "admin_context", "Manage context", tierInstanceAdmin, true, s.adminContext)
+	addTool(s, ms, "admin_audit_log", "Query audit log", tierInstanceAdmin, false, s.adminAuditLog)
+	addTool(s, ms, "admin_health", "System health", tierInstanceAdmin, false, s.adminHealth)
 }
 
 // record writes an admin audit event. The action has already happened, so a failure is
@@ -50,7 +50,7 @@ func (s *Server) record(ctx context.Context, a docs.Actor, action string, sp *sp
 		ev.SpaceID = &id
 	}
 	if err := audit.Insert(ctx, s.Pool, ev); err != nil {
-		slog.Error("Audit-Eintrag für Admin-Aktion fehlgeschlagen", "action", action, "error", err)
+		slog.Error("Audit entry for admin action failed", "action", action, "error", err)
 	}
 }
 
@@ -65,7 +65,7 @@ func (s *Server) adminSpace(ctx context.Context, a docs.Actor, ref string) (*spa
 	case sp != nil:
 		return sp, nil
 	case len(cands) > 1:
-		return nil, userErr(fmt.Sprintf("Der Bereich %q ist mehrdeutig: %s.", ref, spaceNames(cands)))
+		return nil, userErr(fmt.Sprintf("The space %q is ambiguous: %s.", ref, spaceNames(cands)))
 	}
 	return nil, docs.ErrNotFound // unknown and not administered look the same
 }
@@ -75,17 +75,17 @@ func (s *Server) principal(ctx context.Context, email, group string) (ptype stri
 	email, group = strings.TrimSpace(email), strings.TrimSpace(group)
 	switch {
 	case (email == "") == (group == ""):
-		return "", uuid.Nil, "", userErr("Bitte genau eines von user_email oder group angeben.")
+		return "", uuid.Nil, "", userErr("Please give exactly one of user_email or group.")
 	case email != "":
 		u, err := s.Users.GetByEmail(ctx, email)
 		if err != nil {
-			return "", uuid.Nil, "", userErr(fmt.Sprintf("Nutzer %q ist unbekannt. Er muss sich zuerst einmal anmelden.", email))
+			return "", uuid.Nil, "", userErr(fmt.Sprintf("User %q is unknown. They must log in once first.", email))
 		}
 		return spaces.PrincipalUser, u.ID, u.Email, nil
 	}
 	g, err := s.Users.GroupByName(ctx, group)
 	if err != nil {
-		return "", uuid.Nil, "", userErr(fmt.Sprintf("Gruppe %q nicht gefunden.", group))
+		return "", uuid.Nil, "", userErr(fmt.Sprintf("Group %q not found.", group))
 	}
 	return spaces.PrincipalGroup, g.ID, g.Name, nil
 }
@@ -93,7 +93,7 @@ func (s *Server) principal(ctx context.Context, email, group string) (ptype stri
 func parseRole(v string) (authz.Role, error) {
 	r, ok := authz.ParseRole(strings.ToLower(strings.TrimSpace(v)))
 	if !ok {
-		return authz.None, userErr("Rolle muss reader, author, curator oder admin sein.")
+		return authz.None, userErr("Role must be reader, author, curator or admin.")
 	}
 	return r, nil
 }
@@ -101,7 +101,7 @@ func parseRole(v string) (authz.Role, error) {
 // ---- space admin tools -----------------------------------------------------------------
 
 type spaceRef struct {
-	Space string `json:"space" jsonschema:"Bereich (Kürzel oder Name)"`
+	Space string `json:"space" jsonschema:"Space (slug or name)"`
 }
 
 type memberInfo struct {
@@ -137,10 +137,10 @@ func (s *Server) spaceMembers(ctx context.Context, c *call, in spaceRef) (spaceM
 }
 
 type addMemberIn struct {
-	Space     string `json:"space" jsonschema:"Bereich (Kürzel oder Name)"`
-	UserEmail string `json:"user_email,omitempty" jsonschema:"E-Mail des Nutzers (statt group)"`
-	Group     string `json:"group,omitempty" jsonschema:"Name der Gruppe (statt user_email)"`
-	Role      string `json:"role" jsonschema:"reader, author, curator oder admin"`
+	Space     string `json:"space" jsonschema:"Space (slug or name)"`
+	UserEmail string `json:"user_email,omitempty" jsonschema:"E-mail of the user (instead of group)"`
+	Group     string `json:"group,omitempty" jsonschema:"Name of the group (instead of user_email)"`
+	Role      string `json:"role" jsonschema:"reader, author, curator or admin"`
 }
 
 func (s *Server) spaceAddMember(ctx context.Context, c *call, in addMemberIn) (messageOut, error) {
@@ -160,19 +160,19 @@ func (s *Server) spaceAddMember(ctx context.Context, c *call, in addMemberIn) (m
 		return messageOut{}, err
 	}
 	s.record(ctx, c.Actor, "space_add_member", sp, map[string]any{"principal": label, "type": ptype, "role": role.String()})
-	return messageOut{Message: fmt.Sprintf("%s ist jetzt %s im Bereich „%s“.", label, role, sp.Name)}, nil
+	return messageOut{Message: fmt.Sprintf("%s is now %s in the space \"%s\".", label, role, sp.Name)}, nil
 }
 
 type removeMemberIn struct {
-	Space     string `json:"space" jsonschema:"Bereich (Kürzel oder Name)"`
-	UserEmail string `json:"user_email,omitempty" jsonschema:"E-Mail des Nutzers (statt group)"`
-	Group     string `json:"group,omitempty" jsonschema:"Name der Gruppe (statt user_email)"`
-	Confirm   bool   `json:"confirm" jsonschema:"true erst nach Bestätigung durch den Nutzer"`
+	Space     string `json:"space" jsonschema:"Space (slug or name)"`
+	UserEmail string `json:"user_email,omitempty" jsonschema:"E-mail of the user (instead of group)"`
+	Group     string `json:"group,omitempty" jsonschema:"Name of the group (instead of user_email)"`
+	Confirm   bool   `json:"confirm" jsonschema:"true only after confirmation by the user"`
 }
 
 func (s *Server) spaceRemoveMember(ctx context.Context, c *call, in removeMemberIn) (messageOut, error) {
 	if !in.Confirm {
-		return messageOut{}, userErr("Entfernen braucht eine Bestätigung: den Nutzer fragen und danach mit confirm=true erneut aufrufen.")
+		return messageOut{}, userErr("Removing needs a confirmation: ask the user and then call again with confirm=true.")
 	}
 	sp, err := s.adminSpace(ctx, c.Actor, in.Space)
 	if err != nil {
@@ -186,7 +186,7 @@ func (s *Server) spaceRemoveMember(ctx context.Context, c *call, in removeMember
 		return messageOut{}, err
 	}
 	s.record(ctx, c.Actor, "space_remove_member", sp, map[string]any{"principal": label, "type": ptype})
-	return messageOut{Message: fmt.Sprintf("%s wurde aus dem Bereich „%s“ entfernt.", label, sp.Name)}, nil
+	return messageOut{Message: fmt.Sprintf("%s was removed from the space \"%s\".", label, sp.Name)}, nil
 }
 
 // ---- instance admin: spaces ---------------------------------------------------------------
@@ -198,12 +198,12 @@ type initialMember struct {
 }
 
 type createSpaceIn struct {
-	Slug            string          `json:"slug" jsonschema:"Kürzel: Kleinbuchstaben, Ziffern, Bindestrich (2-63 Zeichen)"`
-	Name            string          `json:"name" jsonschema:"Anzeigename"`
-	Description     string          `json:"description,omitempty" jsonschema:"Kurzbeschreibung"`
-	RequireApproval bool            `json:"require_approval,omitempty" jsonschema:"true = Beiträge von Autoren brauchen Freigabe durch einen Kurator"`
-	DefaultRole     string          `json:"default_role,omitempty" jsonschema:"reader oder author = Zugriff für alle angemeldeten Nutzer; leer = nur Mitglieder"`
-	Members         []initialMember `json:"members,omitempty" jsonschema:"Erste Mitglieder (Nutzer oder Gruppe mit Rolle)"`
+	Slug            string          `json:"slug" jsonschema:"Slug: lowercase letters, digits, hyphen (2-63 characters)"`
+	Name            string          `json:"name" jsonschema:"Display name"`
+	Description     string          `json:"description,omitempty" jsonschema:"Short description"`
+	RequireApproval bool            `json:"require_approval,omitempty" jsonschema:"true = contributions from authors need approval by a curator"`
+	DefaultRole     string          `json:"default_role,omitempty" jsonschema:"reader or author = access for all logged-in users; empty = members only"`
+	Members         []initialMember `json:"members,omitempty" jsonschema:"Initial members (user or group with role)"`
 }
 
 type createSpaceOut struct {
@@ -229,7 +229,7 @@ func (s *Server) adminCreateSpace(ctx context.Context, c *call, in createSpaceIn
 	out := createSpaceOut{Slug: sp.Slug, Warnings: s.addInitialMembers(ctx, c, sp.ID, in.Members)}
 	s.record(ctx, c.Actor, "admin_create_space", &sp, map[string]any{"slug": sp.Slug, "require_approval": sp.RequireApproval,
 		"default_role": sp.DefaultRole.String(), "members": len(in.Members) - len(out.Warnings)})
-	out.Message = fmt.Sprintf("Bereich „%s“ (%s) wurde angelegt.", sp.Name, sp.Slug)
+	out.Message = fmt.Sprintf("Space \"%s\" (%s) was created.", sp.Name, sp.Slug)
 	return out, nil
 }
 
@@ -250,19 +250,19 @@ func (s *Server) addInitialMembers(ctx context.Context, c *call, space uuid.UUID
 		}
 		if err != nil {
 			who := m.UserEmail + m.Group
-			warnings = append(warnings, fmt.Sprintf("%s wurde nicht hinzugefügt: %s", who, strings.ReplaceAll(err.Error(), "\n", " ")))
+			warnings = append(warnings, fmt.Sprintf("%s was not added: %s", who, strings.ReplaceAll(err.Error(), "\n", " ")))
 		}
 	}
 	return warnings
 }
 
 type updateSpaceIn struct {
-	Space           string  `json:"space" jsonschema:"Bereich (Kürzel oder Name)"`
-	Name            *string `json:"name,omitempty" jsonschema:"Neuer Anzeigename"`
-	Description     *string `json:"description,omitempty" jsonschema:"Neue Kurzbeschreibung; leer entfernt sie"`
-	RequireApproval *bool   `json:"require_approval,omitempty" jsonschema:"true = Beiträge von Autoren brauchen Freigabe durch einen Kurator; false = ohne Freigabe"`
-	DefaultRole     *string `json:"default_role,omitempty" jsonschema:"reader oder author = Zugriff für alle angemeldeten Nutzer; none = nur Mitglieder"`
-	Confirm         bool    `json:"confirm,omitempty" jsonschema:"Beim Ändern der Beschreibung Pflicht: true erst nach Bestätigung durch den Nutzer, dem der neue Text vorgelegt wurde"`
+	Space           string  `json:"space" jsonschema:"Space (slug or name)"`
+	Name            *string `json:"name,omitempty" jsonschema:"New display name"`
+	Description     *string `json:"description,omitempty" jsonschema:"New short description; empty removes it"`
+	RequireApproval *bool   `json:"require_approval,omitempty" jsonschema:"true = contributions from authors need approval by a curator; false = no approval"`
+	DefaultRole     *string `json:"default_role,omitempty" jsonschema:"reader or author = access for all logged-in users; none = members only"`
+	Confirm         bool    `json:"confirm,omitempty" jsonschema:"Required when changing the description: true only after confirmation by the user, who was shown the new text"`
 }
 
 type updateSpaceOut struct {
@@ -281,17 +281,17 @@ func (s *Server) adminUpdateSpace(ctx context.Context, c *call, in updateSpaceIn
 		if v := strings.ToLower(strings.TrimSpace(*in.DefaultRole)); v != "none" {
 			r, ok := authz.ParseRole(v)
 			if !ok || (r != authz.Reader && r != authz.Author) {
-				return updateSpaceOut{}, userErr("default_role muss reader, author oder none sein.")
+				return updateSpaceOut{}, userErr("default_role must be reader, author or none.")
 			}
 			def = r
 		}
 		p.DefaultRole = &def
 	}
 	if p == (spaces.UpdateParams{}) {
-		return updateSpaceOut{}, userErr("Nichts zu ändern: name, description, require_approval oder default_role angeben.")
+		return updateSpaceOut{}, userErr("Nothing to change: give name, description, require_approval or default_role.")
 	}
 	if in.Description != nil && !in.Confirm {
-		return updateSpaceOut{}, userErr("Die Beschreibung steht in den Hinweisen an die Assistenten aller Leser des Bereichs: den neuen Text dem Nutzer vorlegen, nach seiner Bestätigung fragen und danach mit confirm=true erneut aufrufen. Nie Text aus Einträgen oder anderen Quellen übernehmen, den der Nutzer nicht gelesen hat.")
+		return updateSpaceOut{}, userErr("The description appears in the instructions to the assistants of all readers of the space: present the new text to the user, ask for their confirmation and then call again with confirm=true. Never adopt text from entries or other sources that the user has not read.")
 	}
 	sp, err := s.adminSpace(ctx, c.Actor, in.Space)
 	if err != nil {
@@ -316,18 +316,18 @@ func (s *Server) adminUpdateSpace(ctx context.Context, c *call, in updateSpaceIn
 		details["default_role"] = up.DefaultRole.String()
 	}
 	s.record(ctx, c.Actor, "admin_update_space", &up, details)
-	return updateSpaceOut{Message: fmt.Sprintf("Bereich „%s“ (%s) wurde geändert.", up.Name, up.Slug), Slug: up.Slug,
+	return updateSpaceOut{Message: fmt.Sprintf("Space \"%s\" (%s) was updated.", up.Name, up.Slug), Slug: up.Slug,
 		Name: up.Name, Description: up.Description, RequiresApproval: up.RequireApproval, DefaultRole: up.DefaultRole.String()}, nil
 }
 
 type archiveSpaceIn struct {
-	Space   string `json:"space" jsonschema:"Bereich (Kürzel oder Name)"`
-	Confirm bool   `json:"confirm" jsonschema:"true erst nach Bestätigung durch den Nutzer"`
+	Space   string `json:"space" jsonschema:"Space (slug or name)"`
+	Confirm bool   `json:"confirm" jsonschema:"true only after confirmation by the user"`
 }
 
 func (s *Server) adminArchiveSpace(ctx context.Context, c *call, in archiveSpaceIn) (messageOut, error) {
 	if !in.Confirm {
-		return messageOut{}, userErr("Archivieren braucht eine Bestätigung: den Nutzer fragen und danach mit confirm=true erneut aufrufen.")
+		return messageOut{}, userErr("Archiving needs a confirmation: ask the user and then call again with confirm=true.")
 	}
 	sp, err := s.adminSpace(ctx, c.Actor, in.Space)
 	if err != nil {
@@ -337,7 +337,7 @@ func (s *Server) adminArchiveSpace(ctx context.Context, c *call, in archiveSpace
 		return messageOut{}, err
 	}
 	s.record(ctx, c.Actor, "admin_archive_space", sp, nil)
-	return messageOut{Message: fmt.Sprintf("Bereich „%s“ ist archiviert und für Nutzer nicht mehr sichtbar.", sp.Name)}, nil
+	return messageOut{Message: fmt.Sprintf("The space \"%s\" is archived and no longer visible to users.", sp.Name)}, nil
 }
 
 func (s *Server) adminRestoreSpace(ctx context.Context, c *call, in spaceRef) (messageOut, error) {
@@ -349,7 +349,7 @@ func (s *Server) adminRestoreSpace(ctx context.Context, c *call, in spaceRef) (m
 		return messageOut{}, err
 	}
 	s.record(ctx, c.Actor, "admin_restore_space", sp, nil)
-	return messageOut{Message: fmt.Sprintf("Bereich „%s“ ist wiederhergestellt.", sp.Name)}, nil
+	return messageOut{Message: fmt.Sprintf("The space \"%s\" has been restored.", sp.Name)}, nil
 }
 
 // ---- instance admin: users and groups ---------------------------------------------------------
@@ -400,7 +400,7 @@ func (s *Server) adminListUsers(ctx context.Context, _ *call, _ listUsersIn) (li
 		return listUsersOut{}, err
 	}
 	out := listUsersOut{
-		Note:  "Von persönlichen Bereichen sind nur Anzahl, Größe und letzte Änderung sichtbar, niemals Inhalte.",
+		Note:  "Of personal spaces, only count, size and last change are visible, never content.",
 		Users: make([]userInfo, 0, len(all)),
 	}
 	for _, u := range all {
@@ -428,14 +428,14 @@ func (s *Server) adminListUsers(ctx context.Context, _ *call, _ listUsersIn) (li
 func (s *Server) knownUser(ctx context.Context, email string) (users.User, error) {
 	u, err := s.Users.GetByEmail(ctx, strings.TrimSpace(email))
 	if err != nil {
-		return users.User{}, userErr(fmt.Sprintf("Nutzer %q ist unbekannt.", email))
+		return users.User{}, userErr(fmt.Sprintf("User %q is unknown.", email))
 	}
 	return u, nil
 }
 
 type offboardIn struct {
-	UserEmail string `json:"user_email" jsonschema:"E-Mail des ausscheidenden Nutzers"`
-	Confirm   bool   `json:"confirm" jsonschema:"true erst nach Bestätigung durch den Nutzer"`
+	UserEmail string `json:"user_email" jsonschema:"E-mail of the departing user"`
+	Confirm   bool   `json:"confirm" jsonschema:"true only after confirmation by the user"`
 }
 
 type offboardOut struct {
@@ -448,16 +448,16 @@ type offboardOut struct {
 
 func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) (offboardOut, error) {
 	if !in.Confirm {
-		return offboardOut{}, userErr("Offboarding braucht eine Bestätigung: den Nutzer fragen und danach mit confirm=true erneut aufrufen. Das Konto verliert sofort jeden Zugriff.")
+		return offboardOut{}, userErr("Offboarding needs a confirmation: ask the user and then call again with confirm=true. The account loses all access immediately.")
 	}
 	u, err := s.knownUser(ctx, in.UserEmail)
 	if err != nil {
 		return offboardOut{}, err
 	}
 	if u.ID == c.Actor.User.ID {
-		return offboardOut{}, userErr("Das eigene Konto kann nicht offboardet werden.")
+		return offboardOut{}, userErr("Your own account cannot be offboarded.")
 	}
-	out := offboardOut{Message: fmt.Sprintf("%s ist gesperrt und hat keinen Zugriff mehr.", u.Email)}
+	out := offboardOut{Message: fmt.Sprintf("%s is locked and no longer has access.", u.Email)}
 	if u.Active {
 		if err := s.Users.SetActive(ctx, u.ID, false); err != nil {
 			return offboardOut{}, err
@@ -467,7 +467,7 @@ func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) 
 		}
 	} else {
 		// SetActive would restart the retention period.
-		out.Message = fmt.Sprintf("%s war bereits gesperrt.", u.Email)
+		out.Message = fmt.Sprintf("%s was already locked.", u.Email)
 	}
 	if s.RevokeTokens != nil {
 		if out.RevokedTokens, err = s.RevokeTokens(ctx, u.ID); err != nil {
@@ -484,10 +484,10 @@ func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) 
 		}
 		out.Personal = s.personalMetaOf(u, stats[u.ID])
 		if out.Personal.Documents > 0 {
-			out.Next = "Den persönlichen Bereich mit admin_transfer_personal_space übertragen: mode=space macht daraus einen Team-Bereich " +
-				"(z. B. Vorgesetzter als admin, Nachfolger als curator), mode=merge verschiebt alles in den persönlichen Bereich des Nachfolgers."
+			out.Next = "Transfer the personal space with admin_transfer_personal_space: mode=space turns it into a team space " +
+				"(e.g. supervisor as admin, successor as curator), mode=merge moves everything into the personal space of the successor."
 			if out.Personal.PurgeAfter != "" {
-				out.Next += " Ohne Übertragung wird er nach Ablauf der Frist (purge_after) gelöscht."
+				out.Next += " Without a transfer it is deleted when the period (purge_after) expires."
 			}
 		}
 	}
@@ -497,14 +497,14 @@ func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) 
 }
 
 type transferIn struct {
-	UserEmail   string          `json:"user_email" jsonschema:"E-Mail des gesperrten Nutzers, dessen persönlicher Bereich übertragen wird"`
-	Mode        string          `json:"mode" jsonschema:"space = in einen Team-Bereich umwandeln; merge = alles in den persönlichen Bereich von target_email verschieben"`
-	TargetEmail string          `json:"target_email,omitempty" jsonschema:"Nur merge: E-Mail des Nachfolgers"`
-	Slug        string          `json:"slug,omitempty" jsonschema:"Nur space: Kürzel des neuen Team-Bereichs (Kleinbuchstaben, Ziffern, Bindestrich)"`
-	Name        string          `json:"name,omitempty" jsonschema:"Nur space: Anzeigename, z. B. Nachlass Max Muster"`
-	Description string          `json:"description,omitempty" jsonschema:"Nur space: Kurzbeschreibung"`
-	Members     []initialMember `json:"members,omitempty" jsonschema:"Nur space: Mitglieder, z. B. Vorgesetzter als admin, Nachfolger als curator"`
-	Confirm     bool            `json:"confirm" jsonschema:"true erst nach Bestätigung durch den Nutzer"`
+	UserEmail   string          `json:"user_email" jsonschema:"E-mail of the locked user whose personal space is transferred"`
+	Mode        string          `json:"mode" jsonschema:"space = convert into a team space; merge = move everything into the personal space of target_email"`
+	TargetEmail string          `json:"target_email,omitempty" jsonschema:"merge only: e-mail of the successor"`
+	Slug        string          `json:"slug,omitempty" jsonschema:"space only: slug of the new team space (lowercase letters, digits, hyphen)"`
+	Name        string          `json:"name,omitempty" jsonschema:"space only: display name, e.g. Estate of Max Muster"`
+	Description string          `json:"description,omitempty" jsonschema:"space only: short description"`
+	Members     []initialMember `json:"members,omitempty" jsonschema:"space only: members, e.g. supervisor as admin, successor as curator"`
+	Confirm     bool            `json:"confirm" jsonschema:"true only after confirmation by the user"`
 }
 
 type transferOut struct {
@@ -516,17 +516,17 @@ type transferOut struct {
 
 func (s *Server) adminTransferPersonalSpace(ctx context.Context, c *call, in transferIn) (transferOut, error) {
 	if !in.Confirm {
-		return transferOut{}, userErr("Übertragen braucht eine Bestätigung: den Nutzer fragen und danach mit confirm=true erneut aufrufen.")
+		return transferOut{}, userErr("Transferring needs a confirmation: ask the user and then call again with confirm=true.")
 	}
 	u, err := s.knownUser(ctx, in.UserEmail)
 	if err != nil {
 		return transferOut{}, err
 	}
 	if u.Active {
-		return transferOut{}, userErr(fmt.Sprintf("%s ist nicht gesperrt. Persönliche Bereiche aktiver Konten bleiben privat; zuerst admin_offboard_user aufrufen.", u.Email))
+		return transferOut{}, userErr(fmt.Sprintf("%s is not locked. Personal spaces of active accounts stay private; call admin_offboard_user first.", u.Email))
 	}
 	if u.PersonalSpaceID == nil {
-		return transferOut{}, userErr(fmt.Sprintf("%s hat keinen persönlichen Bereich mehr.", u.Email))
+		return transferOut{}, userErr(fmt.Sprintf("%s no longer has a personal space.", u.Email))
 	}
 	from := *u.PersonalSpaceID
 	switch strings.ToLower(strings.TrimSpace(in.Mode)) {
@@ -536,17 +536,17 @@ func (s *Server) adminTransferPersonalSpace(ctx context.Context, c *call, in tra
 			return transferOut{}, err
 		}
 		if to.ID == c.Actor.User.ID {
-			return transferOut{}, userErr("Der Admin kann den persönlichen Bereich eines Ausgeschiedenen nicht in den eigenen übernehmen: einen anderen Empfänger angeben (Vier-Augen-Prinzip).")
+			return transferOut{}, userErr("The admin cannot take over the personal space of a departed user into their own: give a different recipient (four-eyes principle).")
 		}
 		if !to.Active {
-			return transferOut{}, userErr(fmt.Sprintf("%s ist gesperrt und kann nichts übernehmen.", to.Email))
+			return transferOut{}, userErr(fmt.Sprintf("%s is locked and cannot take anything over.", to.Email))
 		}
 		n, err := s.Docs.MergePersonal(ctx, from, to, c.Actor.User.ID)
 		if err != nil {
 			return transferOut{}, err
 		}
 		s.record(ctx, c.Actor, "admin_transfer_personal_space", nil, map[string]any{"user": u.Email, "mode": "merge", "target": to.Email, "documents": n})
-		return transferOut{Message: fmt.Sprintf("%d Einträge von %s liegen jetzt im persönlichen Bereich von %s.", n, u.Email, to.Email), Documents: n}, nil
+		return transferOut{Message: fmt.Sprintf("%d entries of %s are now in the personal space of %s.", n, u.Email, to.Email), Documents: n}, nil
 	case "space":
 		stats, err := s.Docs.PersonalStats(ctx)
 		if err != nil {
@@ -563,14 +563,14 @@ func (s *Server) adminTransferPersonalSpace(ctx context.Context, c *call, in tra
 		out := transferOut{Documents: n, Slug: sp.Slug, Warnings: s.addInitialMembers(ctx, c, sp.ID, in.Members)}
 		added := len(in.Members) - len(out.Warnings)
 		if added == 0 {
-			out.Warnings = append(out.Warnings, "Der Bereich hat keine Mitglieder; bis welche hinzugefügt werden, sehen ihn nur Instanz-Admins.")
+			out.Warnings = append(out.Warnings, "The space has no members; until some are added, only instance admins can see it.")
 		}
 		s.record(ctx, c.Actor, "admin_transfer_personal_space", &sp, map[string]any{"user": u.Email, "mode": "space", "slug": sp.Slug,
 			"documents": n, "members": added})
-		out.Message = fmt.Sprintf("Der persönliche Bereich von %s ist jetzt der Team-Bereich „%s“ (%s) mit %d Einträgen.", u.Email, sp.Name, sp.Slug, n)
+		out.Message = fmt.Sprintf("The personal space of %s is now the team space \"%s\" (%s) with %d entries.", u.Email, sp.Name, sp.Slug, n)
 		return out, nil
 	}
-	return transferOut{}, userErr("mode muss space oder merge sein.")
+	return transferOut{}, userErr("mode must be space or merge.")
 }
 
 type reactivateIn struct {
@@ -583,25 +583,25 @@ func (s *Server) adminReactivateUser(ctx context.Context, c *call, in reactivate
 		return messageOut{}, err
 	}
 	if u.Active {
-		return messageOut{Message: fmt.Sprintf("%s ist bereits aktiv.", u.Email)}, nil
+		return messageOut{Message: fmt.Sprintf("%s is already active.", u.Email)}, nil
 	}
 	if err := s.Users.SetActive(ctx, u.ID, true); err != nil {
 		return messageOut{}, err
 	}
 	s.record(ctx, c.Actor, "admin_reactivate_user", nil, map[string]any{"user": u.Email})
-	msg := fmt.Sprintf("%s ist wieder aktiv und kann sich anmelden.", u.Email)
+	msg := fmt.Sprintf("%s is active again and can log in.", u.Email)
 	if u.PersonalSpaceID == nil {
-		msg += " Der frühere persönliche Bereich wurde übertragen oder gelöscht; beim nächsten Login entsteht ein neuer, leerer."
+		msg += " The former personal space was transferred or deleted; a new, empty one is created at the next login."
 	}
 	return messageOut{Message: msg}, nil
 }
 
 type groupsIn struct {
-	Action    string `json:"action" jsonschema:"list, create, rename, delete, add_member oder remove_member"`
-	Name      string `json:"name,omitempty" jsonschema:"Gruppenname (außer bei list ohne Details)"`
-	NewName   string `json:"new_name,omitempty" jsonschema:"Neuer Name (rename)"`
-	UserEmail string `json:"user_email,omitempty" jsonschema:"E-Mail des Nutzers (add_member, remove_member)"`
-	Confirm   bool   `json:"confirm,omitempty" jsonschema:"true erst nach Bestätigung (delete)"`
+	Action    string `json:"action" jsonschema:"list, create, rename, delete, add_member or remove_member"`
+	Name      string `json:"name,omitempty" jsonschema:"Group name (except for list without details)"`
+	NewName   string `json:"new_name,omitempty" jsonschema:"New name (rename)"`
+	UserEmail string `json:"user_email,omitempty" jsonschema:"E-mail of the user (add_member, remove_member)"`
+	Confirm   bool   `json:"confirm,omitempty" jsonschema:"true only after confirmation (delete)"`
 }
 
 type groupInfo struct {
@@ -621,7 +621,7 @@ func (s *Server) adminGroups(ctx context.Context, c *call, in groupsIn) (groupsO
 	needGroup := func() (users.Group, error) {
 		g, err := s.Users.GroupByName(ctx, name)
 		if err != nil {
-			return users.Group{}, userErr(fmt.Sprintf("Gruppe %q nicht gefunden.", name))
+			return users.Group{}, userErr(fmt.Sprintf("Group %q not found.", name))
 		}
 		return g, nil
 	}
@@ -653,7 +653,7 @@ func (s *Server) adminGroups(ctx context.Context, c *call, in groupsIn) (groupsO
 			return groupsOut{}, err
 		}
 		s.record(ctx, c.Actor, "admin_group_create", nil, map[string]any{"group": g.Name})
-		return groupsOut{Message: fmt.Sprintf("Gruppe „%s“ wurde angelegt.", g.Name)}, nil
+		return groupsOut{Message: fmt.Sprintf("Group \"%s\" was created.", g.Name)}, nil
 	case "rename":
 		g, err := needGroup()
 		if err != nil {
@@ -663,10 +663,10 @@ func (s *Server) adminGroups(ctx context.Context, c *call, in groupsIn) (groupsO
 			return groupsOut{}, err
 		}
 		s.record(ctx, c.Actor, "admin_group_rename", nil, map[string]any{"group": g.Name, "new_name": strings.TrimSpace(in.NewName)})
-		return groupsOut{Message: fmt.Sprintf("Gruppe „%s“ heißt jetzt „%s“.", g.Name, strings.TrimSpace(in.NewName))}, nil
+		return groupsOut{Message: fmt.Sprintf("Group \"%s\" is now called \"%s\".", g.Name, strings.TrimSpace(in.NewName))}, nil
 	case "delete":
 		if !in.Confirm {
-			return groupsOut{}, userErr("Löschen braucht eine Bestätigung: den Nutzer fragen und danach mit confirm=true erneut aufrufen. Mit der Gruppe verschwinden auch ihre Bereichsrechte.")
+			return groupsOut{}, userErr("Deleting needs a confirmation: ask the user and then call again with confirm=true. The group's space permissions disappear with it.")
 		}
 		g, err := needGroup()
 		if err != nil {
@@ -676,7 +676,7 @@ func (s *Server) adminGroups(ctx context.Context, c *call, in groupsIn) (groupsO
 			return groupsOut{}, err
 		}
 		s.record(ctx, c.Actor, "admin_group_delete", nil, map[string]any{"group": g.Name})
-		return groupsOut{Message: fmt.Sprintf("Gruppe „%s“ wurde gelöscht.", g.Name)}, nil
+		return groupsOut{Message: fmt.Sprintf("Group \"%s\" was deleted.", g.Name)}, nil
 	case "add_member", "remove_member":
 		g, err := needGroup()
 		if err != nil {
@@ -684,34 +684,34 @@ func (s *Server) adminGroups(ctx context.Context, c *call, in groupsIn) (groupsO
 		}
 		u, err := s.Users.GetByEmail(ctx, strings.TrimSpace(in.UserEmail))
 		if err != nil {
-			return groupsOut{}, userErr(fmt.Sprintf("Nutzer %q ist unbekannt. Er muss sich zuerst einmal anmelden.", in.UserEmail))
+			return groupsOut{}, userErr(fmt.Sprintf("User %q is unknown. They must log in once first.", in.UserEmail))
 		}
-		action, msg := "admin_group_add_member", "ist jetzt Mitglied der Gruppe"
+		action, msg := "admin_group_add_member", "is now a member of the group"
 		if strings.EqualFold(in.Action, "add_member") {
 			err = s.Users.AddGroupMember(ctx, g.ID, u.ID)
 		} else {
-			action, msg = "admin_group_remove_member", "ist nicht mehr Mitglied der Gruppe"
+			action, msg = "admin_group_remove_member", "is no longer a member of the group"
 			err = s.Users.RemoveGroupMember(ctx, g.ID, u.ID)
 		}
 		if err != nil {
 			return groupsOut{}, err
 		}
 		s.record(ctx, c.Actor, action, nil, map[string]any{"group": g.Name, "user": u.Email})
-		return groupsOut{Message: fmt.Sprintf("%s %s „%s“.", u.Email, msg, g.Name)}, nil
+		return groupsOut{Message: fmt.Sprintf("%s %s \"%s\".", u.Email, msg, g.Name)}, nil
 	}
-	return groupsOut{}, userErr("action muss list, create, rename, delete, add_member oder remove_member sein.")
+	return groupsOut{}, userErr("action must be list, create, rename, delete, add_member or remove_member.")
 }
 
 // ---- instance admin: audit log and health -----------------------------------------------------------
 
 type auditIn struct {
-	User       string `json:"user,omitempty" jsonschema:"Nur Aktionen dieses Nutzers (E-Mail)"`
-	Action     string `json:"action,omitempty" jsonschema:"Aktion, z. B. store oder search; mit * am Ende als Präfix (admin_*)"`
-	Space      string `json:"space,omitempty" jsonschema:"Nur dieser Bereich (Kürzel oder Name)"`
-	DocumentID string `json:"document_id,omitempty" jsonschema:"Nur dieser Eintrag"`
-	Since      string `json:"since,omitempty" jsonschema:"Ab Zeitpunkt (RFC 3339 oder JJJJ-MM-TT)"`
-	Until      string `json:"until,omitempty" jsonschema:"Bis vor Zeitpunkt (RFC 3339 oder JJJJ-MM-TT)"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"Anzahl Einträge, Standard 50, höchstens 200"`
+	User       string `json:"user,omitempty" jsonschema:"Only actions of this user (e-mail)"`
+	Action     string `json:"action,omitempty" jsonschema:"Action, e.g. store or search; with * at the end as a prefix (admin_*)"`
+	Space      string `json:"space,omitempty" jsonschema:"Only this space (slug or name)"`
+	DocumentID string `json:"document_id,omitempty" jsonschema:"Only this entry"`
+	Since      string `json:"since,omitempty" jsonschema:"From this point in time (RFC 3339 or YYYY-MM-DD)"`
+	Until      string `json:"until,omitempty" jsonschema:"Until before this point in time (RFC 3339 or YYYY-MM-DD)"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Number of entries, default 50, at most 200"`
 }
 
 type auditEntry struct {
@@ -739,7 +739,7 @@ func parseTime(v string) (*time.Time, error) {
 			return &t, nil
 		}
 	}
-	return nil, userErr(fmt.Sprintf("Zeitangabe %q nicht lesbar (RFC 3339 oder JJJJ-MM-TT).", v))
+	return nil, userErr(fmt.Sprintf("Time value %q not readable (RFC 3339 or YYYY-MM-DD).", v))
 }
 
 func (s *Server) adminAuditLog(ctx context.Context, _ *call, in auditIn) (auditOut, error) {
@@ -754,7 +754,7 @@ func (s *Server) adminAuditLog(ctx context.Context, _ *call, in auditIn) (auditO
 	if in.DocumentID != "" {
 		id, err := uuid.Parse(strings.TrimSpace(in.DocumentID))
 		if err != nil {
-			return auditOut{}, userErr("document_id ist keine gültige ID.")
+			return auditOut{}, userErr("document_id is not a valid ID.")
 		}
 		f.DocumentID = &id
 	}
@@ -772,7 +772,7 @@ func (s *Server) queryAudit(ctx context.Context, f audit.Filter, spaceRef string
 		case sp != nil:
 			f.SpaceID = &sp.ID
 		case len(cands) > 1:
-			return auditOut{}, userErr(fmt.Sprintf("Der Bereich %q ist mehrdeutig: %s.", spaceRef, spaceNames(cands)))
+			return auditOut{}, userErr(fmt.Sprintf("The space %q is ambiguous: %s.", spaceRef, spaceNames(cands)))
 		default:
 			return auditOut{}, docs.ErrNotFound
 		}
@@ -782,7 +782,7 @@ func (s *Server) queryAudit(ctx context.Context, f audit.Filter, spaceRef string
 		return auditOut{}, err
 	}
 	out := auditOut{
-		Note:    "Aktionen in persönlichen Bereichen erscheinen nur mit Zeitpunkt und Aktion, ohne Inhalte, Titel oder Suchtexte.",
+		Note:    "Actions in personal spaces appear only with time and action, without content, titles or search texts.",
 		Entries: make([]auditEntry, 0, len(entries)),
 	}
 	for _, e := range entries {
@@ -832,14 +832,14 @@ func (s *Server) adminHealth(ctx context.Context, _ *call, _ healthIn) (healthOu
 	}
 	// TLS is terminated outside this process (bundled nginx or an existing proxy), so the
 	// certificate is not visible here.
-	out.Checks = append(out.Checks, checkInfo{Name: "tls_certificate", OK: true, Detail: "wird vom vorgeschalteten Proxy verwaltet und hier nicht geprüft"})
+	out.Checks = append(out.Checks, checkInfo{Name: "tls_certificate", OK: true, Detail: "managed by the upstream proxy and not checked here"})
 	if s.Jobs != nil {
 		if sum, err := s.Jobs.Summary(cctx); err == nil {
 			out.Jobs = sum
 		}
 		if n, err := s.Jobs.FailedSince(cctx, 24*time.Hour); err == nil && n > 0 {
 			out.Status = "degraded"
-			out.Checks = append(out.Checks, checkInfo{Name: "jobs", OK: false, Detail: fmt.Sprintf("%d Job(s) in den letzten 24 Stunden fehlgeschlagen", n)})
+			out.Checks = append(out.Checks, checkInfo{Name: "jobs", OK: false, Detail: fmt.Sprintf("%d job(s) failed in the last 24 hours", n)})
 		}
 		for _, st := range s.Jobs.PeriodicStatus() {
 			ti := taskInfo{Name: st.Name, Error: st.LastErr}

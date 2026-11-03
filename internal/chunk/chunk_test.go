@@ -43,7 +43,7 @@ func TestHeadingPaths(t *testing.T) {
 }
 
 func TestHashInCodeFenceIsNotAHeading(t *testing.T) {
-	doc := "# Setup\n```bash\n# kein Heading\necho hi\n```\n\nEnde"
+	doc := "# Setup\n```bash\n# not a heading\necho hi\n```\n\nEnde"
 	cs := Split("T", doc, Options{TargetTokens: 500, MaxTokens: 800})
 	if len(cs) != 1 || cs[0].HeadingPath != "Setup" {
 		t.Fatalf("%+v", cs)
@@ -57,14 +57,14 @@ func TestLongSectionSplitsAtParagraphs(t *testing.T) {
 	}
 	cs := Split("T", "# Lang\n"+strings.Join(paras, "\n\n"), opt)
 	if len(cs) < 5 {
-		t.Fatalf("zu wenige Chunks: %d", len(cs))
+		t.Fatalf("too few chunks: %d", len(cs))
 	}
 	for _, c := range cs {
 		if c.HeadingPath != "Lang" {
 			t.Errorf("path %q", c.HeadingPath)
 		}
 		if n := EstimateTokens(c.Content); n > opt.MaxTokens+5 {
-			t.Errorf("Chunk mit %d Tokens", n)
+			t.Errorf("chunk with %d tokens", n)
 		}
 	}
 }
@@ -78,15 +78,15 @@ func TestHugeParagraphIsHardSplitWithoutLoss(t *testing.T) {
 	var words []string
 	for _, c := range cs {
 		if !utf8.ValidString(c.Content) {
-			t.Fatal("ungültiges UTF-8")
+			t.Fatal("invalid UTF-8")
 		}
 		if EstimateTokens(c.Content) > opt.MaxTokens {
-			t.Errorf("Chunk zu groß: %d", EstimateTokens(c.Content))
+			t.Errorf("chunk too large: %d", EstimateTokens(c.Content))
 		}
 		words = append(words, strings.Fields(c.Content)...)
 	}
 	if len(words) != 400 {
-		t.Errorf("Wörter: %d, erwartet 400", len(words))
+		t.Errorf("words: %d, want 400", len(words))
 	}
 }
 
@@ -95,23 +95,23 @@ func TestNoWhitespaceTextStillSplits(t *testing.T) {
 	total := 0
 	for _, c := range cs {
 		if EstimateTokens(c.Content) > opt.MaxTokens {
-			t.Errorf("zu groß")
+			t.Errorf("too large")
 		}
 		total += utf8.RuneCountInString(c.Content)
 	}
 	if total != 1000 {
-		t.Errorf("Zeichen verloren: %d", total)
+		t.Errorf("characters lost: %d", total)
 	}
 }
 
 func TestTinySectionsAreMerged(t *testing.T) {
-	doc := "# A\nkurz\n# B\nauch kurz\n# C\n" + strings.Repeat("Lang genug für einen eigenen Chunk. ", 8)
+	doc := "# A\nshort\n# B\nalso short\n# C\n" + strings.Repeat("Long enough for a chunk of its own. ", 8)
 	cs := Split("T", doc, opt)
 	if len(cs) >= 3 {
-		t.Fatalf("kleine Abschnitte nicht zusammengeführt: %d Chunks", len(cs))
+		t.Fatalf("small sections not merged: %d chunks", len(cs))
 	}
-	if !strings.Contains(cs[0].Content, "auch kurz") {
-		t.Error("B fehlt im ersten Chunk")
+	if !strings.Contains(cs[0].Content, "also short") {
+		t.Error("B missing from the first chunk")
 	}
 }
 
