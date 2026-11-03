@@ -21,6 +21,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
@@ -160,7 +161,7 @@ func setup(t *testing.T, writesPerMinute int) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
+	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{}), Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
 		Health: []HealthCheck{{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }}}},
 		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute})
 
@@ -288,7 +289,8 @@ func TestToolListAndDescriptions(t *testing.T) {
 		got[tool.Name] = tool
 	}
 	for name := range defaultDescriptions {
-		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" {
+		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" ||
+			name == "review_skill" || name == "publish_skill" || name == "block_skill" {
 			continue // tools for admins and curators depend on the role, see TestToolListFollowsRole
 		}
 		if got[name] == nil {

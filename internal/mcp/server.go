@@ -25,6 +25,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
@@ -59,9 +60,11 @@ type HealthCheck struct {
 }
 
 type Deps struct {
-	Users   *users.Store
-	Spaces  *spaces.Store
-	Docs    *docs.Store
+	Users  *users.Store
+	Spaces *spaces.Store
+	Docs   *docs.Store
+	// Skills serves the skill tools; nil = no skill registry.
+	Skills  *skills.Store
 	Search  *search.Service
 	Checker *authz.Checker
 	// Pool serves audit reads/writes of the admin tools.
@@ -287,13 +290,14 @@ func translate(tool string, err error) error {
 	switch {
 	case errors.As(err, &ge):
 		return err
-	case errors.Is(err, docs.ErrNotFound), errors.Is(err, spaces.ErrNotFound), errors.Is(err, users.ErrNotFound):
+	case errors.Is(err, docs.ErrNotFound), errors.Is(err, spaces.ErrNotFound), errors.Is(err, users.ErrNotFound), errors.Is(err, skills.ErrNotFound):
 		return errors.New("not found")
 	case errors.Is(err, docs.ErrForbidden), errors.Is(err, docs.ErrQuota), errors.Is(err, docs.ErrConflict),
 		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, docs.ErrOwnDraft), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
-		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap):
+		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap),
+		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered):
 		return err
 	}
 	slog.Error("Tool error", "tool", tool, "error", err)

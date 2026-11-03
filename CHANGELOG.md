@@ -4,6 +4,13 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Added
+- **Skill registry:** Atrium distributes skills, approved working instructions in the Agent Skills layout (`SKILL.md` plus text files), as a kind of its own, separate from knowledge entries. Versions are immutable once released and carry a SHA-256 digest; review, publishing and blocking are separate steps, a curator other than the author must approve, and class C skills can only be published by an instance admin. New tools: `list_skills`, `get_skill`, `get_skill_resource`, `store_skill`, `review_skill`, `publish_skill`, `block_skill`. Released skills are announced in the per-user instructions. Text only: scripts and binary files are refused and Atrium runs nothing. See [docs/skills.md](docs/skills.md).
+- New setting `skills.allow_self_approval` (default `false`) for installations with a single curator.
+
+### Upgrade notes
+- Migration `00007` creates the skill tables and the triggers that freeze released versions.
+
 ### Changed
 - Everything is English now: documentation, code comments, tool descriptions, the MCP instructions, error and confirmation messages, log texts and the browser pages of the login flow. Assistants still answer users in the user's language.
 - The displayed name of a personal space is "My personal space". The space matcher keeps accepting the German aliases ("mein persönlicher Bereich" and others) and also accepts English ones ("my personal space", "my space", "private").

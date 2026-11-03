@@ -30,6 +30,7 @@ type Config struct {
 	Spaces    Spaces    `yaml:"spaces"`
 	Policy    Policy    `yaml:"policy"`
 	Tools     Tools     `yaml:"tools"`
+	Skills    Skills    `yaml:"skills"`
 }
 
 type Instance struct {
@@ -159,6 +160,13 @@ type Policy struct {
 	// RateLimitReadsPerMinute caps search, read and list calls per user (each search costs an
 	// embedding); 0 = unlimited.
 	RateLimitReadsPerMinute int `yaml:"rate_limit_reads_per_minute"`
+}
+
+// Skills configures the skill registry (docs/skills.md).
+type Skills struct {
+	// AllowSelfApproval lets the author of a skill version also approve it. Off by default;
+	// meant for small installations with a single curator.
+	AllowSelfApproval bool `yaml:"allow_self_approval"`
 }
 
 type Tools struct {
