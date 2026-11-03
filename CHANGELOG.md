@@ -10,6 +10,9 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **Skills now have the same life cycle tools as knowledge entries:** `archive_skill` and `unarchive_skill` hide a whole skill from everyone who cannot restore it (`list_skills archived=true` shows the archive), `delete_skill` removes a skill with all versions for good (only instance admins in a team space, the owner in a personal space; the audit log keeps name and digests), and `unblock_skill` lifts a block (space admins and instance admins, reason required). An unblocked version is approved again, not released. See [docs/skills.md](docs/skills.md).
 - New setting `skills.allow_self_approval` (default `false`) for installations with a single curator.
 
+### Fixed
+- **Personal space by slug:** the `space` argument now accepts the slug of the caller's own personal space, which `choose_space` offers but was rejected before, so an assistant could loop on the question. Skill tools also show the personal space as "My personal space" instead of the owner's name.
+
 ### Upgrade notes
 - Migration `00007` creates the skill tables and the triggers that freeze released versions. Migration `00008` adds the archive columns and lets a blocked version go back to approved (and only there).
 

@@ -48,7 +48,10 @@ func TestMatchSpace(t *testing.T) {
 		{"my space", "personal-1", 0},
 		{"privat", "personal-1", 0},
 		{"doesnotexist", "", 0},
-		{"anna", "", 0}, // personal spaces only via alias
+		{"anna", "", 0}, // personal spaces only via alias or exact slug
+		{"personal-1", "personal-1", 0},
+		{"Personal-1", "personal-1", 0},
+		{"personal-", "", 0}, // no fragment match on personal slugs
 		{"  ", "", 0},
 	}
 	for _, tc := range cases {
