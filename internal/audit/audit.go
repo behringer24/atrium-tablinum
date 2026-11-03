@@ -60,7 +60,7 @@ type Entry struct {
 	UserEmail  string
 	Client     string
 	Action     string
-	Space      string // name of the team space; "persönlicher Bereich" for personal ones
+	Space      string // name of the team space; "personal space" for personal ones
 	SpaceID    *uuid.UUID
 	DocumentID *uuid.UUID
 	Details    map[string]any

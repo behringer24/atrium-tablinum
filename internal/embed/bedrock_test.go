@@ -168,7 +168,7 @@ func TestBedrockValidation(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	// die Region darf auch aus der Umgebung kommen
+	// the region may also come from the environment
 	t.Setenv("AWS_REGION", "eu-west-1")
 	if err := Validate(Settings{Backend: "bedrock", Model: "amazon.titan-embed-text-v2:0", Dimensions: 1024}); err != nil {
 		t.Errorf("Region aus AWS_REGION: %v", err)
@@ -208,7 +208,7 @@ func TestBedrockPingIsCachedAndChecksDimension(t *testing.T) {
 	}
 	bad := &fakeBedrock{}
 	e2 := newBedrockForTest(t, "amazon.titan-embed-text-v2:0", 512, bad, nil)
-	bad.dim = 256 // der Dienst liefert etwas anderes als konfiguriert
+	bad.dim = 256 // the service returns something other than configured
 	if err := e2.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "Dimensionen") {
 		t.Errorf("falsche Dimension: %v", err)
 	}

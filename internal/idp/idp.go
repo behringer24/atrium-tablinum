@@ -104,8 +104,8 @@ func (c claims) check(cfg config.Provider) (Identity, error) {
 	}
 	domain := email[strings.LastIndex(email, "@")+1:]
 
-	// Einzeln freigegebene Adressen (z. B. private Gmail-Konten) umgehen die Domain-Prüfung,
-	// nicht aber die Verifizierung der E-Mail-Adresse.
+	// Individually approved addresses (e.g. private Gmail accounts) bypass the domain check,
+	// but not the verification of the e-mail address.
 	byEmail := containsFold(cfg.AllowedEmails, email)
 
 	switch cfg.Type {

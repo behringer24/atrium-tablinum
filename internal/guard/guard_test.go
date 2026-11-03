@@ -55,9 +55,9 @@ func TestAcceptsOrdinaryText(t *testing.T) {
 		"api_key: xxxxxxxxxxxx",
 		"postgres://user:${PASS}@host/db",
 		"https://example.com/pfad?x=1",
-		"Bestellnummer 4929 0000 0000 0001 wurde versandt", // Luhn-ungültig
+		"Bestellnummer 4929 0000 0000 0001 wurde versandt", // Luhn-invalid
 		"Kundennummer 1234567890123456",
-		"DE00 0000 0000 0000 0000 00", // mod-97-ungültig
+		"DE00 0000 0000 0000 0000 00", // mod-97-invalid
 		"Telefon +49 170 1234567, PLZ 80331",
 		"commit 3f786850e387550fdab836ed7e6dc881de23001b",
 	} {
@@ -87,7 +87,7 @@ func TestIBANValidation(t *testing.T) {
 		"DE89370400440532013000":      true,
 		"GB82 WEST 1234 5698 7654 32": true,
 		"DE89370400440532013001":      false,
-		"DE8937040044053201":          false, // zu kurz
+		"DE8937040044053201":          false, // too short
 	} {
 		if got := validIBAN(iban); got != want {
 			t.Errorf("%s: %v", iban, got)
@@ -101,7 +101,7 @@ func TestCardValidation(t *testing.T) {
 		"5555-5555-5555-4444": true,
 		"3782 822463 10005":   true,
 		"4111 1111 1111 1112": false, // Luhn
-		"1234 5678 9012 3452": false, // Luhn passt, Issuer nicht plausibel
+		"1234 5678 9012 3452": false, // Luhn matches, issuer not plausible
 	} {
 		if got := validCard(card); got != want {
 			t.Errorf("%s: %v", card, got)

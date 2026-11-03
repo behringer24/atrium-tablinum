@@ -37,15 +37,15 @@ func TestMatchSpace(t *testing.T) {
 		want  string // slug of the single match
 		cands int
 	}{
-		{"support", "support", 0},               // Kürzel exakt schlägt Teiltreffer
-		{"Vertrieb", "vertrieb", 0},             // Name, Groß-/Kleinschreibung egal
-		{"kunden", "support", 0},                // eindeutiges Fragment
-		{"Support Intern", "support-intern", 0}, // Name exakt
-		{"supp", "", 2},                         // mehrdeutig
+		{"support", "support", 0},               // exact slug beats partial match
+		{"Vertrieb", "vertrieb", 0},             // name, case-insensitive
+		{"kunden", "support", 0},                // unique fragment
+		{"Support Intern", "support-intern", 0}, // exact name
+		{"supp", "", 2},                         // ambiguous
 		{"Mein persönlicher Bereich", "personal-1", 0},
 		{"privat", "personal-1", 0},
 		{"gibtsnicht", "", 0},
-		{"anna", "", 0}, // persönliche Bereiche nur über Alias
+		{"anna", "", 0}, // personal spaces only via alias
 		{"  ", "", 0},
 	}
 	for _, tc := range cases {
@@ -87,7 +87,7 @@ func TestDescriptionsRenderAndOverride(t *testing.T) {
 	if !strings.Contains(s.desc["get_knowledge"], "„Atrium Tablinum“") {
 		t.Errorf("Fallback bei ungültigem Template: %q", s.desc["get_knowledge"])
 	}
-	// Nutzer sagen meist kurz „Atrium“: Langform, Kurzform und Hinweis müssen beim Modell ankommen
+	// Users mostly just say “Atrium”: long form, short form and hint must reach the model
 	if !strings.Contains(s.desc["store_knowledge"], "Speichere das in Atrium") || !strings.Contains(s.desc["search_knowledge"], "„Atrium“") {
 		t.Errorf("Kurzform fehlt in den Beschreibungen: %q", s.desc["store_knowledge"])
 	}
@@ -287,7 +287,7 @@ func TestToolListAndDescriptions(t *testing.T) {
 	}
 	for name := range defaultDescriptions {
 		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" {
-			continue // Tools für Admins und Kuratoren hängen von der Rolle ab, siehe TestToolListFollowsRole
+			continue // tools for admins and curators depend on the role, see TestToolListFollowsRole
 		}
 		if got[name] == nil {
 			t.Errorf("Tool %s fehlt", name)
@@ -354,12 +354,12 @@ func TestStoreWithSpaceReferences(t *testing.T) {
 	if ok["result"] != "stored" || ok["space"] != "Kundensupport" {
 		t.Fatalf("%v", ok)
 	}
-	// mehrdeutig -> Rückfrage mit Liste, nichts gespeichert
+	// ambiguous -> follow-up question with list, nothing stored
 	amb := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T2", "content": "inhalt2", "space": "supp"})
 	if amb["result"] != "choose_space" || len(amb["spaces"].([]any)) < 2 {
 		t.Fatalf("%v", amb)
 	}
-	// Reader-Bereich und unsichtbarer Bereich: gleiche Antwort, keine Namen von unsichtbaren Bereichen
+	// reader space and invisible space: same answer, no names of invisible spaces
 	for _, ref := range []string{"nur lesen", "geschäftsführung", "gibtsnicht"} {
 		out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T3", "content": "x", "space": ref})
 		if out["result"] != "choose_space" {
@@ -370,7 +370,7 @@ func TestStoreWithSpaceReferences(t *testing.T) {
 			t.Errorf("%q: Antwort nennt nicht beschreibbare Bereiche: %s", ref, b)
 		}
 	}
-	// nichts davon wurde gespeichert
+	// none of it was stored
 	list := e.mustCall(t, anna, "list_knowledge", map[string]any{"space": "support-intern"})["entries"].([]any)
 	if len(list) != 0 {
 		t.Errorf("Eintrag trotz Rückfrage gespeichert: %v", list)
@@ -429,14 +429,14 @@ func TestGuardAndDuplicatesAndUpdateArchive(t *testing.T) {
 		t.Errorf("leeres update: %q", msg)
 	}
 	if _, msg := e.call(t, anna, "archive_knowledge", map[string]any{"id": first}); msg == "" {
-		// confirm fehlt im Schema -> Protokollfehler oder Tool-Fehler, beides ist abgelehnt
+		// confirm is missing from the schema -> protocol error or tool error, both are rejected
 		t.Error("archive ohne confirm")
 	}
 	if _, msg := e.call(t, anna, "archive_knowledge", map[string]any{"id": first, "confirm": false}); !strings.Contains(msg, "Bestätigung") {
 		t.Errorf("archive confirm=false: %q", msg)
 	}
 	e.mustCall(t, anna, "archive_knowledge", map[string]any{"id": first, "confirm": true})
-	// archiviert: aus Suche und aktiver Liste verschwunden, für den Autor im Archiv auffindbar
+	// archived: gone from search and active list, findable in the archive for the author
 	if res := e.mustCall(t, anna, "search_knowledge", map[string]any{"query": "alpha eins"}); len(res["results"].([]any)) != 1 {
 		t.Errorf("normale Suche findet den Archivierten (oder den zweiten Eintrag nicht): %v", res["results"])
 	}
@@ -453,12 +453,12 @@ func TestGuardAndDuplicatesAndUpdateArchive(t *testing.T) {
 	if got := e.mustCall(t, anna, "get_knowledge", map[string]any{"id": first}); got["status"] != "archived" {
 		t.Errorf("Archivierter per ID für den Autor: %v", got["status"])
 	}
-	// fremde Nutzer sehen nichts davon
+	// other users see none of it
 	ben := e.session(t, "ben@x.de")
 	if _, msg := e.call(t, ben, "get_knowledge", map[string]any{"id": first}); msg != "nicht gefunden" {
 		t.Errorf("archivierter Eintrag für Fremde: %q", msg)
 	}
-	// zurückholen braucht Bestätigung und macht den Eintrag wieder aktiv
+	// restoring needs confirmation and makes the entry active again
 	if _, msg := e.call(t, anna, "unarchive_knowledge", map[string]any{"id": first, "confirm": false}); !strings.Contains(msg, "confirm=true") {
 		t.Errorf("unarchive confirm=false: %q", msg)
 	}
@@ -552,7 +552,7 @@ func TestApprovalSpaceAndReaderRights(t *testing.T) {
 
 func TestHandoffRoundTrip(t *testing.T) {
 	e := setup(t, 0)
-	claude, other := e.session(t, "anna@x.de"), e.session(t, "anna@x.de") // zweiter Assistent, gleicher Nutzer
+	claude, other := e.session(t, "anna@x.de"), e.session(t, "anna@x.de") // second assistant, same user
 	saved := e.mustCall(t, claude, "handoff_save", map[string]any{"title": "Stand", "content": "Ziel: X. Nächster Schritt: Y."})
 	if saved["id"] == "" || saved["expires_at"] == "" {
 		t.Fatalf("%v", saved)
@@ -565,7 +565,7 @@ func TestHandoffRoundTrip(t *testing.T) {
 	if !strings.Contains(loaded["content"].(string), "Nächster Schritt") || loaded["id"] != saved["id"] {
 		t.Errorf("load: %v", loaded)
 	}
-	// Übergaben tauchen weder in der Suche noch in der Wissensliste auf
+	// handoffs appear neither in search nor in the knowledge list
 	if hits := e.mustCall(t, other, "search_knowledge", map[string]any{"query": "Nächster Schritt"})["results"].([]any); len(hits) != 0 {
 		t.Errorf("Übergabe in Suche: %v", hits)
 	}
@@ -604,7 +604,7 @@ func TestWriteRateLimit(t *testing.T) {
 	if _, msg := e.call(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "gamma", "force": true}); !strings.Contains(msg, "zu viele") {
 		t.Errorf("Rate Limit: %q", msg)
 	}
-	// Lesen bleibt möglich
+	// reading remains possible
 	e.mustCall(t, anna, "search_knowledge", map[string]any{"query": "beta"})
 }
 
@@ -629,7 +629,7 @@ func TestSpaceContactsAndServerInfo(t *testing.T) {
 		t.Errorf("Kontakte: %v (Leser und Autoren dürfen nicht auftauchen)", got)
 	}
 	if ia := res["instance_admins"].([]any); len(ia) != 1 || ia[0] != "boss@x.de" {
-		// boss ist Bootstrap-Admin, aber erst nach der ersten Anmeldung ein Konto
+		// boss is bootstrap admin, but only an account after the first login
 		e.session(t, "boss@x.de")
 		res = e.mustCall(t, reader, "space_contacts", map[string]any{})
 		if ia := res["instance_admins"].([]any); len(ia) != 1 || ia[0] != "boss@x.de" {
@@ -668,7 +668,7 @@ func TestSpaceDescriptionNeedsConfirmAndIsAudited(t *testing.T) {
 		AND details->>'description' = 'Zweite' AND details->>'previous_description' = 'Erste'`); n != 1 {
 		t.Errorf("Audit-Log hält alte und neue Beschreibung nicht fest: %d", n)
 	}
-	// andere Felder brauchen keine Bestätigung
+	// other fields need no confirmation
 	e.mustCall(t, boss, "admin_update_space", map[string]any{"space": "wiki", "require_approval": true})
 }
 
@@ -682,7 +682,7 @@ func TestReadRateLimit(t *testing.T) {
 	if _, msg := e.call(t, anna, "search_knowledge", map[string]any{"query": "alpha"}); !strings.Contains(msg, "zu viele Abfragen") {
 		t.Errorf("Lese-Limit: %q", msg)
 	}
-	// ein anderer Nutzer ist nicht betroffen
+	// another user is not affected
 	e.mustCall(t, e.session(t, "ben@x.de"), "list_spaces", map[string]any{})
 }
 
@@ -733,7 +733,7 @@ func TestSessionTools(t *testing.T) {
 	if len(revokedClient) != 1 || revokedClient[0] != "c1" || len(revokedAll) != 1 {
 		t.Errorf("revoke: %v %v", revokedClient, revokedAll)
 	}
-	// Admin beendet die Anmeldungen eines anderen, normale Nutzer sehen das Werkzeug nicht
+	// an admin ends another user's logins, regular users do not see the tool
 	if toolNames(t, e, anna)["admin_revoke_sessions"] || !toolNames(t, e, boss)["admin_revoke_sessions"] {
 		t.Error("admin_revoke_sessions nur für Instanz-Admins")
 	}

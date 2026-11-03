@@ -78,8 +78,8 @@ type Provider struct {
 	ClientID       string   `yaml:"client_id"`
 	ClientSecret   string   `yaml:"client_secret"`
 	AllowedDomains []string `yaml:"allowed_domains"`
-	// AllowedEmails gibt einzelne Adressen zusätzlich zu den Domains frei (google, oidc),
-	// z. B. private Gmail-Konten ohne Workspace-Domain.
+	// AllowedEmails admits individual addresses in addition to the domains (google, oidc),
+	// e.g. private Gmail accounts without a Workspace domain.
 	AllowedEmails  []string `yaml:"allowed_emails"`
 	AllowedTenants []string `yaml:"allowed_tenants"`
 	// GroupsClaim: for entra a bool-like switch (any non-empty value enables it),

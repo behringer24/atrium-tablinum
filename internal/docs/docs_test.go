@@ -196,13 +196,13 @@ func TestRolesGateWriting(t *testing.T) {
 	if !errors.Is(err, docs.ErrForbidden) {
 		t.Errorf("Reader: %v", err)
 	}
-	// unsichtbarer und nicht existierender Bereich sind nicht unterscheidbar
+	// invisible and nonexistent spaces cannot be told apart
 	_, errHidden := e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: hidden.ID, Title: "t", Content: "c"})
 	_, errMissing := e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: uuid.New(), Title: "t", Content: "c"})
 	if !errors.Is(errHidden, docs.ErrNotFound) || !errors.Is(errMissing, docs.ErrNotFound) {
 		t.Errorf("hidden=%v missing=%v", errHidden, errMissing)
 	}
-	// fremder persönlicher Bereich
+	// somebody else's personal space
 	_, err = e.docs.Store(e.ctx, ben, docs.StoreParams{SpaceID: personal(anna), Title: "t", Content: "c"})
 	if !errors.Is(err, docs.ErrNotFound) {
 		t.Errorf("fremder persönlicher Bereich: %v", err)
@@ -242,7 +242,7 @@ func TestApprovalWorkflowVisibility(t *testing.T) {
 	if cd := mustStore(t, e, curator, sp.ID, "Direkt", "inhalt"); cd.Status != "approved" {
 		t.Errorf("Kurator-Eintrag: %s", cd.Status)
 	}
-	// Autor darf eigenen Entwurf überarbeiten, freigegebene Einträge aber nicht
+	// an author may revise their own draft, but not approved entries
 	title := "Entwurf v2"
 	if d, err := e.docs.Update(e.ctx, author, docs.UpdateParams{ID: draft.ID, Title: &title}); err != nil || d.Status != "draft" {
 		t.Errorf("Entwurf überarbeiten: %v %+v", err, d)
@@ -256,11 +256,11 @@ func TestApprovalWorkflowVisibility(t *testing.T) {
 // An admin asks for a draft in a space of another field; the curator of that space checks it.
 func TestDraftOnRequestAndReview(t *testing.T) {
 	e := setup(t)
-	boss := e.actor(t, "boss@x.de") // Instanz-Admin, in jedem Team-Bereich Admin
+	boss := e.actor(t, "boss@x.de") // instance admin, admin in every team space
 	curator := e.actor(t, "cur@x.de")
 	author := e.actor(t, "author@x.de")
 	reader := e.actor(t, "reader@x.de")
-	sp := e.team(t, "recht", false, authz.None) // ohne Freigabepflicht
+	sp := e.team(t, "recht", false, authz.None) // no approval required
 	e.member(t, sp, curator, authz.Curator)
 	e.member(t, sp, author, authz.Author)
 	e.member(t, sp, reader, authz.Reader)
@@ -275,7 +275,7 @@ func TestDraftOnRequestAndReview(t *testing.T) {
 		return *res.Document
 	}
 
-	// ohne Wunsch wird der Admin-Eintrag sofort freigegeben, mit Wunsch ist er ein Entwurf
+	// without the request the admin's entry is approved right away, with it the entry is a draft
 	if d := mustStore(t, e, boss, sp.ID, "Direkt", "inhalt"); d.Status != "approved" {
 		t.Errorf("Admin ohne Entwurfswunsch: %s", d.Status)
 	}
@@ -287,7 +287,7 @@ func TestDraftOnRequestAndReview(t *testing.T) {
 		t.Errorf("Entwurf im persönlichen Bereich: %v", err)
 	}
 
-	// sichtbar nur für Autor und Kuratoren, auch in der Liste mit Statusfilter
+	// visible only to the author and curators, also in the list with a status filter
 	if _, err := e.docs.Get(e.ctx, reader, draft.ID); !errors.Is(err, docs.ErrNotFound) {
 		t.Errorf("Reader sieht Entwurf: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestDraftOnRequestAndReview(t *testing.T) {
 		t.Errorf("ungültiger Status: %v", err)
 	}
 
-	// prüfen dürfen Kuratoren und Admins; den eigenen Entwurf aber nur Admins
+	// curators and admins may review; only admins may review their own draft
 	curDraft := storeDraft(curator, "Vom Kurator")
 	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: curDraft.ID, Approve: true}); !errors.Is(err, docs.ErrOwnDraft) {
 		t.Errorf("Kurator gibt eigenen Entwurf frei: %v", err)
@@ -320,7 +320,7 @@ func TestDraftOnRequestAndReview(t *testing.T) {
 		t.Errorf("Autor gibt eigenen Entwurf frei: %v", err)
 	}
 
-	// Zurückgeben braucht eine Anmerkung; der Autor sieht sie und überarbeitet
+	// sending back needs a note; the author sees it and revises
 	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: draft.ID}); !errors.Is(err, ingest.ErrInvalid) {
 		t.Errorf("Zurückgeben ohne Anmerkung: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestDraftOnRequestAndReview(t *testing.T) {
 		t.Fatalf("Überarbeiten: %v %+v", err, revised)
 	}
 
-	// Freigabe: danach sieht der Reader den Eintrag, Version und Log halten es fest
+	// approval: afterwards the reader sees the entry, version and log record it
 	approved, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: draft.ID, Approve: true, Note: "passt"})
 	if err != nil || approved.Status != "approved" || approved.ReviewNote != "passt" || approved.Version != 4 {
 		t.Fatalf("Freigabe: %v %+v", err, approved)
@@ -366,7 +366,7 @@ func TestDraftOnRequestAndReview(t *testing.T) {
 		t.Errorf("Freigabe durch anderen als Selbstfreigabe vermerkt: %d", n)
 	}
 
-	// Knoten lösen: der Admin gibt seinen eigenen Entwurf selbst frei, das Log vermerkt es
+	// untying the knot: the admin approves their own draft themselves, the log notes it
 	own := storeDraft(boss, "Eigene Freigabe")
 	if d, err := e.docs.Review(e.ctx, boss, docs.ReviewParams{ID: own.ID, Approve: true}); err != nil || d.Status != "approved" {
 		t.Fatalf("Admin gibt eigenen Entwurf frei: %v %+v", err, d)
@@ -403,7 +403,7 @@ func TestUpdateRightsAndVersions(t *testing.T) {
 	if up, err = e.docs.Update(e.ctx, cur, docs.UpdateParams{ID: d.ID, Tags: &[]string{"x"}}); err != nil || up.Version != 3 || up.Content != strings.TrimSpace(newContent) {
 		t.Fatalf("Kurator-Update: %v %+v", err, up)
 	}
-	// Archivieren: Eintrag verschwindet
+	// archiving: the entry disappears
 	if err := e.docs.Archive(e.ctx, a2, d.ID); !errors.Is(err, docs.ErrForbidden) {
 		t.Errorf("fremder Autor archiviert: %v", err)
 	}
@@ -453,14 +453,14 @@ func TestDuplicateCheck(t *testing.T) {
 	if res, err = e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: sp.ID, Title: "Erzwungen", Content: "alpha", Force: true}); err != nil || res.Document == nil {
 		t.Errorf("Force: %v", err)
 	}
-	// Ähnlicher Eintrag in fremdem Bereich: kein Hinweis auf Duplikat (anderer Bereich)
+	// similar entry in somebody else's space: no duplicate hint (different space)
 	if res, err = e.docs.Store(e.ctx, ben, docs.StoreParams{SpaceID: personal(ben), Title: "Eigener", Content: "alpha privat"}); err != nil || res.Document == nil {
 		t.Errorf("Duplikat-Hinweis aus fremdem Bereich: %v %+v", err, res)
 	}
 }
 
 func TestPersonalQuota(t *testing.T) {
-	e := setup(t) // 3 Einträge, 5000 Bytes
+	e := setup(t) // 3 entries, 5000 bytes
 	anna := e.actor(t, "anna@x.de")
 	for i := 0; i < 3; i++ {
 		mustStore(t, e, anna, personal(anna), "T", "inhalt")
@@ -469,7 +469,7 @@ func TestPersonalQuota(t *testing.T) {
 	if !errors.Is(err, docs.ErrQuota) {
 		t.Fatalf("Eintragslimit: %v", err)
 	}
-	// Per-Nutzer-Kontingent überschreibt den Standard
+	// per-user quota overrides the default
 	more := 10
 	if err := e.users.SetQuota(e.ctx, anna.User.ID, &more, nil); err != nil {
 		t.Fatal(err)
@@ -510,15 +510,15 @@ func TestHandoffs(t *testing.T) {
 	if _, err := e.docs.LoadHandoff(e.ctx, ben, nil); !errors.Is(err, docs.ErrNotFound) {
 		t.Errorf("keine eigene Übergabe: %v", err)
 	}
-	// Übergaben erscheinen nicht in der Wissensliste
+	// handoffs do not show up in the knowledge list
 	if l, _ := e.docs.List(e.ctx, anna, docs.ListParams{SpaceID: personal(anna)}); len(l) != 0 {
 		t.Errorf("Übergaben in Wissensliste: %d", len(l))
 	}
-	// keine Chunks => nicht durchsuchbar
+	// no chunks => not searchable
 	if n := countChunks(t, e, h1.ID); n != 0 {
 		t.Errorf("Übergabe hat %d Chunks", n)
 	}
-	// update_knowledge ändert keine Übergaben
+	// update_knowledge does not change handoffs
 	title := "x"
 	if _, err := e.docs.Update(e.ctx, anna, docs.UpdateParams{ID: h1.ID, Title: &title}); !errors.Is(err, ingest.ErrInvalid) {
 		t.Errorf("Update einer Übergabe: %v", err)
@@ -552,11 +552,11 @@ func TestChunksAndAudit(t *testing.T) {
 	if n := queryInt(t, e, `SELECT count(*) FROM document_versions WHERE document_id = $1`, d.ID); n != 2 {
 		t.Errorf("Versionen = %d", n)
 	}
-	// tsv deckt alle Sprachen ab: "satz" (german) wird auch als Stamm gefunden
+	// tsv covers all languages: "satz" (german) is also found as a stem
 	if n := queryInt(t, e, `SELECT count(*) FROM chunks WHERE document_id = $1 AND tsv @@ to_tsquery('simple','kurz')`, d.ID); n != 1 {
 		t.Errorf("tsv-Treffer = %d", n)
 	}
-	// Audit: Team-Eintrag mit Details, persönlicher Eintrag ohne
+	// audit: team entry with details, personal entry without
 	pd := mustStore(t, e, anna, personal(anna), "Privat", "x")
 	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE document_id = $1 AND details IS NOT NULL`, d.ID); n < 1 {
 		t.Errorf("Team-Audit ohne Details: %d", n)
@@ -585,7 +585,7 @@ func TestArchiveListAndRestore(t *testing.T) {
 	author, other, curator, reader = e.refresh(t, author), e.refresh(t, other), e.refresh(t, curator), e.refresh(t, reader)
 
 	byCurator := mustStore(t, e, curator, sp.ID, "Vom Kurator", "inhalt")
-	byAuthor := mustStore(t, e, author, sp.ID, "Vom Autor", "inhalt") // Freigabe-Bereich: Entwurf
+	byAuthor := mustStore(t, e, author, sp.ID, "Vom Autor", "inhalt") // approval space: draft
 	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: byAuthor.ID, Approve: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -609,13 +609,13 @@ func TestArchiveListAndRestore(t *testing.T) {
 	if n := queryInt(t, e, `SELECT count(*) FROM chunks`); n == 0 {
 		t.Fatal("Archivieren darf den Suchindex nicht löschen, sonst ist keine Archivsuche möglich")
 	}
-	// normale Listen: nichts Archiviertes
+	// normal lists: nothing archived
 	for _, a := range []docs.Actor{author, curator, reader} {
 		if l, _ := e.docs.List(e.ctx, a, docs.ListParams{SpaceID: sp.ID}); len(l) != 0 {
 			t.Errorf("aktive Liste zeigt %d archivierte Einträge", len(l))
 		}
 	}
-	// Archivliste: Kurator alle, Autor nur die eigenen, andere nichts
+	// archive list: curator sees all, author only their own, others nothing
 	if n := archived(curator); n != 3 {
 		t.Errorf("Archiv des Kurators: %d", n)
 	}
@@ -628,7 +628,7 @@ func TestArchiveListAndRestore(t *testing.T) {
 	if n := archived(reader); n != 0 {
 		t.Errorf("Archiv des Lesers: %d", n)
 	}
-	// Laden per ID folgt derselben Regel
+	// loading by ID follows the same rule
 	if d, err := e.docs.Get(e.ctx, curator, byAuthor.ID); err != nil || d.Status != "archived" {
 		t.Errorf("Kurator lädt Archivierten: %v %s", err, d.Status)
 	}
@@ -640,13 +640,13 @@ func TestArchiveListAndRestore(t *testing.T) {
 	if _, err := e.docs.Get(e.ctx, author, byCurator.ID); !errors.Is(err, docs.ErrNotFound) {
 		t.Errorf("Autor sieht fremden archivierten Eintrag: %v", err)
 	}
-	// archivierte Einträge lassen sich nicht ändern, nur zurückholen
+	// archived entries cannot be changed, only restored
 	title := "x"
 	if _, err := e.docs.Update(e.ctx, curator, docs.UpdateParams{ID: byCurator.ID, Title: &title}); !errors.Is(err, docs.ErrNotFound) {
 		t.Errorf("Update im Archiv: %v", err)
 	}
 
-	// Zurückholen: wer nicht sehen darf, kann es auch nicht; Autor nicht fremde Einträge
+	// restoring: whoever may not see an entry cannot restore it either; authors not other people's entries
 	for _, c := range []struct {
 		a  docs.Actor
 		id uuid.UUID
@@ -655,19 +655,19 @@ func TestArchiveListAndRestore(t *testing.T) {
 			t.Errorf("Unarchive durch Unberechtigte: %v", err)
 		}
 	}
-	// Kurator: freigegeben bleibt freigegeben
+	// curator: approved stays approved
 	if d, err := e.docs.Unarchive(e.ctx, curator, byCurator.ID); err != nil || d.Status != "approved" {
 		t.Errorf("Kurator-Eintrag zurück: %v %s", err, d.Status)
 	}
-	// Autor im Freigabe-Bereich: sein früher freigegebener Eintrag geht erneut in die Prüfung
+	// author in an approval space: their previously approved entry goes back to review
 	if d, err := e.docs.Unarchive(e.ctx, author, byAuthor.ID); err != nil || d.Status != "draft" {
 		t.Errorf("Autor-Eintrag zurück: %v %s", err, d.Status)
 	}
-	// ein Entwurf bleibt ein Entwurf
+	// a draft stays a draft
 	if d, err := e.docs.Unarchive(e.ctx, curator, asDraft.ID); err != nil || d.Status != "draft" {
 		t.Errorf("Entwurf zurück: %v %s", err, d.Status)
 	}
-	// nicht archiviert -> nichts zu tun
+	// not archived -> nothing to do
 	if _, err := e.docs.Unarchive(e.ctx, curator, byCurator.ID); err == nil {
 		t.Error("Unarchive eines aktiven Eintrags")
 	}

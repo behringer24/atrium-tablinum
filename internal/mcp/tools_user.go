@@ -143,7 +143,7 @@ type contactsIn struct {
 
 type contactInfo struct {
 	Type string `json:"type"` // user | group
-	Name string `json:"name"` // E-Mail oder Gruppenname
+	Name string `json:"name"` // e-mail or group name
 	Role string `json:"role"` // curator | admin
 }
 
@@ -509,7 +509,7 @@ func (s *Server) moveKnowledge(ctx context.Context, c *call, in moveIn) (moveOut
 	if err != nil {
 		return moveOut{}, err
 	}
-	// Nur Bereiche mit Schreibrecht kommen als Ziel infrage.
+	// Only spaces with write permission qualify as a target.
 	writable, err := s.spacesAtLeast(ctx, a, authz.Author)
 	if err != nil {
 		return moveOut{}, err

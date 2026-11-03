@@ -12,7 +12,7 @@ import (
 
 type MoveParams struct {
 	ID      uuid.UUID
-	SpaceID uuid.UUID // Zielbereich
+	SpaceID uuid.UUID // target space
 }
 
 // Move relocates an approved knowledge entry into another space. The actor needs the

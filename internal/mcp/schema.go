@@ -4,10 +4,10 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// portableSchema leitet das Schema aus dem Go-Typ ab und ersetzt `"type": ["null", X]`
-// durch `anyOf: [{type: null}, {type: X}]`. Das ist gleichwertig, wird aber auch von
-// Clients verstanden, die nur einen einzelnen `type` je Schema kennen (z. B. Gemini).
-// Schlägt die Ableitung fehl, bleibt es beim Standardverhalten des SDK (nil).
+// portableSchema derives the schema from the Go type and replaces `"type": ["null", X]`
+// with `anyOf: [{type: null}, {type: X}]`. This is equivalent but is also understood by
+// clients that only know a single `type` per schema (e.g. Gemini).
+// If the derivation fails, the SDK's default behavior stays (nil).
 func portableSchema[T any]() *jsonschema.Schema {
 	s, err := jsonschema.For[T](nil)
 	if err != nil {

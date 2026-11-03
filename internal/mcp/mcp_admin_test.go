@@ -44,7 +44,7 @@ func TestToolListFollowsRole(t *testing.T) {
 	if !sadmin["review_knowledge"] || !boss["review_knowledge"] {
 		t.Error("Bereichs-Admin und Instanz-Admin ohne review_knowledge")
 	}
-	// Admin des eigenen persönlichen Bereichs reicht nicht für Bereichs-Admin-Tools (siehe 'plain')
+	// Admin of one's own personal space is not enough for space admin tools (see 'plain')
 	if !sadmin["space_members"] || !sadmin["space_add_member"] || !sadmin["space_remove_member"] || sadmin["admin_create_space"] || sadmin["admin_update_space"] || sadmin["admin_audit_log"] {
 		t.Errorf("Bereichs-Admin: %v", sadmin)
 	}
@@ -63,7 +63,7 @@ func TestToolTierIsRecheckedOnEveryCall(t *testing.T) {
 	if err := e.users.SetInstanceAdmin(e.ctx, u.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	cs := e.session(t, "anna@x.de") // neue Sitzung sieht die Admin-Tools
+	cs := e.session(t, "anna@x.de") // a new session sees the admin tools
 	if !toolNames(t, e, cs)["admin_health"] {
 		t.Fatal("Admin-Tools fehlen nach Ernennung")
 	}
@@ -71,12 +71,12 @@ func TestToolTierIsRecheckedOnEveryCall(t *testing.T) {
 	if err := e.users.SetInstanceAdmin(e.ctx, u.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	// Der Endpunkt ist zustandslos: Die Werkzeugliste entsteht bei jedem Aufruf aus den aktuellen
-	// Rechten, ein entzogenes Admin-Werkzeug gibt es sofort nicht mehr.
+	// The endpoint is stateless: the tool list is built on every call from the current
+	// permissions, so a revoked admin tool is gone immediately.
 	if _, err := cs.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_health"}); err == nil {
 		t.Error("entzogene Admin-Rechte: Werkzeug noch aufrufbar")
 	}
-	// Die Rechteprüfung im Werkzeug selbst bleibt als zweite Sicherung bestehen.
+	// The permission check in the tool itself remains as a second safeguard.
 	boss, err := e.users.GetByEmail(e.ctx, "anna@x.de")
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestToolTierIsRecheckedOnEveryCall(t *testing.T) {
 	if e.srv.allowed(e.ctx, tierInstanceAdmin, docs.Actor{User: boss}) {
 		t.Error("allowed() lässt Nicht-Admin zu")
 	}
-	// Ein Tool, das die Sitzung nie hatte, gibt es für den Client nicht
+	// A tool the session never had does not exist for the client
 	if _, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_health"}); err == nil {
 		t.Error("nicht registriertes Tool aufrufbar")
 	}
@@ -97,12 +97,12 @@ func TestSpaceAdminManagesOnlyOwnSpaces(t *testing.T) {
 	if _, err := e.users.CreateGroup(e.ctx, "Vertrieb"); err != nil {
 		t.Fatal(err)
 	}
-	e.session(t, "newbie@x.de") // Konto existiert, ist aber in keinem Bereich
+	e.session(t, "newbie@x.de") // account exists but is in no space
 	sa := e.session(t, "sa@x.de")
 
 	e.mustCall(t, sa, "space_add_member", map[string]any{"space": "support", "user_email": "newbie@x.de", "role": "author"})
 	e.mustCall(t, sa, "space_add_member", map[string]any{"space": "support", "group": "vertrieb", "role": "reader"})
-	e.mustCall(t, sa, "space_add_member", map[string]any{"space": "support", "user_email": "member@x.de", "role": "curator"}) // Rolle ändern
+	e.mustCall(t, sa, "space_add_member", map[string]any{"space": "support", "user_email": "member@x.de", "role": "curator"}) // change role
 
 	got := e.mustCall(t, sa, "space_members", map[string]any{"space": "Support"})
 	byName := map[string]string{}
@@ -113,13 +113,13 @@ func TestSpaceAdminManagesOnlyOwnSpaces(t *testing.T) {
 	if byName["newbie@x.de"] != "user:author" || byName["Vertrieb"] != "group:reader" || byName["member@x.de"] != "user:curator" || len(byName) != 4 {
 		t.Errorf("Mitglieder: %v", byName)
 	}
-	// die neu aufgenommene Autorin kann jetzt dort speichern
+	// the newly added author can now save there
 	newbie := e.session(t, "newbie@x.de")
 	if out := e.mustCall(t, newbie, "store_knowledge", map[string]any{"title": "T", "content": "x", "space": "support"}); out["result"] != "stored" {
 		t.Errorf("neue Autorin: %v", out)
 	}
 
-	// fremder Bereich: gleiche Antwort wie für einen nicht existierenden
+	// foreign space: same answer as for a nonexistent one
 	for _, space := range []string{"gf", "gibtsnicht"} {
 		if _, msg := e.call(t, sa, "space_members", map[string]any{"space": space}); msg != "nicht gefunden" {
 			t.Errorf("%s: %q", space, msg)
@@ -128,7 +128,7 @@ func TestSpaceAdminManagesOnlyOwnSpaces(t *testing.T) {
 			t.Errorf("add in %s: %q", space, msg)
 		}
 	}
-	// Eingabefehler
+	// input errors
 	for name, tc := range map[string]struct {
 		args map[string]any
 		want string
@@ -143,7 +143,7 @@ func TestSpaceAdminManagesOnlyOwnSpaces(t *testing.T) {
 			t.Errorf("%s: %q", name, msg)
 		}
 	}
-	// Entfernen braucht Bestätigung
+	// removing needs confirmation
 	if _, msg := e.call(t, sa, "space_remove_member", map[string]any{"space": "support", "user_email": "newbie@x.de", "confirm": false}); !strings.Contains(msg, "Bestätigung") {
 		t.Errorf("ohne Bestätigung: %q", msg)
 	}
@@ -154,8 +154,8 @@ func TestSpaceAdminManagesOnlyOwnSpaces(t *testing.T) {
 	if _, msg := e.call(t, sa, "space_remove_member", map[string]any{"space": "support", "user_email": "newbie@x.de", "confirm": true}); msg != "nicht gefunden" {
 		t.Errorf("zweites Entfernen: %q", msg)
 	}
-	// ein normales Mitglied hat keinen Zugriff auf die Verwaltung
-	member := e.session(t, "member@x.de") // Kurator, aber nicht Admin
+	// a regular member has no access to administration
+	member := e.session(t, "member@x.de") // curator, but not admin
 	if names := toolNames(t, e, member); names["space_members"] {
 		t.Error("Kurator sieht Bereichs-Admin-Tools")
 	}
@@ -181,7 +181,7 @@ func TestInstanceAdminSpaceLifecycle(t *testing.T) {
 	if out["slug"] != "technik" || len(warnings) != 1 || !strings.Contains(warnings[0].(string), "ghost@x.de") {
 		t.Fatalf("%v", out)
 	}
-	// default_role=reader: jeder angemeldete Nutzer sieht den Bereich, Anna darf (mit Freigabe) schreiben
+	// default_role=reader: every logged-in user sees the space, Anna may write (with approval)
 	anna := e.session(t, "anna@x.de")
 	spaces := e.mustCall(t, anna, "list_spaces", nil)["spaces"].([]any)
 	var role string
@@ -211,7 +211,7 @@ func TestInstanceAdminSpaceLifecycle(t *testing.T) {
 		}
 	}
 
-	// archivieren: nur mit Bestätigung, danach unsichtbar, wiederherstellbar
+	// archive: only with confirmation, then invisible, restorable
 	if _, msg := e.call(t, boss, "admin_archive_space", map[string]any{"space": "technik"}); msg == "" {
 		t.Error("archivieren ohne confirm")
 	}
@@ -224,7 +224,7 @@ func TestInstanceAdminSpaceLifecycle(t *testing.T) {
 			t.Error("archivierter Bereich noch sichtbar")
 		}
 	}
-	e.mustCall(t, boss, "admin_restore_space", map[string]any{"space": "technik"}) // Instanz-Admin findet ihn weiterhin
+	e.mustCall(t, boss, "admin_restore_space", map[string]any{"space": "technik"}) // instance admin still finds it
 	found := false
 	for _, sp := range e.mustCall(t, e.session(t, "anna@x.de"), "list_spaces", nil)["spaces"].([]any) {
 		found = found || sp.(map[string]any)["slug"] == "technik"
@@ -242,7 +242,7 @@ func TestDraftOnRequestAndReviewTool(t *testing.T) {
 	reader := e.session(t, "reader@x.de")
 	author := e.session(t, "author@x.de")
 
-	// das Prüf-Tool sehen nur Kuratoren und Admins
+	// only curators and admins see the review tool
 	for name, cs := range map[string]*mcp.ClientSession{"Kurator": cur, "Instanz-Admin": boss} {
 		if !toolNames(t, e, cs)["review_knowledge"] {
 			t.Errorf("%s ohne review_knowledge", name)
@@ -254,7 +254,7 @@ func TestDraftOnRequestAndReviewTool(t *testing.T) {
 		}
 	}
 
-	// Entwurf nur auf Wunsch und nur in Team-Bereichen
+	// draft only on request and only in team spaces
 	if got := e.mustCall(t, boss, "store_knowledge", map[string]any{"title": "Direkt", "content": "alpha eins", "space": "recht"}); got["status"] != "approved" {
 		t.Errorf("ohne draft: %v", got)
 	}
@@ -267,7 +267,7 @@ func TestDraftOnRequestAndReviewTool(t *testing.T) {
 		t.Errorf("draft im persönlichen Bereich: %q", msg)
 	}
 
-	// wartende Entwürfe findet der Kurator über den Statusfilter, der Leser sieht keine
+	// the curator finds pending drafts via the status filter, the reader sees none
 	entries := func(cs *mcp.ClientSession, status string) []any {
 		t.Helper()
 		return e.mustCall(t, cs, "list_knowledge", map[string]any{"space": "recht", "status": status})["entries"].([]any)
@@ -282,7 +282,7 @@ func TestDraftOnRequestAndReviewTool(t *testing.T) {
 		t.Errorf("ungültiger Status: %q", msg)
 	}
 
-	// Freigabe: Bestätigung nötig, nicht für den eigenen Entwurf, Zurückgeben nur mit Anmerkung
+	// approval: confirmation needed, not for one's own draft, returning only with a note
 	if _, msg := e.call(t, cur, "review_knowledge", map[string]any{"id": id, "decision": "approve"}); !strings.Contains(msg, "Bestätigung") {
 		t.Errorf("approve ohne confirm: %q", msg)
 	}
@@ -322,7 +322,7 @@ func TestInstanceAdminUpdatesSpace(t *testing.T) {
 	e.team(t, "support", "Support", false, map[string]authz.Role{"anna@x.de": authz.Author, "sa@x.de": authz.Admin})
 	boss := e.session(t, "boss@x.de")
 	anna := e.session(t, "anna@x.de")
-	ben := e.session(t, "ben@x.de") // kein Mitglied
+	ben := e.session(t, "ben@x.de") // not a member
 	sees := func(cs *mcp.ClientSession) map[string]any {
 		t.Helper()
 		for _, sp := range e.mustCall(t, cs, "list_spaces", nil)["spaces"].([]any) {
@@ -345,7 +345,7 @@ func TestInstanceAdminUpdatesSpace(t *testing.T) {
 		t.Errorf("bestehender Eintrag hat seinen Status verloren: %v", got)
 	}
 
-	// Standardrolle öffnet den Bereich für alle Angemeldeten und schließt ihn wieder
+	// default role opens the space to all logged-in users and closes it again
 	e.mustCall(t, boss, "admin_update_space", map[string]any{"space": "support", "default_role": "reader"})
 	if m := sees(ben); m == nil || m["role"] != "reader" {
 		t.Errorf("default_role=reader: %v", m)
@@ -483,7 +483,7 @@ func TestOffboardingConvertsPersonalSpace(t *testing.T) {
 	if res, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "list_spaces"}); err == nil && !res.IsError {
 		t.Error("gesperrtes Konto hat noch Zugriff")
 	}
-	// erneut offboarden verschiebt die Löschfrist nicht
+	// offboarding again does not move the deletion deadline
 	again := e.mustCall(t, boss, "admin_offboard_user", map[string]any{"user_email": "anna@x.de", "confirm": true})
 	if !strings.Contains(again["message"].(string), "bereits") || again["personal_space"].(map[string]any)["purge_after"] != personal["purge_after"] {
 		t.Errorf("zweites Offboarding: %v", again)
@@ -511,11 +511,11 @@ func TestOffboardingConvertsPersonalSpace(t *testing.T) {
 		t.Errorf("zweite Übertragung: %q", msg)
 	}
 
-	// Vorgesetzter sieht beide Einträge, die Übergabe ist gelöscht
+	// the supervisor sees both entries, the handoff is deleted
 	if list := e.mustCall(t, chef, "list_knowledge", map[string]any{"space": "nachlass-anna"})["entries"].([]any); len(list) != 2 {
 		t.Errorf("Einträge im Nachlass: %v", list)
 	}
-	// der Nachfolger übernimmt einen Eintrag in seinen persönlichen Bereich
+	// the successor takes over an entry into their personal space
 	if moved := e.mustCall(t, ben, "move_knowledge", map[string]any{"id": first["id"], "space": "personal", "confirm": true}); moved["result"] != "moved" {
 		t.Fatalf("übernehmen: %v", moved)
 	}
@@ -523,7 +523,7 @@ func TestOffboardingConvertsPersonalSpace(t *testing.T) {
 		t.Errorf("übernommener Eintrag: %v", got)
 	}
 
-	// Reaktivierung: neuer, leerer persönlicher Bereich, der Nachlass bleibt beim Team
+	// reactivation: new, empty personal space, the legacy stays with the team
 	if got := e.mustCall(t, boss, "admin_reactivate_user", map[string]any{"user_email": "anna@x.de"}); !strings.Contains(got["message"].(string), "neuer") {
 		t.Errorf("Reaktivierung: %v", got)
 	}
@@ -571,7 +571,7 @@ func TestOffboardingMergesIntoSuccessor(t *testing.T) {
 	if _, msg := merge("ghost@x.de"); !strings.Contains(msg, "unbekannt") {
 		t.Errorf("unbekanntes Ziel: %q", msg)
 	}
-	// das Kontingent des Nachfolgers gilt; bei Überschreitung wird nichts verschoben
+	// the successor's quota applies; if exceeded, nothing is moved
 	u, _ := e.users.GetByEmail(e.ctx, "ben@x.de")
 	two := 2
 	if err := e.users.SetQuota(e.ctx, u.ID, &two, nil); err != nil {
@@ -591,7 +591,7 @@ func TestOffboardingMergesIntoSuccessor(t *testing.T) {
 	if list := e.mustCall(t, ben, "list_knowledge", nil)["entries"].([]any); len(list) != 3 {
 		t.Errorf("Bens Bereich: %v", list)
 	}
-	// Ben besitzt die Einträge jetzt wie eigene, der Verlauf läuft weiter
+	// Ben now owns the entries like his own, the history continues
 	up := e.mustCall(t, ben, "update_knowledge", map[string]any{"id": a1["id"], "title": "Rezept (übernommen)"})
 	if up["version"].(float64) != 3 || up["space_type"] != "personal" {
 		t.Errorf("nach Übernahme: %v", up)
@@ -609,7 +609,7 @@ func TestPurgeOffboardedPersonalSpaces(t *testing.T) {
 	}
 	e.mustCall(t, boss, "admin_transfer_personal_space", map[string]any{"user_email": "carl@x.de", "mode": "space",
 		"slug": "nachlass-carl", "name": "Nachlass Carl", "confirm": true})
-	// Anna und Carl sind lange weg, Dora erst seit eben
+	// Anna and Carl have been gone for a long time, Dora only just now
 	if _, err := e.srv.Pool.Exec(e.ctx, `UPDATE users SET disabled_at = now() - interval '31 days' WHERE email IN ('anna@x.de', 'carl@x.de')`); err != nil {
 		t.Fatal(err)
 	}
@@ -664,7 +664,7 @@ func TestAdminGroups(t *testing.T) {
 	e.mustCall(t, boss, "admin_groups", map[string]any{"action": "rename", "name": "Support", "new_name": "Kundendienst"})
 	e.mustCall(t, boss, "admin_groups", map[string]any{"action": "remove_member", "name": "Kundendienst", "user_email": "anna@x.de"})
 
-	// Gruppen des Identity Providers sind schreibgeschützt
+	// groups of the identity provider are read-only
 	if _, err := e.users.CreateGroup(e.ctx, "x"); err != nil {
 		t.Fatal(err)
 	}
@@ -722,7 +722,7 @@ func TestAuditLogRecordsAdminActionsWithoutPersonalContent(t *testing.T) {
 		t.Errorf("space_add_member wurde nicht ausgelöst: %v", got)
 	}
 
-	// Team-Speichern mit Details, persönliches Speichern ohne
+	// team saving with details, personal saving without
 	byUser := log(map[string]any{"user": "anna@x.de", "action": "store"})
 	if len(byUser) != 2 {
 		t.Fatalf("store-Einträge: %v", byUser)
@@ -741,22 +741,22 @@ func TestAuditLogRecordsAdminActionsWithoutPersonalContent(t *testing.T) {
 	if personal != 1 || team != 1 {
 		t.Errorf("persönlich=%d team=%d: %v", personal, team, byUser)
 	}
-	// Bereichsfilter
+	// space filter
 	if got := log(map[string]any{"space": "technik"}); len(got) < 2 {
 		t.Errorf("Bereichsfilter: %v", got)
 	}
-	// weder Titel noch Suchtext aus persönlichem Scope irgendwo im Log
+	// neither title nor search text from a personal scope anywhere in the log
 	raw, _ := json.Marshal(log(map[string]any{"limit": 200}))
 	for _, secret := range []string{"PRIVATER-TITEL", "GEHEIMER-SUCHTEXT"} {
 		if strings.Contains(string(raw), secret) {
 			t.Errorf("%q im Audit-Log", secret)
 		}
 	}
-	// Login-ähnliche Systemeinträge und Suchen sind abrufbar
+	// login-like system events and searches can be retrieved
 	if got := log(map[string]any{"action": "search"}); len(got) != 1 || got[0]["details"].(map[string]any)["hits"] == nil {
 		t.Errorf("Suche im Log: %v", got)
 	}
-	// Eingabefehler
+	// input errors
 	for name, args := range map[string]map[string]any{
 		"Zeit":     {"since": "gestern"},
 		"Dokument": {"document_id": "x"},
@@ -789,8 +789,8 @@ func TestAdminHealth(t *testing.T) {
 	}
 }
 
-// Schemas dürfen kein `"type": [...]` enthalten: Clients mit nur einem type je Schema
-// (z. B. Gemini) lehnen das ab.
+// Schemas must not contain `"type": [...]`: clients with only one type per schema
+// (e.g. Gemini) reject that.
 func TestToolSchemasUseSingleTypes(t *testing.T) {
 	e := setup(t, 0)
 	res, err := e.session(t, "boss@x.de").ListTools(e.ctx, nil)
@@ -836,7 +836,7 @@ func TestMoveAndDeleteTools(t *testing.T) {
 	out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "Notiz", "content": "alpha Inhalt", "space": "write"})
 	id := out["id"].(string)
 
-	// Ziel ohne Schreibrecht: nichts wird verschoben, es gibt Auswahl statt Fehler
+	// target without write permission: nothing is moved, a choice is offered instead of an error
 	res := e.mustCall(t, anna, "move_knowledge", map[string]any{"id": id, "space": "read", "confirm": true})
 	if res["result"] != "choose_space" {
 		t.Fatalf("nur lesbares Ziel: %v", res)
@@ -846,7 +846,7 @@ func TestMoveAndDeleteTools(t *testing.T) {
 			t.Errorf("nur lesbarer Bereich wird als Ziel angeboten: %v", res["spaces"])
 		}
 	}
-	// ohne Bestätigung wird nichts verschoben
+	// without confirmation nothing is moved
 	if _, msg := e.call(t, anna, "move_knowledge", map[string]any{"id": id, "space": "personal", "confirm": false}); !strings.Contains(msg, "Bestätigung") {
 		t.Errorf("move confirm=false: %q", msg)
 	}
@@ -855,7 +855,7 @@ func TestMoveAndDeleteTools(t *testing.T) {
 		t.Fatalf("%v", res)
 	}
 
-	// Löschen: Author darf nicht, Bereichs-Admin sieht den persönlichen Eintrag nicht
+	// deleting: author may not, space admin does not see the personal entry
 	out = e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "Team", "content": "beta Inhalt", "space": "write"})
 	teamID := out["id"].(string)
 	if _, msg := e.call(t, anna, "delete_knowledge", map[string]any{"id": teamID, "confirm": true}); !strings.Contains(msg, "berechtigung") {

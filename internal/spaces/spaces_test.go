@@ -17,10 +17,10 @@ func TestCreateTeamValidation(t *testing.T) {
 	ctx := context.Background()
 	s := spaces.New(dbtest.NewPool(t))
 	for _, p := range []spaces.CreateParams{
-		{Slug: "A", Name: "x"},            // wird zu "a": zu kurz
-		{Slug: "ok name", Name: "x"},      // Leerzeichen
-		{Slug: "personal-123", Name: "x"}, // reserviert
-		{Slug: "valid", Name: " "},        // Name leer
+		{Slug: "A", Name: "x"},            // becomes "a": too short
+		{Slug: "ok name", Name: "x"},      // whitespace
+		{Slug: "personal-123", Name: "x"}, // reserved
+		{Slug: "valid", Name: " "},        // empty name
 		{Slug: "valid", Name: "x", DefaultRole: authz.Curator},
 	} {
 		if _, err := s.CreateTeam(ctx, p); !errors.Is(err, spaces.ErrInvalid) {
@@ -50,7 +50,7 @@ func TestUpdateAndDefaultRole(t *testing.T) {
 	if up.Name != name || !up.RequireApproval || up.DefaultRole != authz.None || up.Description != "" {
 		t.Errorf("%+v", up)
 	}
-	// ohne DefaultRole bleibt der Wert erhalten
+	// without DefaultRole the value is kept
 	author := authz.Author
 	if _, err := s.Update(ctx, sp.ID, spaces.UpdateParams{DefaultRole: &author}); err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestMembers(t *testing.T) {
 	if err := ss.SetMember(ctx, sp.ID, spaces.PrincipalGroup, g.ID, authz.Reader, u.ID); err != nil {
 		t.Fatal(err)
 	}
-	// Rolle ändern statt doppelt anlegen
+	// change the role instead of creating a duplicate
 	if err := ss.SetMember(ctx, sp.ID, spaces.PrincipalUser, u.ID, authz.Curator, u.ID); err != nil {
 		t.Fatal(err)
 	}

@@ -113,7 +113,7 @@ func (p *oidcProvider) AuthURL(ctx context.Context, r AuthRequest) (string, erro
 		oauth2.S256ChallengeOption(r.Verifier),
 		oauth2.SetAuthURLParam("prompt", "select_account"),
 	}
-	// Mit freigegebenen Einzeladressen (evtl. Gmail ohne hd) wäre der Hinweis hinderlich.
+	// With individually approved addresses (possibly Gmail without hd) the hint would get in the way.
 	if p.cfg.Type == "google" && len(eff.AllowedDomains) == 1 && len(eff.AllowedEmails) == 0 {
 		opts = append(opts, oauth2.SetAuthURLParam("hd", eff.AllowedDomains[0])) // hint only
 	}

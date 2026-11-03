@@ -61,7 +61,7 @@ func (e env) roles(t *testing.T, u users.User) authz.Roles {
 	return r
 }
 
-// Support-Mitarbeiter sieht "Geschäftsführung" nicht (Konzept 17.3).
+// Support staff member does not see "Geschäftsführung" (concept 17.3).
 func TestUnrelatedSpaceInvisible(t *testing.T) {
 	e := setup(t, time.Minute)
 	anna := e.user(t, "anna@x.de")
@@ -80,7 +80,7 @@ func TestUnrelatedSpaceInvisible(t *testing.T) {
 }
 
 func TestGroupMembershipGrantsAndRevokes(t *testing.T) {
-	e := setup(t, time.Minute) // lange TTL: Invalidierung muss greifen
+	e := setup(t, time.Minute) // long TTL: invalidation must take effect
 	anna := e.user(t, "anna@x.de")
 	sp := e.team(t, "vertrieb", authz.None)
 	g, err := e.users.CreateGroup(e.ctx, "Vertrieb")
@@ -105,7 +105,7 @@ func TestGroupMembershipGrantsAndRevokes(t *testing.T) {
 	if e.roles(t, anna).Can(sp.ID, authz.Reader) {
 		t.Fatal("Zugriff blieb nach Entfernen aus der Gruppe")
 	}
-	// Gruppe löschen entfernt auch die Bereichs-Mitgliedschaft
+	// Deleting a group also removes the space membership
 	if err := e.users.AddGroupMember(e.ctx, g.ID, anna.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestDefaultRoleReaderIsReadOnly(t *testing.T) {
 func TestPersonalSpacesArePrivateEvenForAdmins(t *testing.T) {
 	e := setup(t, time.Minute)
 	anna := e.user(t, "anna@x.de")
-	boss := e.user(t, "boss@x.de") // bootstrap admin, andere Schreibweise
+	boss := e.user(t, "boss@x.de") // bootstrap admin, different capitalization
 	if !boss.InstanceAdmin {
 		t.Fatal("Bootstrap-Admin nicht erkannt")
 	}
@@ -198,7 +198,7 @@ func TestDisabledUserHasNoRoles(t *testing.T) {
 }
 
 func TestCacheExpiryPicksUpDirectChanges(t *testing.T) {
-	// Änderungen ohne OnChange-Hook (z. B. durch eine andere Instanz) greifen nach der TTL.
+	// Changes without the OnChange hook (e.g. made by another instance) take effect after the TTL.
 	pool := dbtest.NewPool(t)
 	ctx := context.Background()
 	us, ss := users.New(pool, users.Options{PersonalEnabled: true}), spaces.New(pool)

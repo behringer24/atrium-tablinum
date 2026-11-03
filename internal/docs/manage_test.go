@@ -80,26 +80,26 @@ func TestMoveRespectsEditRightsAndApproval(t *testing.T) {
 
 	d := mustStore(t, e, author, open.ID, "Eintrag", "Inhalt alpha")
 
-	// fremde Einträge darf ein Author nicht verschieben
+	// an author may not move other people's entries
 	if _, err := e.docs.Move(e.ctx, other, docs.MoveParams{ID: d.ID, SpaceID: review.ID}); !errors.Is(err, docs.ErrForbidden) {
 		t.Errorf("fremder Eintrag: %v", err)
 	}
-	// in einen Bereich mit Freigabepflicht: wird Entwurf
+	// into a space with approval required: becomes a draft
 	moved, err := e.docs.Move(e.ctx, author, docs.MoveParams{ID: d.ID, SpaceID: review.ID})
 	if err != nil || moved.Status != "draft" {
 		t.Fatalf("%+v %v", moved, err)
 	}
-	// Entwürfe sind nicht verschiebbar
+	// drafts cannot be moved
 	if _, err := e.docs.Move(e.ctx, author, docs.MoveParams{ID: d.ID, SpaceID: open.ID}); !errors.Is(err, ingest.ErrInvalid) {
 		t.Errorf("Entwurf: %v", err)
 	}
-	// Kurator darf in Freigabebereich ohne Entwurfsstatus verschieben
+	// a curator may move into an approval space without draft status
 	d2 := mustStore(t, e, curator, open.ID, "Zweiter", "Inhalt beta")
 	moved, err = e.docs.Move(e.ctx, curator, docs.MoveParams{ID: d2.ID, SpaceID: review.ID})
 	if err != nil || moved.Status != "approved" {
 		t.Fatalf("%+v %v", moved, err)
 	}
-	// freigegebene Einträge eines Freigabebereichs kann ein Author nicht herausnehmen
+	// an author cannot take approved entries out of an approval space
 	d3 := mustStore(t, e, author, review.ID, "Dritter", "Inhalt alpha beta")
 	if d3.Status != "draft" {
 		t.Fatalf("Status = %s", d3.Status)
@@ -113,7 +113,7 @@ func TestMoveRespectsEditRightsAndApproval(t *testing.T) {
 }
 
 func TestMoveIntoPersonalSpaceChecksQuota(t *testing.T) {
-	e := setup(t) // Kontingent: 3 Einträge
+	e := setup(t) // quota: 3 entries
 	anna := e.actor(t, "anna@x.de")
 	sp := e.team(t, "team", false, authz.None)
 	e.member(t, sp, anna, authz.Author)
@@ -132,7 +132,7 @@ func TestDeleteIsAdminOnly(t *testing.T) {
 	author := e.actor(t, "author@x.de")
 	curator := e.actor(t, "cur@x.de")
 	spaceAdmin := e.actor(t, "sadmin@x.de")
-	boss := e.actor(t, "boss@x.de") // Bootstrap-Instanz-Admin
+	boss := e.actor(t, "boss@x.de") // bootstrap instance admin
 	outsider := e.actor(t, "out@x.de")
 	sp := e.team(t, "wiki", false, authz.None)
 	e.member(t, sp, author, authz.Author)
@@ -165,12 +165,12 @@ func TestDeleteIsAdminOnly(t *testing.T) {
 			t.Errorf("%s: %d Zeilen übrig", table, n)
 		}
 	}
-	// Titel steht im Audit-Log des Team-Bereichs
+	// title is in the audit log of the team space
 	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = 'delete' AND details->>'title' = 'Wichtig'`); n != 1 {
 		t.Errorf("Audit mit Titel: %d", n)
 	}
 
-	// Instanz-Admin darf in jedem Team-Bereich löschen
+	// an instance admin may delete in every team space
 	d2 := mustStore(t, e, author, sp.ID, "Zweiter", "Inhalt beta")
 	if err := e.docs.Delete(e.ctx, boss, d2.ID); err != nil {
 		t.Errorf("Instanz-Admin: %v", err)
@@ -183,7 +183,7 @@ func TestDeleteInPersonalSpace(t *testing.T) {
 	boss := e.actor(t, "boss@x.de")
 	d := mustStore(t, e, anna, personal(anna), "Privat", "Inhalt alpha")
 
-	// auch Instanz-Admins kommen nicht an fremde persönliche Einträge
+	// even instance admins cannot reach other people's personal entries
 	if err := e.docs.Delete(e.ctx, boss, d.ID); !errors.Is(err, docs.ErrNotFound) {
 		t.Errorf("Instanz-Admin: %v", err)
 	}

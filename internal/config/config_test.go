@@ -66,7 +66,7 @@ func TestEmbeddingSectionFromYAML(t *testing.T) {
 	if s := e.Settings(); s.Options["batch_size"] != "8" || s.Timeout != 15*time.Second || s.QueryPrefix != "query: " {
 		t.Errorf("Settings: %+v", s)
 	}
-	// eine Tippfehler-Option wird beim Laden abgelehnt
+	// a mistyped option is rejected on load
 	bad := strings.Replace(raw, "batch_size: 8", "batchsize: 8", 1)
 	if _, err := Parse([]byte(bad), env(map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "postgres://x"})); err == nil ||
 		!strings.Contains(err.Error(), "batch_size") {

@@ -97,7 +97,7 @@ func TestOpenAIValidation(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	// ein eigener Endpunkt (Ollama, vLLM, ...) braucht keinen Schlüssel
+	// a custom endpoint (Ollama, vLLM, ...) needs no key
 	if err := Validate(Settings{Backend: "openai", URL: "http://localhost:11434/v1", Model: "m", Dimensions: 4}); err != nil {
 		t.Errorf("eigener Endpunkt: %v", err)
 	}

@@ -70,7 +70,7 @@ func TestLongSectionSplitsAtParagraphs(t *testing.T) {
 }
 
 func TestHugeParagraphIsHardSplitWithoutLoss(t *testing.T) {
-	text := strings.TrimSpace(strings.Repeat("überlang ", 400)) // ein Absatz, ~800 Tokens
+	text := strings.TrimSpace(strings.Repeat("überlang ", 400)) // one paragraph, ~800 tokens
 	cs := Split("", text, opt)
 	if len(cs) < 3 {
 		t.Fatalf("chunks = %d", len(cs))

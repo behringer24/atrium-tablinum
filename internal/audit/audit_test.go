@@ -32,7 +32,7 @@ func TestQueryFiltersAndPrivacy(t *testing.T) {
 	ins(audit.Event{UserID: &anna.ID, Client: "claude", Action: "store", SpaceID: &team.ID, DocumentID: &doc, Details: map[string]any{"status": "approved"}})
 	ins(audit.Event{UserID: &ben.ID, Client: "chatgpt", Action: "admin_create_space", SpaceID: &team.ID})
 	ins(audit.Event{UserID: &ben.ID, Client: "chatgpt", Action: "admin_archive_space", SpaceID: &team.ID})
-	// persönlicher Bereich: Details werden schon beim Schreiben verworfen
+	// personal space: details are already dropped when writing
 	ins(audit.Event{UserID: &anna.ID, Action: "store", SpaceID: anna.PersonalSpaceID, Personal: true, Details: map[string]any{"title": "GEHEIM"}})
 
 	all, err := audit.Query(ctx, pool, audit.Filter{})

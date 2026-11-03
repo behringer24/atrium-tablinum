@@ -221,7 +221,7 @@ func TestMetadata(t *testing.T) {
 	if methods := m["code_challenge_methods_supported"].([]any); len(methods) != 1 || methods[0] != "S256" {
 		t.Errorf("PKCE-Methoden: %v", methods)
 	}
-	// 401 verweist auf die Resource-Metadaten
+	// 401 points to the resource metadata
 	resp, _ := e.do(http.MethodPost, "/mcp", nil, nil)
 	if resp.StatusCode != 401 || !strings.Contains(resp.Header.Get("WWW-Authenticate"), "resource_metadata="+`"`+e.srv.ResourceMetadataURL()+`"`) {
 		t.Errorf("401: %d %q", resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
@@ -259,7 +259,7 @@ func TestRegistrationValidation(t *testing.T) {
 			t.Errorf("%s: %v", tc.name, m)
 		}
 	}
-	// ein Client mit Geheimnis-Wunsch wird trotzdem öffentlich
+	// a client asking for a secret still becomes public
 	_, m := e.jsonPost("/oauth/register", `{"redirect_uris":["`+claudeRedirect+`"],"token_endpoint_auth_method":"client_secret_post"}`)
 	if m["token_endpoint_auth_method"] != "none" || m["client_secret"] != nil {
 		t.Errorf("%v", m)
@@ -286,7 +286,7 @@ func TestFullFlowAndTokenUse(t *testing.T) {
 		t.Fatalf("%v", tok)
 	}
 
-	// Redirect enthält state und iss
+	// Redirect contains state and iss
 	p := newPKCE()
 	loc := e.login(e.authorizeURL(clientID, claudeRedirect, p, nil))
 	if loc.Query().Get("state") != "client-state" || loc.Query().Get("iss") != e.http.URL || loc.Query().Get("code") == "" {
@@ -307,11 +307,11 @@ func TestFullFlowAndTokenUse(t *testing.T) {
 	if status, _ := e.mcpStatus("at_unknown"); status != 401 {
 		t.Errorf("unbekanntes Token: %d", status)
 	}
-	// Refresh-Token ist kein Access-Token
+	// A refresh token is not an access token
 	if status, _ := e.mcpStatus(tok["refresh_token"].(string)); status != 401 {
 		t.Errorf("Refresh-Token als Access-Token: %d", status)
 	}
-	// Token ist an die Ressource gebunden (Audience)
+	// Token is bound to the resource (audience)
 	if _, err := e.pool.Exec(e.ctx, `UPDATE oauth_tokens SET resource = 'https://other.example/mcp'`); err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func TestCodeExchangeChecks(t *testing.T) {
 	if resp, m := e.exchange(clientID, claudeRedirect, code, newPKCE().verifier); resp.StatusCode != 400 || m["error"] != "invalid_grant" {
 		t.Errorf("falscher Verifier: %d %v", resp.StatusCode, m)
 	}
-	// Code ist nach dem Fehlversuch verbraucht
+	// Code is used up after the failed attempt
 	if resp, m := e.exchange(clientID, claudeRedirect, code, p.verifier); resp.StatusCode != 400 || m["error"] != "invalid_grant" {
 		t.Errorf("Code wiederverwendbar: %d %v", resp.StatusCode, m)
 	}
@@ -359,25 +359,25 @@ func TestCodeExchangeChecks(t *testing.T) {
 	if resp, _ := e.exchange(clientID, claudeRedirect, code, ""); resp.StatusCode != 400 {
 		t.Errorf("ohne Verifier: %d", resp.StatusCode)
 	}
-	// abgelaufener Code
+	// expired code
 	code = get(p)
 	_, _ = e.pool.Exec(e.ctx, `UPDATE oauth_codes SET expires_at = now() - interval '1 second'`)
 	if resp, _ := e.exchange(clientID, claudeRedirect, code, p.verifier); resp.StatusCode != 400 {
 		t.Errorf("abgelaufener Code: %d", resp.StatusCode)
 	}
-	// Erfolg bleibt möglich
+	// Success remains possible
 	code = get(p)
 	if resp, _ := e.exchange(clientID, claudeRedirect, code, p.verifier); resp.StatusCode != 200 {
 		t.Errorf("gültiger Austausch: %d", resp.StatusCode)
 	}
-	// Resource-Parameter für fremden Server
+	// Resource parameter for a foreign server
 	code = get(p)
 	resp, body := e.do(http.MethodPost, "/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {code},
 		"redirect_uri": {claudeRedirect}, "client_id": {clientID}, "code_verifier": {p.verifier}, "resource": {"https://other.example/mcp"}}, nil)
 	if resp.StatusCode != 400 || !strings.Contains(body, "invalid_target") {
 		t.Errorf("fremde resource: %d %s", resp.StatusCode, body)
 	}
-	// unbekannter Client / Grant
+	// unknown client / grant
 	if resp, _ := e.do(http.MethodPost, "/oauth/token", url.Values{"grant_type": {"authorization_code"}, "client_id": {"nope"}}, nil); resp.StatusCode != 400 {
 		t.Errorf("unbekannter Client: %d", resp.StatusCode)
 	}
@@ -394,7 +394,7 @@ func TestAuthorizeRequestValidation(t *testing.T) {
 	clientID := e.register(claudeRedirect)
 	p := newPKCE()
 
-	// Fehler ohne vertrauenswürdige Weiterleitung: Seite statt Redirect
+	// Error without a trusted redirect: page instead of redirect
 	for name, u := range map[string]string{
 		"unbekannter Client":     e.authorizeURL("nope", claudeRedirect, p, nil),
 		"nicht registrierte URI": e.authorizeURL(clientID, "https://claude.ai/other", p, nil),
@@ -405,7 +405,7 @@ func TestAuthorizeRequestValidation(t *testing.T) {
 			t.Errorf("%s: %d %q", name, resp.StatusCode, resp.Header.Get("Location"))
 		}
 	}
-	// Fehler mit Weiterleitung an den registrierten Client (inkl. state und iss)
+	// Error with redirect to the registered client (incl. state and iss)
 	for name, tc := range map[string]struct {
 		extra url.Values
 		want  string
@@ -431,12 +431,12 @@ func TestAuthorizeRequestValidation(t *testing.T) {
 			t.Errorf("%s: %d %s", name, resp.StatusCode, loc)
 		}
 	}
-	// Resource ohne Pfad (nur Origin) ist erlaubt
+	// Resource without a path (origin only) is allowed
 	resp, _ := e.do(http.MethodGet, e.authorizeURL(clientID, claudeRedirect, p, url.Values{"resource": {e.http.URL}}), nil, nil)
 	if resp.StatusCode != 302 || !strings.HasPrefix(resp.Header.Get("Location"), e.idp.URL) {
 		t.Errorf("Origin als resource: %d %s", resp.StatusCode, resp.Header.Get("Location"))
 	}
-	// redirect_uri darf entfallen, wenn genau eine registriert ist
+	// redirect_uri may be omitted if exactly one is registered
 	q := url.Values{"response_type": {"code"}, "client_id": {clientID}, "code_challenge": {p.challenge}, "code_challenge_method": {"S256"}}
 	if resp, _ := e.do(http.MethodGet, "/oauth/authorize?"+q.Encode(), nil, nil); resp.StatusCode != 302 {
 		t.Errorf("ohne redirect_uri: %d", resp.StatusCode)
@@ -470,7 +470,7 @@ func TestRefreshRotationAndReuseDetection(t *testing.T) {
 	if status, _ := e.mcpStatus(second["access_token"].(string)); status != 200 {
 		t.Errorf("neues Access-Token: %d", status)
 	}
-	// altes Refresh-Token erneut: Diebstahl-Verdacht -> alles widerrufen
+	// old refresh token again: suspected theft -> revoke everything
 	if resp, m := refresh(tok["refresh_token"].(string)); resp.StatusCode != 400 || m["error"] != "invalid_grant" {
 		t.Errorf("Wiederverwendung: %d %v", resp.StatusCode, m)
 	}
@@ -511,7 +511,7 @@ func TestRevoke(t *testing.T) {
 	clientID, tok := e.tokens()
 	access, refresh := tok["access_token"].(string), tok["refresh_token"].(string)
 
-	// fremder Client darf nichts widerrufen, bekommt aber trotzdem 200
+	// a foreign client may not revoke anything, but still gets 200
 	other := e.register(claudeRedirect)
 	if resp, _ := e.do(http.MethodPost, "/oauth/revoke", url.Values{"token": {access}, "client_id": {other}}, nil); resp.StatusCode != 200 {
 		t.Errorf("Status %d", resp.StatusCode)
@@ -522,7 +522,7 @@ func TestRevoke(t *testing.T) {
 	if resp, _ := e.do(http.MethodPost, "/oauth/revoke", url.Values{"token": {"rt_unknown"}, "client_id": {clientID}}, nil); resp.StatusCode != 200 {
 		t.Errorf("unbekanntes Token: %d", resp.StatusCode)
 	}
-	// Refresh-Token widerrufen entzieht auch das Access-Token
+	// Revoking the refresh token also revokes the access token
 	e.do(http.MethodPost, "/oauth/revoke", url.Values{"token": {refresh}, "client_id": {clientID}}, nil)
 	if status, _ := e.mcpStatus(access); status != 401 {
 		t.Errorf("Access-Token nach Revoke des Refresh-Tokens: %d", status)
@@ -557,7 +557,7 @@ func TestLoginPolicyAndDisabledUsers(t *testing.T) {
 	if err := e.users.SetActive(e.ctx, u.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	// vorhandene Tokens sind sofort wertlos, neue Logins werden abgelehnt
+	// existing tokens are worthless immediately, new logins are rejected
 	if status, _ := e.mcpStatus(tok["access_token"].(string)); status != 401 {
 		t.Errorf("Token eines deaktivierten Nutzers: %d", status)
 	}
@@ -594,7 +594,7 @@ func TestStateIsSingleUseAndBoundToProvider(t *testing.T) {
 			t.Errorf("%s: %d", u, resp.StatusCode)
 		}
 	}
-	// IdP meldet Abbruch -> access_denied beim Client, State verbraucht
+	// IdP reports cancellation -> access_denied at the client, state consumed
 	resp, _ = e.do(http.MethodGet, e.authorizeURL(clientID, claudeRedirect, newPKCE(), nil), nil, nil)
 	idpAuth, _ := url.Parse(resp.Header.Get("Location"))
 	cb := e.http.URL + "/oauth/callback/kc?" + url.Values{"state": {idpAuth.Query().Get("state")}, "error": {"access_denied"}}.Encode()
@@ -617,7 +617,7 @@ func TestProviderChooser(t *testing.T) {
 	if resp.StatusCode != 302 || !strings.HasPrefix(resp.Header.Get("Location"), e.idp.URL) {
 		t.Fatalf("Weiterleitung zum IdP: %d %s", resp.StatusCode, resp.Header.Get("Location"))
 	}
-	// derselbe Link ein zweites Mal: der State ist bereits gebunden
+	// the same link a second time: the state is already bound
 	if resp, _ = e.do(http.MethodGet, href, nil, nil); resp.StatusCode != 400 {
 		t.Errorf("Link wiederverwendbar: %d", resp.StatusCode)
 	}
@@ -641,7 +641,7 @@ func TestIdPOutageShowsErrorPage(t *testing.T) {
 
 func TestCleanup(t *testing.T) {
 	e := setup(t, 1)
-	e.tokens() // Client mit Tokens bleibt
+	e.tokens() // client with tokens remains
 	e.register(claudeRedirect)
 	_, _ = e.pool.Exec(e.ctx, `UPDATE oauth_clients SET created_at = now() - interval '2 days'`)
 	_, _ = e.pool.Exec(e.ctx, `UPDATE oauth_tokens SET expires_at = now() - interval '8 days' WHERE kind = 'access'`)
@@ -674,7 +674,7 @@ func TestSessionsAndAbsoluteLifetime(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].ClientID != clientID || list[0].ClientName != "Claude" {
 		t.Fatalf("Sessions: %+v %v", list, err)
 	}
-	// Rotation nimmt den Sitzungsbeginn mit, die Sitzung bleibt eine
+	// Rotation carries over the session start, so it remains the same session
 	res, err := store.Rotate(e.ctx, tok["refresh_token"].(string), clientID)
 	if err != nil {
 		t.Fatal(err)
@@ -682,14 +682,14 @@ func TestSessionsAndAbsoluteLifetime(t *testing.T) {
 	if list, _ = store.Sessions(e.ctx, u.ID); len(list) != 1 {
 		t.Errorf("Sessions nach Rotation: %+v", list)
 	}
-	// nach der Höchstdauer hilft auch ein gültiges Refresh-Token nicht mehr
+	// after the maximum age even a valid refresh token no longer helps
 	if _, err := e.pool.Exec(e.ctx, `UPDATE oauth_tokens SET session_started_at = now() - interval '48 hours'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Rotate(e.ctx, res.Pair.Refresh, clientID); !errors.Is(err, oauth.ErrInvalidGrant) {
 		t.Errorf("Rotation nach der Höchstdauer: %v", err)
 	}
-	// ohne Höchstdauer (0) bleibt es beim bisherigen Verhalten
+	// without a maximum age (0) the previous behavior remains
 	if _, err := oauth.NewStore(e.pool, time.Hour, 720*time.Hour).Rotate(e.ctx, res.Pair.Refresh, clientID); err != nil {
 		t.Errorf("Rotation ohne Höchstdauer: %v", err)
 	}

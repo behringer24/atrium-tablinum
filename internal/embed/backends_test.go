@@ -33,7 +33,7 @@ func TestOptionsAreValidated(t *testing.T) {
 		opts map[string]string
 		want string
 	}{
-		"unbekannter Schlüssel": {map[string]string{"batchsize": "4"}, "batch_size"}, // nennt die gültigen Schlüssel
+		"unbekannter Schlüssel": {map[string]string{"batchsize": "4"}, "batch_size"}, // names the valid keys
 		"keine Zahl":            {map[string]string{"batch_size": "viele"}, "ganze Zahl"},
 		"zu klein":              {map[string]string{"batch_size": "0"}, ">= 1"},
 		"kein Wahrheitswert":    {map[string]string{"normalize": "vielleicht"}, "true noch false"},

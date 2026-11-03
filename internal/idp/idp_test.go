@@ -158,7 +158,7 @@ func TestGoogleTypeUsesIssuerOverrideAndHD(t *testing.T) {
 	if _, err := p.Exchange(context.Background(), approve(t, authURL), req); err != nil {
 		t.Errorf("Workspace-Konto: %v", err)
 	}
-	fake.SetClaims(nil) // kein hd-Claim: privates Konto
+	fake.SetClaims(nil) // no hd claim: private account
 	if _, err := p.Exchange(context.Background(), approve(t, authURL), req); !errors.Is(err, ErrNotAllowed) {
 		t.Errorf("privates Konto: %v", err)
 	}
