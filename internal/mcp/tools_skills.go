@@ -100,7 +100,7 @@ func (s *Server) spaceNames(ctx context.Context, a docs.Actor) map[uuid.UUID]str
 		return out
 	}
 	for _, sp := range list {
-		out[sp.ID] = sp.Name
+		out[sp.ID] = spaceDisplayName(sp)
 	}
 	return out
 }
@@ -350,7 +350,7 @@ func (s *Server) getSkill(ctx context.Context, c *call, in getSkillIn) (getSkill
 	}
 	s.Skills.Audit(ctx, c.Actor, v, "skill_get")
 	info := versionInfo(v)
-	return getSkillOut{Skill: v.Name, Space: m.Space.Name, Version: &info, Resources: resourceInfos(v), Content: text, Notice: noticeFor(v)}, nil
+	return getSkillOut{Skill: v.Name, Space: spaceDisplayName(m.Space), Version: &info, Resources: resourceInfos(v), Content: text, Notice: noticeFor(v)}, nil
 }
 
 func noticeFor(v skills.Version) string {
@@ -466,7 +466,7 @@ func (s *Server) storeSkill(ctx context.Context, c *call, in storeSkillIn) (stor
 	if v.Status == skills.StatusPublished {
 		msg = fmt.Sprintf("Version %d of the skill %q is saved and published in your personal space; only you can see it.", v.Version, v.Name)
 	}
-	return storeSkillOut{Message: msg, Skill: v.Name, Space: target.Name, Version: &info, Resources: resourceInfos(v)}, nil
+	return storeSkillOut{Message: msg, Skill: v.Name, Space: spaceDisplayName(*target), Version: &info, Resources: resourceInfos(v)}, nil
 }
 
 // ---- review, publish, block -------------------------------------------------------------
