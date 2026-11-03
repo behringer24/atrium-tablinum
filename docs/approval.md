@@ -1,30 +1,30 @@
-# Entwürfe und Freigabe
+# Drafts and approval
 
-Ein Eintrag in einem Team-Bereich hat einen von vier Zuständen: `draft` (Entwurf), `approved` (freigegeben), `rejected` (zurückgegeben) oder `archived` (siehe [Archiv und Kontext](archive-and-context.md)). Lesen und durchsuchen können alle Mitglieder nur freigegebene Einträge. Entwürfe und zurückgegebene Einträge sehen nur ihr Autor und die Kuratoren des Bereichs. Persönliche Bereiche kennen keine Entwürfe.
+An entry in a team space has one of four states: `draft`, `approved`, `rejected` (returned) or `archived` (see [Archive and context](archive-and-context.md)). All members can read and search only approved entries. Drafts and returned entries are visible only to their author and the curators of the space. Personal spaces have no drafts.
 
-## Wann ein Eintrag zum Entwurf wird
+## When an entry becomes a draft
 
-- **Freigabepflicht:** Hat der Bereich `require_approval`, sind Einträge von Autoren immer Entwürfe. Einträge von Kuratoren und Admins sind sofort freigegeben.
-- **Auf ausdrücklichen Wunsch:** `store_knowledge` mit `draft=true` legt den Eintrag in jedem Team-Bereich als Entwurf an, auch ohne Freigabepflicht und auch für Admins. Das ist für den Fall gedacht, dass jemand für ein fremdes Fachgebiet schreibt und der Kurator des Bereichs den Inhalt vor der Veröffentlichung prüfen soll. Der Assistent setzt `draft` nur, wenn der Nutzer es ausdrücklich verlangt.
-- **Verschieben:** Ein Eintrag, den ein Nicht-Kurator in einen Bereich mit Freigabepflicht verschiebt, wird dort zum Entwurf.
+- **Mandatory approval:** If the space has `require_approval`, entries by authors are always drafts. Entries by curators and admins are approved immediately.
+- **On explicit request:** `store_knowledge` with `draft=true` creates the entry as a draft in any team space, even without mandatory approval and even for admins. This is meant for the case where someone writes for a subject area that is not their own and the space's curator should check the content before publication. The assistant sets `draft` only if the user explicitly asks for it.
+- **Moving:** An entry that a non-curator moves into a space with mandatory approval becomes a draft there.
 
-## Prüfen
+## Reviewing
 
-Kuratoren und Admins eines Bereichs (Instanz-Admins in jedem Team-Bereich) sehen das Tool `review_knowledge`. Wartende Entwürfe findet `list_knowledge` mit `status=draft`.
+Curators and admins of a space (instance admins in any team space) see the tool `review_knowledge`. Pending drafts are found with `list_knowledge` and `status=draft`.
 
-1. Entwurf mit `get_knowledge` laden und lesen.
-2. `review_knowledge` mit `decision=approve` gibt ihn frei. Das macht ihn für alle Leser des Bereichs sichtbar und braucht darum `confirm=true` nach Rückfrage beim Nutzer.
-3. `decision=reject` gibt ihn mit einer Anmerkung (`note`, Pflicht) an den Autor zurück. Der Autor sieht sie als `review_note` am Eintrag.
+1. Load and read the draft with `get_knowledge`.
+2. `review_knowledge` with `decision=approve` approves it. This makes it visible to all readers of the space and therefore needs `confirm=true` after asking the user.
+3. `decision=reject` returns it to the author with a note (`note`, required). The author sees it as `review_note` on the entry.
 
-Regeln:
+Rules:
 
-- **Der Autor nur als Admin.** Ein Entwurf ist eine Bitte an den Bereich, einmal drüberzuschauen. Kuratoren können ihren eigenen Entwurf deshalb nicht selbst freigeben, das tut ein anderer Kurator. Admins des Bereichs und Instanz-Admins können es, damit nie etwas liegen bleibt, wenn Kollegen ausgefallen oder ausgeschieden sind. Im Audit-Log steht eine solche Freigabe mit `self`.
-- Nur Entwürfe lassen sich prüfen. Freigegebene und zurückgegebene Einträge nicht.
-- Ein zurückgegebener Eintrag geht mit der nächsten Änderung durch den Autor (`update_knowledge`) wieder als Entwurf in die Prüfung; die Anmerkung wird dabei gelöscht.
-- Jede Prüfung erhöht die Version des Eintrags und steht mit `approve` oder `reject` im Audit-Log (ohne Anmerkung).
-- Ein Kurator, der nicht Admin ist, bleibt mit seinem eigenen Entwurf auf einen anderen Kurator angewiesen; gibt es keinen, löst ein Admin den Knoten.
+- **Self-approval only as admin.** A draft is a request to the space to take a look. Curators therefore cannot approve their own draft themselves, another curator does that. Admins of the space and instance admins can, so that nothing is ever left hanging when colleagues are absent or have left. In the audit log such an approval appears with `self`.
+- Only drafts can be reviewed. Approved and returned entries cannot.
+- A returned entry goes back into review as a draft with the author's next change (`update_knowledge`); the note is deleted in the process.
+- Every review increases the entry's version and appears in the audit log with `approve` or `reject` (without the note).
+- A curator who is not an admin depends on another curator for their own draft; if there is none, an admin resolves the deadlock.
 
-## Bekannte Grenzen
+## Known limits
 
-- Autoren eines Bereichs mit Freigabepflicht können freigegebene Einträge nicht selbst ändern (`update_knowledge` meldet das); ein Entwurf neben dem freigegebenen Stand ist noch nicht umgesetzt.
-- Es gibt keine Benachrichtigung: Kuratoren finden Entwürfe nur über `list_knowledge`.
+- Authors of a space with mandatory approval cannot change approved entries themselves (`update_knowledge` reports this); a draft alongside the approved version is not yet implemented.
+- There is no notification: curators find drafts only through `list_knowledge`.

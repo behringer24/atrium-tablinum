@@ -1,7 +1,7 @@
 #!/bin/sh
-# Tägliches Datenbank-Backup (z. B. per Cron). Schreibt ein komprimiertes Dump nach $BACKUP_DIR
-# und löscht Dumps, die älter als $KEEP_DAYS Tage sind. Backups enthalten alle Inhalte inkl.
-# persönlicher Bereiche: Zugriff entsprechend einschränken und Medium verschlüsseln.
+# Daily database backup (e.g. via cron). Writes a compressed dump to $BACKUP_DIR
+# and deletes dumps older than $KEEP_DAYS days. Backups contain all content including
+# personal spaces: restrict access accordingly and encrypt the medium.
 set -eu
 cd "$(dirname "$0")/.."
 BACKUP_DIR="${BACKUP_DIR:-./backups}"

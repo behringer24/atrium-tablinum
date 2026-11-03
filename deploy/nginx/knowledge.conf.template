@@ -1,4 +1,4 @@
-# Wird vom nginx-Image per envsubst nach /etc/nginx/conf.d/ gerendert; nur ${DOMAIN} ist gesetzt.
+# Rendered by the nginx image via envsubst into /etc/nginx/conf.d/; only ${DOMAIN} is set.
 server {
     listen 80;
     server_name ${DOMAIN};

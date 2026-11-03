@@ -1,6 +1,6 @@
-# Zusatz für Embedding-Backends ohne eigenen Server (openai, bedrock): kein TEI-Container.
+# Add-on for embedding backends without an own server (openai, bedrock): no TEI container.
 #   docker compose -f docker-compose.yml -f docker-compose.api.yml up -d
-# Variante A (nginx): zusätzlich --profile proxy. Siehe docs/embedding.md.
+# Variant A (nginx): additionally --profile proxy. See docs/embedding.md.
 services:
   tei-embed:
     profiles: ["disabled"]

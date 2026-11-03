@@ -1,43 +1,43 @@
-# Deployment und Reverse Proxy
+# Deployment and reverse proxy
 
-Der Go-Server spricht nur HTTP (`instance.listen`, Standard `:8080`). TLS-Terminierung ist **nicht Teil des Servers** und je nach Umgebung unterschiedlich gelöst. Der mitgelieferte nginx + certbot ist deshalb optional.
+The Go server only speaks HTTP (`instance.listen`, default `:8080`). TLS termination is **not part of the server** and is solved differently depending on the environment. The bundled nginx + certbot is therefore optional.
 
-## Betriebsvarianten
+## Operating variants
 
-| Variante | Wer terminiert TLS | Compose-Aufruf |
+| Variant | Who terminates TLS | Compose call |
 |---|---|---|
-| **A – Bundled** (Server ohne vorhandene Infrastruktur) | nginx + certbot aus diesem Repo | `docker compose --profile proxy up -d` |
-| **B – Eigener Reverse Proxy** (nginx, Traefik, Caddy, HAProxy, Ingress …) | vorhandener Proxy | `docker compose up -d` (ohne Profil) |
-| **C – Tunnel/Plattform** (Cloudflare Tunnel, Tailscale Funnel, PaaS) | Tunnel bzw. Plattform | `docker compose up -d`, Tunnel separat |
+| **A – Bundled** (server without existing infrastructure) | nginx + certbot from this repo | `docker compose --profile proxy up -d` |
+| **B – Own reverse proxy** (nginx, Traefik, Caddy, HAProxy, Ingress …) | existing proxy | `docker compose up -d` (without profile) |
+| **C – Tunnel/platform** (Cloudflare Tunnel, Tailscale Funnel, PaaS) | tunnel or platform | `docker compose up -d`, tunnel separately |
 
-Gemeinsame Regeln für alle Varianten:
+Common rules for all variants:
 
-- `instance.base_url` ist immer die **öffentliche HTTPS-Adresse**, die Claude/ChatGPT sehen.
-- `instance.trusted_proxies` enthält die IPs/CIDRs der Proxys, deren `X-Forwarded-*`-Header vertraut werden. Leer = Header werden ignoriert.
-- Der Server-Port wird per `SERVER_BIND` auf dem Host veröffentlicht (Standard `127.0.0.1:8080`). Variante A braucht keine Veröffentlichung; bei B auf die Schnittstelle setzen, die der Proxy erreicht.
+- `instance.base_url` is always the **public HTTPS address** that Claude/ChatGPT see.
+- `instance.trusted_proxies` contains the IPs/CIDRs of the proxies whose `X-Forwarded-*` headers are trusted. Empty = headers are ignored.
+- The server port is published on the host via `SERVER_BIND` (default `127.0.0.1:8080`). Variant A needs no publishing; for B set it to the interface the proxy can reach.
 
-## Host-Schutz des MCP-SDK
+## Host protection of the MCP SDK
 
-Das SDK weist Anfragen ab, die über Loopback ankommen, aber einen fremden `Host`-Header tragen (Schutz gegen DNS-Rebinding). Ein Reverse Proxy auf demselben Host, der an `127.0.0.1:8080` weiterleitet, würde dadurch blockiert. Der Server schaltet den Schutz deshalb ab, sobald `instance.trusted_proxies` gesetzt ist. Wer einen lokalen Proxy nutzt, muss `trusted_proxies` also immer eintragen (z. B. `["127.0.0.1"]`).
+The SDK rejects requests that arrive via loopback but carry a foreign `Host` header (protection against DNS rebinding). A reverse proxy on the same host that forwards to `127.0.0.1:8080` would be blocked by this. The server therefore switches the protection off as soon as `instance.trusted_proxies` is set. Anyone using a local proxy must therefore always enter `trusted_proxies` (e.g. `["127.0.0.1"]`).
 
-## Anforderungen an jeden Proxy
+## Requirements for every proxy
 
-Damit MCP (Streamable HTTP/SSE) und OAuth funktionieren:
+For MCP (Streamable HTTP/SSE) and OAuth to work:
 
-1. **Alle Pfade** an den Server weiterreichen, insbesondere `/mcp`, `/oauth/*` und `/.well-known/oauth-*` (müssen auf der öffentlichen HTTPS-Domain beim Server landen – nicht umleiten, nicht cachen).
-2. **Keine Pufferung** von Antworten (SSE): nginx `proxy_buffering off`, Traefik/Caddy: Standard passt, bei Caddy ggf. `flush_interval -1`.
-3. **Lange Lese-Timeouts** (≥ 1 h) für offene Streams.
-4. `Host`, `X-Forwarded-For`, `X-Forwarded-Proto` setzen.
-5. Request-Größe mindestens `policy.max_document_bytes` + Overhead (z. B. 2 MB).
-6. HTTP/1.1 zum Upstream, `Connection`-Header nicht fest auf `upgrade` setzen.
+1. Forward **all paths** to the server, in particular `/mcp`, `/oauth/*` and `/.well-known/oauth-*` (they must reach the server on the public HTTPS domain – do not redirect, do not cache).
+2. **No buffering** of responses (SSE): nginx `proxy_buffering off`, Traefik/Caddy: the default is fine, with Caddy possibly `flush_interval -1`.
+3. **Long read timeouts** (≥ 1 h) for open streams.
+4. Set `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`.
+5. Request size at least `policy.max_document_bytes` + overhead (e.g. 2 MB).
+6. HTTP/1.1 to the upstream, do not hard-code the `Connection` header to `upgrade`.
 
-### nginx (vorhandene Instanz, Variante B)
+### nginx (existing instance, variant B)
 
-Snippet für den `server`-Block der Domain; TLS/Zertifikate bleiben wie bei der bestehenden Installation:
+Snippet for the `server` block of the domain; TLS/certificates stay as in the existing installation:
 
 ```nginx
 location / {
-    proxy_pass http://127.0.0.1:8080;      # bzw. Host/Container des Servers
+    proxy_pass http://127.0.0.1:8080;      # or host/container of the server
     proxy_http_version 1.1;
     proxy_set_header Host              $host;
     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -51,12 +51,12 @@ location / {
 }
 ```
 
-Weitere fertige Beispiele: `deploy/examples/traefik-labels.yml` und `deploy/examples/Caddyfile`.
+More ready-made examples: `deploy/examples/traefik-labels.yml` and `deploy/examples/Caddyfile`.
 
-## Umsetzungsentscheidungen
+## Implementation decisions
 
-- Das Compose-Netz hat ein festes Subnetz (`172.30.0.0/24`), damit `trusted_proxies` für den mitgelieferten nginx stabil ist.
-- `docker-compose.yml` enthält `server`, `postgres`, `tei-embed` ohne Profil; `nginx` und `certbot` stehen unter `profiles: ["proxy"]`.
-- Das Server-Image enthält **keine** Abhängigkeit zu nginx/certbot; `/readyz` und `admin_health` funktionieren in allen Varianten. Die Zertifikatsablauf-Prüfung in `admin_health` entfällt, wenn kein Bundled-Proxy läuft (Zertifikat liegt dann außerhalb unserer Kontrolle).
-- `scripts/init-letsencrypt.sh` wird nur für Variante A benötigt.
-- Nginx-Konfiguration im Repo liegt als Template (`deploy/nginx/knowledge.conf.template`) mit `${DOMAIN}`, damit keine Datei von Hand editiert werden muss.
+- The Compose network has a fixed subnet (`172.30.0.0/24`) so that `trusted_proxies` is stable for the bundled nginx.
+- `docker-compose.yml` contains `server`, `postgres`, `tei-embed` without a profile; `nginx` and `certbot` are under `profiles: ["proxy"]`.
+- The server image has **no** dependency on nginx/certbot; `/readyz` and `admin_health` work in all variants. The certificate expiry check in `admin_health` is skipped if no bundled proxy is running (the certificate is then outside our control).
+- `scripts/init-letsencrypt.sh` is only needed for variant A.
+- The nginx configuration in the repo is a template (`deploy/nginx/knowledge.conf.template`) with `${DOMAIN}`, so no file has to be edited by hand.

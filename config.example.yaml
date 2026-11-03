@@ -1,15 +1,15 @@
-# Beispielkonfiguration. Secrets nur über Umgebungsvariablen (${VAR}).
+# Example configuration. Secrets only via environment variables (${VAR}).
 instance:
   product_name: "Atrium Tablinum"
-  short_name: "Atrium"                  # so sagen Nutzer es im Chat
-  organization_name: "Example Corp"          # erscheint in Tool-Beschreibungen
-  base_url: "https://knowledge.example.com"   # öffentliche Adresse, egal welcher Proxy davor steht
+  short_name: "Atrium"                  # how users say it in chat
+  organization_name: "Example Corp"          # appears in tool descriptions
+  base_url: "https://knowledge.example.com"   # public address, no matter which proxy sits in front
   listen: ":8080"
-  dev_mode: false                         # nur lokal (base_url auf localhost); statisches Test-Token
-  # dev_token: "mindestens-16-zeichen"   # bei dev_mode Pflicht, wird nicht erzeugt oder geloggt
-  # Proxys, deren X-Forwarded-*-Header vertraut wird (IP oder CIDR).
-  # Leer lassen, wenn der Server direkt erreichbar ist.
-  # Bundled nginx im Compose-Netz: ["172.30.0.0/24"]; eigener Proxy: dessen IP.
+  dev_mode: false                         # local only (base_url on localhost); static test token
+  # dev_token: "mindestens-16-zeichen"   # mandatory with dev_mode, is neither generated nor logged
+  # Proxies whose X-Forwarded-* headers are trusted (IP or CIDR).
+  # Leave empty if the server is reachable directly.
+  # Bundled nginx in the Compose network: ["172.30.0.0/24"]; own proxy: its IP.
   trusted_proxies: []
 
 auth:
@@ -19,7 +19,7 @@ auth:
       client_id: "${GOOGLE_CLIENT_ID}"
       client_secret: "${GOOGLE_CLIENT_SECRET}"
       allowed_domains: ["example.com"]
-      # allowed_emails: ["me@gmail.com"]   # einzelne Adressen, z. B. private Gmail-Konten (kein hd-Claim)
+      # allowed_emails: ["me@gmail.com"]   # single addresses, e.g. private Gmail accounts (no hd claim)
     # - id: entra
     #   type: entra
     #   client_id: "${ENTRA_CLIENT_ID}"
@@ -37,36 +37,36 @@ auth:
   bootstrap_admins: ["admin@example.com"]
   access_token_ttl: "1h"
   refresh_token_ttl: "720h"
-  session_max_age: "2160h"         # absolute Dauer einer Anmeldung (90 Tage), auch bei ständiger Nutzung; 0 = unbegrenzt
-  link_accounts_by_email: false    # true: Login über einen zweiten Provider übernimmt das Konto mit gleicher E-Mail (nur mit verifizierten E-Mails)
+  session_max_age: "2160h"         # absolute duration of a login (90 days), even with continuous use; 0 = unlimited
+  link_accounts_by_email: false    # true: login via a second provider takes over the account with the same e-mail (only with verified e-mails)
   allowed_redirect_uris:
     - "https://claude.ai/api/mcp/auth_callback"
-    - "https://claude.com/api/mcp/auth_callback"        # Anthropic kündigt diesen Wechsel an
+    - "https://claude.com/api/mcp/auth_callback"        # Anthropic announces this change
     - "https://chatgpt.com/connector_platform_oauth_redirect"
-    - "https://chatgpt.com/connector/oauth/*"           # '*' am Ende = beliebiger Rest
-    # aktuelle Callback-URLs der Anbieter vor Livegang prüfen
-  allow_loopback_redirects: true   # lokale Clients wie Claude Code (http://localhost:<port>/...)
+    - "https://chatgpt.com/connector/oauth/*"           # '*' at the end = any remainder
+    # check the providers' current callback URLs before going live
+  allow_loopback_redirects: true   # local clients such as Claude Code (http://localhost:<port>/...)
 
 database:
   url: "${DATABASE_URL}"
 
 embedding:
-  # Backends und ihre Einstellungen: docs/embedding.md
+  # Backends and their settings: docs/embedding.md
   backend: "tei"                 # tei | openai | bedrock
-  url: "http://tei-embed:80"   # tei: Compose-Dienstname, lokal z. B. http://localhost:8081; openai: Basisadresse der API (leer = api.openai.com)
+  url: "http://tei-embed:80"   # tei: Compose service name, locally e.g. http://localhost:8081; openai: base address of the API (empty = api.openai.com)
   model: "BAAI/bge-m3"
-  dimensions: 1024             # pro Datenbank fest, höchstens 2000
-  # api_key: "${EMBEDDING_API_KEY}"   # openai: Schlüssel; tei: nur wenn der TEI-Server mit --api-key läuft
-  # query_prefix: "query: "           # nur für Modelle, die Präfixe verlangen (E5)
+  dimensions: 1024             # fixed per database, at most 2000
+  # api_key: "${EMBEDDING_API_KEY}"   # openai: key; tei: only if the TEI server runs with --api-key
+  # query_prefix: "query: "           # only for models that require prefixes (E5)
   # document_prefix: "passage: "
   # timeout: 60s
-  # options:                          # gelten nur für das gewählte Backend, Tippfehler werden abgelehnt
+  # options:                          # apply only to the chosen backend, typos are rejected
   #   batch_size: 16                  # tei 16, openai 32, bedrock (Cohere) 32
   #
-  # Beispiel OpenAI:
+  # Example OpenAI:
   #   backend: "openai", model: "text-embedding-3-small", dimensions: 1536,
   #   api_key: "${EMBEDDING_API_KEY}", options: { send_dimensions: true }
-  # Beispiel Amazon Bedrock (Zugang über die IAM-Rolle, kein Schlüssel):
+  # Example Amazon Bedrock (access via the IAM role, no key):
   #   backend: "bedrock", model: "amazon.titan-embed-text-v2:0", dimensions: 1024,
   #   options: { region: "eu-central-1" }
 
@@ -77,7 +77,7 @@ reranker:
   candidates: 30
 
 search:
-  fts_languages: ["german", "english", "simple"]   # "simple" immer behalten
+  fts_languages: ["german", "english", "simple"]   # always keep "simple"
   candidates_per_method: 50
   rrf_k: 60
   default_limit: 5
@@ -93,15 +93,15 @@ spaces:
     enabled: true
     max_documents: 500
     max_bytes: 10485760          # 10 MB
-    retention_days_after_offboarding: 30   # danach wird der persönliche Bereich gesperrter Konten gelöscht; 0 = nie (docs/offboarding.md)
+    retention_days_after_offboarding: 30   # after this the personal space of blocked accounts is deleted; 0 = never (docs/offboarding.md)
   handoff_ttl_days: 14
-  default_space_by_group: {}     # z. B. { "support": "support" }
+  default_space_by_group: {}     # e.g. { "support": "support" }
 
 policy:
   duplicate_threshold: 0.90
   max_document_bytes: 200000
   rate_limit_writes_per_minute: 20
-  rate_limit_reads_per_minute: 120   # Suche, Lesen, Listen je Nutzer; jede Suche kostet ein Embedding; 0 = unbegrenzt
+  rate_limit_reads_per_minute: 120   # search, read, list per user; every search costs one embedding; 0 = unlimited
 
 tools:
   descriptions: {}
