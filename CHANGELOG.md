@@ -4,6 +4,9 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Added
+- **Canary builds:** every push to the `dev` branch builds an image tagged `canary` (moving) and `canary-<short sha>` (immutable), never `latest` or a version tag. `server_info` reports the canary version. See [docs/release.md](docs/release.md).
+
 ### Changed
 - Everything is English now: documentation, code comments, tool descriptions, the MCP instructions, error and confirmation messages, log texts and the browser pages of the login flow. Assistants still answer users in the user's language.
 - The displayed name of a personal space is "My personal space". The space matcher keeps accepting the German aliases ("mein persönlicher Bereich" and others) and also accepts English ones ("my personal space", "my space", "private").
