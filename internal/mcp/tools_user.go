@@ -34,6 +34,7 @@ func (s *Server) registerUserTools(ms *mcp.Server) {
 	addTool(s, ms, "handoff_save", "Save handoff", tierUser, true, s.handoffSave)
 	addTool(s, ms, "handoff_list", "List handoffs", tierUser, false, s.handoffList)
 	addTool(s, ms, "handoff_load", "Load handoff", tierUser, false, s.handoffLoad)
+	s.registerSkillTools(ms)
 }
 
 // ---- shared output shapes ---------------------------------------------------
