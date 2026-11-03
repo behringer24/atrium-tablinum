@@ -21,6 +21,7 @@ func (s *Server) registerSpaceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "space_members", "Show members", tierSpaceAdmin, false, s.spaceMembers)
 	addTool(s, ms, "space_add_member", "Add member", tierSpaceAdmin, true, s.spaceAddMember)
 	addTool(s, ms, "space_remove_member", "Remove member", tierSpaceAdmin, true, s.spaceRemoveMember)
+	s.registerSpaceAdminSkillTools(ms)
 }
 
 func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {

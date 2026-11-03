@@ -38,18 +38,23 @@ A skill has numbered versions. Each version has a **digest**: the SHA-256 over a
 ```
 draft ──review──> approved ──publish──> published
   │                  │                      │
-  └─> rejected       └────── block ─────────┘──> blocked
+  └─> rejected       └────── block ─────────┘──> blocked ──unblock──> approved
 ```
 
 - **draft:** saved with `store_skill`. An author who saves again while their own draft is still unreviewed replaces that draft; otherwise a new version number is created.
 - **approved:** a curator (or space admin, or instance admin) has read the files and approved them with `review_skill`, naming a **risk class**: A instructions only, B uses tools, C critical actions (deploy, delete, send data out). The class is the reviewer's judgement of the real content, not of what the skill says about itself. A skill that requests tools cannot be class A.
 - **published:** `publish_skill` makes the version available to all readers of the space. Class C can only be published by an instance admin. Before publishing, the stored files are hashed again and compared with the digest.
 - **rejected:** the curator returned it with a note the author sees.
-- **blocked:** `block_skill` withdraws an approved or published version at once, with a reason. Blocking cannot be undone; a fix is a new version with a new review.
+- **blocked:** `block_skill` withdraws an approved or published version at once, with a reason. Only an admin of the space or an instance admin can lift a block with `unblock_skill` (reason required). The version then becomes **approved**, not published: a curator has to release it again (class C: an instance admin), and publishing checks the files against the digest once more. The database allows no other way out of blocked.
 
 A published version **never changes**: the database refuses updates and deletes of its files and content, and a state cannot go back to draft. A change is a new version that passes the review again.
 
 Approved and published are separate on purpose: a review says "this is fine", publishing says "offer it now".
+
+### Archive and delete
+
+- **Archive** (`archive_skill`, restore with `unarchive_skill`) works on the whole skill, not on single versions. An archived skill disappears for everyone who cannot restore it: `list_skills`, `get_skill`, `get_skill_resource` and the instructions no longer know it. Curators and admins of the space (instance admins in every team space, the owner in a personal space) find it with `list_skills archived=true`. Nothing is deleted and every version keeps its state, so restoring needs no new review. An archived skill takes no new versions, no review and no release; a version can still be blocked.
+- **Delete** (`delete_skill`) removes the skill with all versions and files for good. In a team space **only an instance admin** may: skills are instructions that assistants followed, so removing them is not a matter for a single space. Everyone else archives or blocks, which keep the evidence. In a personal space the owner may delete. The audit log keeps the name and the version numbers, states and digests (`skill_delete`). Block, archive and delete answer different needs: block withdraws a version and keeps it, archive hides the whole skill and keeps it, delete is the only step that cannot be undone.
 
 ### Who may do what
 
@@ -59,6 +64,9 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 | See drafts, rejected and blocked versions | no | own | all in the space | all in team spaces |
 | `store_skill` | no | yes (draft) | yes (draft) | yes (draft) |
 | `review_skill`, `publish_skill`, `block_skill` | no | no | yes | yes |
+| `archive_skill`, `unarchive_skill`, read the archive | no | no | yes | yes |
+| `unblock_skill` | no | no | space admin only | yes |
+| `delete_skill` (team space) | no | no | no | yes |
 | Publish a class C skill | no | no | no | yes |
 
 - **No self-approval:** the author of a version cannot approve it, not even as curator or admin; another curator has to. This is stricter than for knowledge entries on purpose. Small installations with a single curator can set `skills.allow_self_approval: true` in `config.yaml`.
@@ -69,13 +77,16 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 
 | Tool | Who | Purpose |
 |---|---|---|
-| `list_skills` | everyone | Skills the caller can use (released versions); with `all_versions=true` also the drafts and blocked versions the caller may see |
+| `list_skills` | everyone | Skills the caller can use (released versions); with `all_versions=true` also the drafts and blocked versions the caller may see, with `archived=true` the archive (curators and admins) |
 | `get_skill` | everyone | `SKILL.md`, file list with hashes, version, digest, risk class. Without a version: the newest released one |
 | `get_skill_resource` | everyone | One file of a skill, checked against its hash |
 | `store_skill` | authors and up | Saves the package as a new version or revises the author's own draft |
 | `review_skill` | curators | Approve (with confirmation and risk class) or reject (with note) |
 | `publish_skill` | curators | Release an approved version (confirmation required) |
 | `block_skill` | curators | Withdraw a version (reason and confirmation required) |
+| `unblock_skill` | space admins | Lift a block (reason and confirmation required); the version is approved again, not released |
+| `archive_skill`, `unarchive_skill` | curators | Hide a whole skill from everyone else, or bring it back (confirmation required) |
+| `delete_skill` | instance admins, owners of a personal space | Delete a skill with all versions for good (confirmation required) |
 
 All of them work in every MCP client. A client that does not know any skills extension can still use a skill: the assistant loads it through the tools. Released skills are announced in the instructions each connection receives (name, space, description, at most 25 entries), because the assistant would not know otherwise that they exist. It is told to use one only when the user asks or agrees.
 
@@ -83,11 +94,11 @@ To stay on the version it started with, an assistant passes the exact version to
 
 ## Audit
 
-`store_skill`, review, publish and block are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`), and every read (`skill_get`, `skill_resource`) with skill name and version. In personal spaces only action and time are kept.
+`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`), and every read (`skill_get`, `skill_resource`) with skill name and version. In personal spaces only action and time are kept.
 
 ## Limits to know
 
-- Blocking stops new reads. A client that already holds a copy keeps it until it fetches again; Atrium cannot recall it.
+- Blocking, archiving and deleting stop new reads. A client that already holds a copy keeps it until it fetches again; Atrium cannot recall it.
 - How reliably a given assistant follows a skill it loaded through a tool is up to the client and has to be tested per client. Models usually treat tool results as data, which is why the tool descriptions and notices say when a skill is to be followed.
 - Skills have no search: find them with `list_skills` or the instructions.
 - Planned next: the MCP Skills extension (SEP-2640) on the same service, export and sync for clients that install skills, and scripts. See the [roadmap](../ROADMAP.md).
