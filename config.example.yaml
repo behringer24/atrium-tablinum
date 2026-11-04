@@ -9,7 +9,7 @@ instance:
   log_level: info                         # debug adds one log line per MCP request (see docs/skills.md)
   base_url: "https://knowledge.example.com"   # public address, no matter which proxy sits in front
   listen: ":8080"
-  dev_mode: false                         # local only (base_url on localhost); static test token
+  dev_mode: false                         # local only (base_url on localhost and listen on 127.0.0.1); static test token
   # dev_token: "mindestens-16-zeichen"   # mandatory with dev_mode, is neither generated nor logged
   # Proxies whose X-Forwarded-* headers are trusted (IP or CIDR).
   # Leave empty if the server is reachable directly.

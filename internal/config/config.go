@@ -310,6 +310,9 @@ func (c *Config) Validate() error {
 		if u, err := url.Parse(c.Instance.BaseURL); err == nil && !isLoopback(u.Hostname()) {
 			add("instance.dev_mode is only allowed with a base_url on localhost")
 		}
+		if !loopbackListen(c.Instance.Listen) {
+			add("instance.dev_mode needs instance.listen on loopback (e.g. \"127.0.0.1:8080\"), otherwise the static dev token is reachable from the network")
+		}
 		if c.Instance.DevToken == "" {
 			add("instance.dev_mode needs its own instance.dev_token (at least 16 characters); it is no longer generated and logged")
 		}
@@ -362,6 +365,9 @@ func (c *Config) Validate() error {
 	}
 	for _, u := range c.Auth.AllowedRedirectURIs {
 		base := strings.TrimSuffix(u, "*")
+		if strings.HasSuffix(u, "*") && !strings.HasSuffix(base, "/") {
+			add("auth.allowed_redirect_uris: %q must have a / before the * (\"https://host/path/*\"), otherwise it also matches other hosts", u)
+		}
 		if pu, err := url.Parse(base); err != nil || pu.Scheme != "https" || pu.Host == "" || pu.Fragment != "" {
 			add("auth.allowed_redirect_uris: %q must be an https URL", u)
 		}
@@ -462,4 +468,13 @@ func dedupe(in []string) []string {
 		}
 	}
 	return out
+}
+
+// loopbackListen reports whether a listen address binds to the loopback interface only.
+func loopbackListen(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	return isLoopback(host)
 }

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -201,26 +203,25 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	mux.Handle("GET /favicon.ico", icon.Handler())
 	mux.Handle("GET /skills/export/{space}/{name}", mcpSrv.SkillExportHandler(verifier, resourceMetadataURL))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		cctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		defer cancel()
-		if err := pool.Ping(cctx); err != nil {
-			http.Error(w, "database unreachable", http.StatusServiceUnavailable)
-			return
+	mux.Handle("GET /readyz", readiness(log, func(ctx context.Context) error {
+		if err := pool.Ping(ctx); err != nil {
+			return fmt.Errorf("database unreachable: %w", err)
 		}
-		if err := emb.Ping(cctx); err != nil {
-			http.Error(w, "embedder unreachable", http.StatusServiceUnavailable)
-			return
+		if err := emb.Ping(ctx); err != nil {
+			return fmt.Errorf("embedder unreachable: %w", err)
 		}
-		_, _ = w.Write([]byte("ok"))
-	})
+		return nil
+	}))
 
 	if err := runner.Start(ctx); err != nil {
 		return err
 	}
 	defer runner.Wait()
 
-	srv := &http.Server{Addr: cfg.Instance.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	// The read timeouts bound only the request (headers and body), so open streams (SSE) are not cut,
+	// but a client that sends a body byte by byte cannot hold a connection forever.
+	srv := &http.Server{Addr: cfg.Instance.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout: time.Minute, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 64 << 10}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -244,4 +245,34 @@ func devFirst(dev, next auth.TokenVerifier) auth.TokenVerifier {
 		}
 		return next(ctx, token, r)
 	}
+}
+
+// readiness answers /readyz. The endpoint is public, so it says only ok or not ready (what is
+// wrong goes to the log, and admin_health shows it to admins), and a result is reused for a few
+// seconds so that polling it cannot be used to hammer the database and the embedding service.
+func readiness(log *slog.Logger, check func(context.Context) error) http.Handler {
+	var (
+		mu      sync.Mutex
+		checked time.Time
+		ready   bool
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		if time.Since(checked) > 5*time.Second {
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 3*time.Second)
+			err := check(ctx)
+			cancel()
+			if err != nil && (ready || checked.IsZero()) {
+				log.Warn("Not ready", "reason", err)
+			}
+			ready, checked = err == nil, time.Now()
+		}
+		ok := ready
+		mu.Unlock()
+		if !ok {
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("ok"))
+	})
 }

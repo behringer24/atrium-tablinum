@@ -25,7 +25,7 @@ Properties the server enforces:
 
 ## Client redirect URIs
 
-`auth.allowed_redirect_uris` lists the return addresses that may register; a trailing `*` stands for any remainder. Included by default (as of 11/2026, check against the vendors' documentation before going live):
+`auth.allowed_redirect_uris` lists the return addresses that may register; a trailing `*` stands for any remainder, and must follow a `/` (`https://host/path/*`): the server refuses `https://host*`, which would also match `https://host.evil.example/`, and compares the host of a wildcard entry exactly. Included by default (as of 11/2026, check against the vendors' documentation before going live):
 
 - Claude: `https://claude.ai/api/mcp/auth_callback` (Anthropic has announced a switch to `claude.com`, both are listed)
 - ChatGPT: `https://chatgpt.com/connector_platform_oauth_redirect`, `https://chatgpt.com/connector/oauth/*`
@@ -51,7 +51,7 @@ Register at the IdP as redirect URI: `<base_url>/oauth/callback/<provider-id>` (
 - **Accounts are not linked by e-mail.** A login with a second provider using an already assigned e-mail is rejected (message to the user, the admin must decide). With `auth.link_accounts_by_email: true` it takes over the existing account, including an instance admin from `bootstrap_admins`; this is only safe if all providers deliver verified e-mails and nobody there can issue arbitrary addresses of the allowed domain. Every link is recorded as `account_linked` in the audit log.
 - **Absolute session lifetime:** `auth.session_max_age` (default 90 days). After that the user logs in again, even if the connection is used continuously.
 - **Your own logins:** `my_sessions` shows the clients you are logged in with, `revoke_my_sessions` ends one or all of them (after losing a device). Instance admins end a user's logins with `admin_revoke_sessions`.
-- **`dev_mode`** only runs with a `base_url` on localhost and requires its own `dev_token` (at least 16 characters). It is no longer generated or logged.
+- **`dev_mode`** only runs with a `base_url` on localhost and `instance.listen` on the loopback interface (e.g. `127.0.0.1:8080`), and requires its own `dev_token` (at least 16 characters). It is no longer generated or logged.
 
 ## Who may log in (without a restart)
 
