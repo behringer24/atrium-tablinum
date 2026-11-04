@@ -131,6 +131,8 @@ func TestValidate(t *testing.T) {
 		{"http dev localhost", func(c *Config) { devLocal(c) }, ""},
 		{"http dev remote", func(c *Config) { c.Instance.DevMode = true; c.Instance.BaseURL = "http://k.example.com" }, "https"},
 		{"dev mode on a public https address", func(c *Config) { c.Instance.DevMode = true; c.Instance.DevToken = "0123456789abcdef" }, "localhost"},
+		{"dev mode on all interfaces", func(c *Config) { devLocal(c); c.Instance.Listen = ":8080" }, "loopback"},
+		{"redirect wildcard without slash", func(c *Config) { c.Auth.AllowedRedirectURIs = []string{"https://chatgpt.com*"} }, "before the *"},
 		{"dev mode needs an explicit token", func(c *Config) { devLocal(c); c.Instance.DevToken = "" }, "dev_token"},
 		{"no providers", func(c *Config) { c.Auth.Providers = nil }, "Identity Provider"},
 		{"no providers dev", func(c *Config) { devLocal(c); c.Auth.Providers = nil }, ""},
@@ -183,6 +185,7 @@ func TestValidate(t *testing.T) {
 // devLocal is a valid dev setup: loopback address and an explicit token.
 func devLocal(c *Config) {
 	c.Instance.DevMode = true
+	c.Instance.Listen = "127.0.0.1:8080"
 	c.Instance.BaseURL = "http://localhost:8080"
 	c.Instance.DevToken = "0123456789abcdef"
 }

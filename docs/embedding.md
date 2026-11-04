@@ -130,7 +130,7 @@ With `openai` and `bedrock`, the text of **every** entry goes to the provider, i
 
 ## Readiness and troubleshooting
 
-`/readyz` and `admin_health` call the embedder. With `openai` and `bedrock` the ping embeds one word and checks the dimension, at most once per minute, so that checks hardly cause any cost. Typical messages:
+`/readyz` and `admin_health` call the embedder; `/readyz` is public and answers only `ok` or `not ready` (the reason goes to the log, `admin_health` shows it to admins), and it reuses a result for five seconds. With `openai` and `bedrock` the ping embeds one word and checks the dimension, at most once per minute, so that checks hardly cause any cost. Typical messages:
 
 | Message | Cause |
 |---|---|

@@ -20,6 +20,12 @@ Common rules for all variants:
 
 The SDK rejects requests that arrive via loopback but carry a foreign `Host` header (protection against DNS rebinding). A reverse proxy on the same host that forwards to `127.0.0.1:8080` would be blocked by this. The server therefore switches the protection off as soon as `instance.trusted_proxies` is set. Anyone using a local proxy must therefore always enter `trusted_proxies` (e.g. `["127.0.0.1"]`).
 
+## Limits against abuse
+
+The server itself limits: requests are read within a minute (headers within ten seconds, `IdleTimeout` two minutes, headers at most 64 KB), so slow bodies cannot hold connections forever, and open streams are not affected. `/oauth/register` allows 20 requests a minute per address, the login steps 60, `/oauth/token` and `/oauth/revoke` 300, and clients that never completed a login are deleted an hour after they registered (only those count toward the cap of 5000 registrations). Reads and writes of logged-in users are limited per user. All of these keys are the client address, so `instance.trusted_proxies` must be right: without it every client behind your proxy shares the proxy's address and its allowance.
+
+Your own proxy should add what it does best: a connection and request limit for `/oauth/` (nginx `limit_req_zone` and `limit_conn`), `client_body_timeout` and `client_header_timeout`, and HSTS. The bundled nginx template sets HSTS. `/readyz` is public and says only `ok` or `not ready`; if you do not want it reachable from outside, allow it for your monitoring only in the proxy.
+
 ## Icon
 
 Clients show an icon next to the server. Atrium serves one without login at `/favicon.ico` and `/icon` and also names it in the server info (`icons`), so clients that read either find it. The built-in Atrium icon is used unless `instance.icon_file` points to an image (svg, png, ico, jpg or webp, up to 256 KB). Which of the two sources a client uses is up to the client; many only fetch the favicon of the domain. For that, the proxy must forward `/favicon.ico` to Atrium and not answer it itself, otherwise the favicon of the proxy's default site is shown.

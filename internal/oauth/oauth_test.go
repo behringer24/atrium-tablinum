@@ -741,3 +741,72 @@ func TestAllowlistAtRuntime(t *testing.T) {
 		t.Errorf("expected denial again after removal: %s", loc)
 	}
 }
+
+func TestTokenEndpointIsRateLimited(t *testing.T) {
+	e := setup(t, 1)
+	var last *http.Response
+	for i := 0; i < 301; i++ {
+		last, _ = e.do(http.MethodPost, "/oauth/token", url.Values{"grant_type": {"authorization_code"}}, nil)
+		if i < 300 && last.StatusCode == http.StatusTooManyRequests {
+			t.Fatalf("limited after only %d requests", i+1)
+		}
+	}
+	if last.StatusCode != http.StatusTooManyRequests || last.Header.Get("Retry-After") == "" {
+		t.Errorf("301st request: %d %v", last.StatusCode, last.Header)
+	}
+	if resp, _ := e.do(http.MethodPost, "/oauth/revoke", url.Values{"token": {"x"}}, nil); resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("revoke shares the limit: %d", resp.StatusCode)
+	}
+}
+
+func TestRedirectWildcardNeedsTheSameHost(t *testing.T) {
+	e := setup(t, 1)
+	for uri, want := range map[string]bool{
+		"https://chatgpt.com/connector/oauth/abc":              true,
+		"https://chatgpt.com.evil.example/connector/oauth/abc": false,
+		"https://chatgpt.com@evil.example/connector/oauth/abc": false,
+		"https://chatgpt.com/connector/other":                  false,
+		"http://chatgpt.com/connector/oauth/abc":               false,
+		claudeRedirect:                                         true,
+		claudeRedirect + "/x":                                  false,
+	} {
+		if got := e.srv.AllowsRedirect(uri); got != want {
+			t.Errorf("AllowsRedirect(%q) = %v, want %v", uri, got, want)
+		}
+	}
+}
+
+func TestUnusedClientsExpireAfterAnHour(t *testing.T) {
+	e := setup(t, 1)
+	e.tokens() // a client in use
+	young, old := e.register(claudeRedirect), e.register(claudeRedirect)
+	_, _ = e.pool.Exec(e.ctx, `UPDATE oauth_clients SET created_at = now() - interval '30 minutes' WHERE client_id = $1`, young)
+	_, _ = e.pool.Exec(e.ctx, `UPDATE oauth_clients SET created_at = now() - interval '2 hours' WHERE client_id = $1`, old)
+	if err := e.srv.Cleanup(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = e.pool.QueryRow(e.ctx, `SELECT count(*) FROM oauth_clients WHERE client_id = ANY($1)`, []string{young, old}).Scan(&n)
+	if n != 1 {
+		t.Errorf("unused clients left: %d (want only the 30 minute old one)", n)
+	}
+}
+
+func TestPagesCarrySecurityHeaders(t *testing.T) {
+	e := setup(t, 1)
+	resp, _ := e.do(http.MethodGet, "/oauth/authorize?client_id=unknown&redirect_uri="+url.QueryEscape(claudeRedirect), nil, nil)
+	h := resp.Header
+	if h.Get("X-Frame-Options") != "DENY" || h.Get("Referrer-Policy") != "no-referrer" ||
+		!strings.Contains(h.Get("Content-Security-Policy"), "frame-ancestors 'none'") || h.Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("headers of the error page: %v", h)
+	}
+}
+
+func TestFailingTokenCheckDoesNotLeakInternals(t *testing.T) {
+	e := setup(t, 1)
+	e.pool.Close()
+	resp, body := e.do(http.MethodGet, "/mcp", nil, map[string]string{"Authorization": "Bearer something"})
+	if resp.StatusCode != http.StatusInternalServerError || strings.Contains(strings.ToLower(body), "pool") || strings.Contains(body, "closed") || !strings.Contains(body, "token check failed") {
+		t.Errorf("%d %q", resp.StatusCode, body)
+	}
+}
