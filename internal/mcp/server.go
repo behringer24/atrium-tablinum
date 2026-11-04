@@ -51,6 +51,9 @@ type Settings struct {
 	// non-local Host header on loopback connections. Needed when a reverse proxy on the
 	// same host forwards to 127.0.0.1.
 	DisableHostProtection bool
+	// IconURL is the public address of the icon, sent to clients in the server info; empty = none.
+	IconURL  string
+	IconMIME string
 }
 
 // HealthCheck is one probe shown by admin_health.
@@ -167,7 +170,7 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 	if s.Skills != nil {
 		caps.AddExtension(skillsExtension, nil)
 	}
-	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a), Capabilities: caps})
+	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName, Icons: s.icons()}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a), Capabilities: caps})
 	s.registerUserTools(ms)
 	if s.Skills != nil {
 		s.registerSkillResources(ms)

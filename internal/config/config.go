@@ -39,6 +39,9 @@ type Instance struct {
 	// name, otherwise the product name itself.
 	ShortName        string `yaml:"short_name"`
 	OrganizationName string `yaml:"organization_name"`
+	// IconFile is an image (svg, png, ico, jpg, webp; up to 256 KB) shown as favicon and in the
+	// server info. Empty = the built-in Atrium icon.
+	IconFile string `yaml:"icon_file"`
 	// BaseURL is the public HTTPS address clients see. It is the same whether TLS is
 	// terminated by the bundled nginx, an existing reverse proxy or a tunnel.
 	BaseURL string `yaml:"base_url"`
