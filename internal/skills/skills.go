@@ -1050,3 +1050,113 @@ func humanBytes(n int64) string {
 	}
 	return fmt.Sprintf("%d bytes", n)
 }
+
+// ---- move ---------------------------------------------------------------------------
+
+// Move files the newest released version of a skill in another space. A skill is an
+// instruction, and what a space's curators approved is no approval for another space's
+// readers, so nothing carries its release over: the target gets a new skill with the same
+// files (same digest) as a draft that its own curators have to review, in a personal space
+// as the owner's own copy, released at once like every save there. The source skill is
+// archived (not deleted: its versions and audit trail stay) unless keepSource is set.
+// The caller needs curator rights in the source space and author rights in the target.
+func (s *Store) Move(ctx context.Context, a docs.Actor, skillID, targetID uuid.UUID, keepSource bool) (Version, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Version{}, err
+	}
+	defer tx.Rollback(ctx)
+	var name string
+	var srcID uuid.UUID
+	var tags []string
+	var archived bool
+	err = tx.QueryRow(ctx, `SELECT name, space_id, tags, archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).
+		Scan(&name, &srcID, &tags, &archived)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Version{}, ErrNotFound
+	} else if err != nil {
+		return Version{}, err
+	}
+	src, _, err := s.space(ctx, a, srcID, authz.Curator)
+	if err != nil {
+		return Version{}, err
+	}
+	if archived {
+		return Version{}, ErrArchived
+	}
+	if targetID == srcID {
+		return Version{}, invalid("the skill is already in this space")
+	}
+	dst, _, err := s.space(ctx, a, targetID, authz.Author)
+	if err != nil {
+		return Version{}, err
+	}
+
+	var srcVersion uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT id FROM skill_versions WHERE skill_id = $1 AND status = 'published'
+		ORDER BY version DESC LIMIT 1`, skillID).Scan(&srcVersion)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Version{}, fmt.Errorf("%w: only a skill with a released version can be moved", ErrState)
+	} else if err != nil {
+		return Version{}, err
+	}
+	v, err := loadVersion(ctx, tx, srcVersion)
+	if err != nil {
+		return Version{}, err
+	}
+	if err := verifyStored(ctx, tx, v); err != nil {
+		return Version{}, err
+	}
+
+	var newSkill uuid.UUID
+	err = tx.QueryRow(ctx, `INSERT INTO skills (space_id, name, created_by, tags) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (space_id, name) DO NOTHING RETURNING id`, dst.ID, name, a.User.ID, tags).Scan(&newSkill)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Version{}, invalid("the target space already has a skill with this name")
+	} else if err != nil {
+		return Version{}, err
+	}
+	if err := s.checkQuota(ctx, tx, dst, newSkill, a.User.ID, true, prepared{resources: v.Resources}); err != nil {
+		return Version{}, err
+	}
+	var newVersion uuid.UUID
+	if err := tx.QueryRow(ctx, `INSERT INTO skill_versions (skill_id, version, description, requested_tools, digest, created_by)
+		SELECT $1, 1, description, requested_tools, digest, $3 FROM skill_versions WHERE id = $2 RETURNING id`,
+		newSkill, srcVersion, a.User.ID).Scan(&newVersion); err != nil {
+		return Version{}, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO skill_resources (version_id, path, content, size, sha256)
+		SELECT $1, path, content, size, sha256 FROM skill_resources WHERE version_id = $2`, newVersion, srcVersion); err != nil {
+		return Version{}, err
+	}
+	if dst.Type == "personal" {
+		if _, err := tx.Exec(ctx, `UPDATE skill_versions SET status = 'published', risk_class = 'A', published_by = $2, published_at = now()
+			WHERE id = $1`, newVersion, a.User.ID); err != nil {
+			return Version{}, err
+		}
+	}
+	if !keepSource {
+		if _, err := tx.Exec(ctx, `UPDATE skills SET archived_at = now(), archived_by = $2 WHERE id = $1`, skillID, a.User.ID); err != nil {
+			return Version{}, err
+		}
+	}
+	slug := func(sp spaces.Space) string {
+		if sp.Type == "personal" {
+			return "personal"
+		}
+		return sp.Slug
+	}
+	if err := record(ctx, tx, a, "skill_move_out", src, map[string]any{"skill": name, "version": v.Version, "digest": v.Digest,
+		"to": slug(dst), "source_kept": keepSource}); err != nil {
+		return Version{}, err
+	}
+	if err := record(ctx, tx, a, "skill_move_in", dst, map[string]any{"skill": name, "version": 1, "digest": v.Digest,
+		"from": slug(src), "source_version": v.Version}); err != nil {
+		return Version{}, err
+	}
+	out, err := loadVersion(ctx, tx, newVersion)
+	if err != nil {
+		return Version{}, err
+	}
+	return out, tx.Commit(ctx)
+}

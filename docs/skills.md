@@ -82,6 +82,7 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 | `get_skill_resource` | everyone | One file of a skill, checked against its hash |
 | `store_skill` | authors and up | Saves the package as a new version or revises the author's own draft. `tags` are applied when the skill is new |
 | `tag_skill` | creator of the skill, curators | Replaces the tags of a skill without a new version or review |
+| `move_skill` | curators of the old space who may also write in the new one | Files the newest released version in another space; a release never travels along (see below) |
 | `review_skill` | curators | Approve (with confirmation and risk class) or reject (with note) |
 | `publish_skill` | curators | Release an approved version (confirmation required) |
 | `block_skill` | curators | Withdraw a version (reason and confirmation required) |
@@ -96,6 +97,10 @@ To stay on the version it started with, an assistant passes the exact version to
 ## Tags
 
 A skill has tags like a knowledge entry: normalised (lower case, no duplicates, at most 20 tags of 50 characters), shown by `list_skills` and `get_skill`, searchable with `list_skills tag=...`, and listed behind the name in the instructions an assistant receives. They belong to the skill, not to a version: a version is frozen once it leaves draft, and fixing a keyword must not need a new version and a new review. Tags are no part of the digest and no instruction. `store_skill` applies them when it creates the skill; later changes go through `tag_skill`, which the creator of the skill and curators and admins of the space (in a personal space the owner) may call. Every change is audited as `skill_tag`.
+
+## Moving a skill
+
+`move_skill` takes a skill to another space. Because a skill is an instruction and the approval of one space says nothing about another space's readers, no release travels with it. Only the newest released version is carried over, as **new skill with the same files and digest in the target space**: a draft that the curators there review and release (the mover cannot approve it, like any author; instance admins can), in a personal space the owner's own copy, released at once. Tags go along. The old skill is archived, not deleted, so its versions and audit trail stay; `keep_source=true` leaves it active as well. The caller needs curator rights in the old space and author rights in the new one, the name must be free there, and the quotas of the target apply. Unreleased versions stay behind with the old skill. The audit log gets `skill_move_out` (old space) and `skill_move_in` (new space), both with name, digest and the other space.
 
 ## MCP Skills extension (SEP-2640)
 
@@ -117,12 +122,22 @@ An export is a copy: blocking or archiving cannot recall it. A client that insta
 
 ## Audit
 
-`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept.
+`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept.
 
 Every read carries `via` in its details, the route the client took: `tool` (`get_skill`, `get_skill_resource`), `resource` (`resources/read` of a `skill://` URI), `rpc` (`skills/get`) or `export` (the ZIP download). `skills/list` is written as `skill_list` with the number of skills offered. So `admin_audit_log action=skill_*` shows whether a client uses the SEP-2640 methods or the tools. Calls through `skills/*` carry the client `mcp-skills`, as that route has no MCP session to read the client name from.
 
 To see the requests themselves, set `instance.log_level: debug`: the server then logs one line per MCP request (`MCP request`, with `method`, `tool`, `uri`, `client_info` on `initialize` and `user_agent`), e.g. `docker logs <container> 2>&1 | grep 'MCP request' | grep -E 'skills/|resources/read|get_skill'`.
 
+
+### Watching skills
+
+Instance admins query the log with `admin_audit_log`; besides user, action, space and time it filters by `skill` (the skill name, team spaces only: actions in personal spaces carry no names) and `client` (`chatgpt`, `claude`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`). Useful questions:
+
+- Everything that happened to one skill: `skill=code-review`.
+- Who released what, and who approved their own: `action=skill_publish`, `action=skill_approve` (look for `self_approved`).
+- Who reads skills and by which route: `action=skill_get` or `skill_*` with `client=...`, and `via` in the details.
+- What left or entered a space by moving: `action=skill_move*`.
+- Blocks and deletions: `action=skill_block`, `skill_unblock`, `skill_delete`.
 ## Limits to know
 
 - Blocking, archiving and deleting stop new reads. A client that already holds a copy keeps it until it fetches again; Atrium cannot recall it.

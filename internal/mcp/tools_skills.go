@@ -40,6 +40,7 @@ func (s *Server) registerSkillTools(ms *mcp.Server) {
 	addTool(s, ms, "get_skill_resource", "Load skill file", tierUser, false, s.getSkillResource)
 	addTool(s, ms, "store_skill", "Store skill", tierUser, true, s.storeSkill)
 	addTool(s, ms, "tag_skill", "Set skill tags", tierUser, true, s.tagSkill)
+	addTool(s, ms, "move_skill", "Move skill to another space", tierUser, true, s.moveSkill)
 	// Like their knowledge counterparts these are open to every user in the tool list: the
 	// role (curator or admin of the space, instance admin, owner of a personal space) is
 	// checked per skill.
@@ -745,4 +746,77 @@ func tagList(tags []string) string {
 		return "(none)"
 	}
 	return strings.Join(tags, ", ")
+}
+
+// ---- move_skill -------------------------------------------------------------------------
+
+type moveSkillIn struct {
+	Skill      string `json:"skill" jsonschema:"Name of the skill"`
+	Space      string `json:"space,omitempty" jsonschema:"Space the skill is in now; needed only when several spaces have a skill of this name"`
+	Target     string `json:"target_space" jsonschema:"Space to move the skill to (slug or name)"`
+	KeepSource bool   `json:"keep_source,omitempty" jsonschema:"true = leave the skill in the old space as well (a copy); default: the old skill is archived"`
+	Confirm    bool   `json:"confirm,omitempty" jsonschema:"true only after explicit confirmation by the user"`
+}
+
+type moveSkillOut struct {
+	Result  string            `json:"result"` // moved | choose_space
+	Message string            `json:"message"`
+	Spaces  []spaceInfo       `json:"spaces,omitempty"`
+	Skill   string            `json:"skill,omitempty"`
+	Space   string            `json:"space,omitempty"`
+	Version *skillVersionInfo `json:"version,omitempty"`
+}
+
+func (s *Server) moveSkill(ctx context.Context, c *call, in moveSkillIn) (moveSkillOut, error) {
+	if s.Skills == nil {
+		return moveSkillOut{}, errNoSkills
+	}
+	a := c.Actor
+	v, choice, err := s.skillOf(ctx, c, skillRefIn{Skill: in.Skill, Space: in.Space}, "")
+	if err != nil {
+		return moveSkillOut{}, err
+	}
+	if choice != nil {
+		return moveSkillOut{Result: choice.Result, Message: choice.Message, Spaces: choice.Spaces}, nil
+	}
+	writable, err := s.spacesAtLeast(ctx, a, authz.Author)
+	if err != nil {
+		return moveSkillOut{}, err
+	}
+	target, cands := matchSpace(writable, in.Target)
+	if target == nil {
+		if len(cands) == 0 {
+			cands = writable
+		}
+		return moveSkillOut{Result: "choose_space",
+			Message: fmt.Sprintf("The space %q is ambiguous or you lack write permission there. Nothing was moved - please ask the user which space is meant.", in.Target),
+			Spaces:  s.spaceInfos(cands, a)}, nil
+	}
+	name := spaceDisplayName(*target)
+	if !in.Confirm {
+		keep := "The skill is archived in the old space, so nobody there can use it any more."
+		if in.KeepSource {
+			keep = "The skill stays available in the old space as well."
+		}
+		after := "In the new space it starts as a draft that a curator there has to review and release before anyone can use it."
+		if target.Type == "personal" {
+			after = "In your personal space it is available to you alone at once."
+		}
+		return moveSkillOut{}, userErr(fmt.Sprintf("Moving the skill %q to %q needs a confirmation. Only its newest released version is carried over. %s %s Ask the user and then call again with confirm=true.", v.Name, name, after, keep))
+	}
+	moved, err := s.Skills.Move(ctx, a, v.SkillID, target.ID, in.KeepSource)
+	if err != nil {
+		return moveSkillOut{}, err
+	}
+	info := versionInfo(moved)
+	msg := fmt.Sprintf("The skill %q is filed in %q as a draft. A curator of that space has to review (review_skill) and release (publish_skill) it before others can use it.", moved.Name, name)
+	if moved.Status == skills.StatusPublished {
+		msg = fmt.Sprintf("The skill %q is now in your personal space and available to you alone.", moved.Name)
+	}
+	if in.KeepSource {
+		msg += " The original stays in the old space."
+	} else {
+		msg += " The original is archived in the old space (list_skills archived=true)."
+	}
+	return moveSkillOut{Result: "moved", Message: msg, Skill: moved.Name, Space: name, Version: &info}, nil
 }

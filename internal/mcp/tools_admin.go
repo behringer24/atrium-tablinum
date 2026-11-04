@@ -710,6 +710,8 @@ type auditIn struct {
 	Action     string `json:"action,omitempty" jsonschema:"Action, e.g. store or search; with * at the end as a prefix (admin_*)"`
 	Space      string `json:"space,omitempty" jsonschema:"Only this space (slug or name)"`
 	DocumentID string `json:"document_id,omitempty" jsonschema:"Only this entry"`
+	Skill      string `json:"skill,omitempty" jsonschema:"Only events about the skill with this name (team spaces; actions in personal spaces carry no names)"`
+	Client     string `json:"client,omitempty" jsonschema:"Only actions of this client label, e.g. chatgpt, claude, claude-code, mcp-skills (skills/* methods) or api"`
 	Since      string `json:"since,omitempty" jsonschema:"From this point in time (RFC 3339 or YYYY-MM-DD)"`
 	Until      string `json:"until,omitempty" jsonschema:"Until before this point in time (RFC 3339 or YYYY-MM-DD)"`
 	Limit      int    `json:"limit,omitempty" jsonschema:"Number of entries, default 50, at most 200"`
@@ -744,7 +746,8 @@ func parseTime(v string) (*time.Time, error) {
 }
 
 func (s *Server) adminAuditLog(ctx context.Context, _ *call, in auditIn) (auditOut, error) {
-	f := audit.Filter{UserEmail: strings.TrimSpace(in.User), Action: strings.TrimSpace(in.Action), Limit: in.Limit}
+	f := audit.Filter{UserEmail: strings.TrimSpace(in.User), Action: strings.TrimSpace(in.Action), Limit: in.Limit,
+		Skill: strings.ToLower(strings.TrimSpace(in.Skill)), Client: strings.ToLower(strings.TrimSpace(in.Client))}
 	var err error
 	if f.Since, err = parseTime(in.Since); err != nil {
 		return auditOut{}, err

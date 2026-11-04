@@ -500,3 +500,109 @@ func versionNumber(m map[string]any) int {
 	n, _ := v["version"].(float64)
 	return int(n)
 }
+
+func auditActions(m map[string]any) []string {
+	var out []string
+	for _, x := range m["entries"].([]any) {
+		out = append(out, x.(map[string]any)["action"].(string))
+	}
+	return out
+}
+
+func TestMoveSkillAndAuditFilters(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{
+		"anna@x.de": authz.Author, "cora@x.de": authz.Curator, "bob@x.de": authz.Reader})
+	e.team(t, "ops", "Operations", false, map[string]authz.Role{
+		"cora@x.de": authz.Author, "dan@x.de": authz.Curator, "bob@x.de": authz.Reader, "anna@x.de": authz.Author})
+	anna, cora, bob, dan, boss := e.session(t, "anna@x.de"), e.session(t, "cora@x.de"), e.session(t, "bob@x.de"), e.session(t, "dan@x.de"), e.session(t, "boss@x.de")
+	e.releaseSkill(t, anna, cora, "code-review", nil)
+	e.mustCall(t, cora, "tag_skill", map[string]any{"skill": "code-review", "tags": []string{"qa"}})
+	move := map[string]any{"skill": "code-review", "target_space": "ops", "confirm": true}
+
+	// Rights: curator in the source and author in the target are both needed, and it needs a confirmation.
+	if m, _ := e.call(t, bob, "move_skill", move); m == nil || m["result"] != "choose_space" {
+		t.Errorf("reader without a writable target moved: %v", m)
+	}
+	if _, msg := e.call(t, anna, "move_skill", move); !strings.Contains(msg, "permission") {
+		t.Errorf("author moved: %q", msg)
+	}
+	if m, _ := e.call(t, dan, "move_skill", move); m != nil && m["result"] == "moved" {
+		t.Errorf("curator of the target only moved: %v", m)
+	}
+	if _, msg := e.call(t, cora, "move_skill", map[string]any{"skill": "code-review", "target_space": "ops"}); !strings.Contains(msg, "confirm") {
+		t.Errorf("without confirmation: %q", msg)
+	}
+	if m := e.mustCall(t, cora, "move_skill", map[string]any{"skill": "code-review", "target_space": "nowhere", "confirm": true}); m["result"] != "choose_space" {
+		t.Errorf("unknown target: %v", m)
+	}
+	if _, msg := e.call(t, cora, "move_skill", map[string]any{"skill": "code-review", "target_space": "dev", "confirm": true}); !strings.Contains(msg, "already in this space") && !strings.Contains(msg, "permission") {
+		t.Errorf("same space: %q", msg)
+	}
+
+	// The move: the old skill is archived, the new one is a draft that readers do not see.
+	m := e.mustCall(t, cora, "move_skill", move)
+	if m["result"] != "moved" || versionStatus(t, m) != "draft" {
+		t.Fatalf("move: %v", m)
+	}
+	if got := fmt.Sprint(skillNames(e.mustCall(t, bob, "list_skills", map[string]any{}))); got != "[]" {
+		t.Errorf("reader sees the skill before the review: %s", got)
+	}
+	if got := fmt.Sprint(skillNames(e.mustCall(t, dan, "list_skills", map[string]any{"status": "draft", "space": "ops"}))); got != "[code-review]" {
+		t.Errorf("curator of the target sees the draft: %s", got)
+	}
+	arch := e.mustCall(t, cora, "list_skills", map[string]any{"archived": true})
+	if got := fmt.Sprint(skillNames(arch)); got != "[code-review]" {
+		t.Errorf("source not archived: %s", got)
+	}
+	// The mover cannot release the copy; the curator of the target can, and the digest is the same.
+	if _, msg := e.call(t, cora, "review_skill", map[string]any{"skill": "code-review", "space": "ops", "version": 1, "decision": "approve", "risk_class": "A", "confirm": true}); msg == "" {
+		t.Error("the mover approved the copy")
+	}
+	e.mustCall(t, dan, "review_skill", map[string]any{"skill": "code-review", "space": "ops", "version": 1, "decision": "approve", "risk_class": "A", "confirm": true})
+	e.mustCall(t, dan, "publish_skill", map[string]any{"skill": "code-review", "space": "ops", "version": 1, "confirm": true})
+	got := e.mustCall(t, bob, "get_skill", map[string]any{"skill": "code-review"})
+	srcDigest := arch["skills"].([]any)[0].(map[string]any)["versions"].([]any)[0].(map[string]any)["digest"]
+	if d := got["version"].(map[string]any)["digest"]; d != srcDigest || fmt.Sprint(got["tags"]) != "[qa]" {
+		t.Errorf("copy differs: digest %v vs %v, tags %v", d, srcDigest, got["tags"])
+	}
+
+	// keep_source leaves the original; an existing name in the target is refused; a skill without a release cannot move.
+	e.releaseSkill(t, anna, cora, "lint", nil)
+	if m := e.mustCall(t, cora, "move_skill", map[string]any{"skill": "lint", "target_space": "ops", "keep_source": true, "confirm": true}); m["result"] != "moved" {
+		t.Fatalf("keep_source: %v", m)
+	}
+	if got := fmt.Sprint(skillNames(e.mustCall(t, bob, "list_skills", map[string]any{"space": "dev"}))); got != "[lint]" {
+		t.Errorf("source not kept: %s", got)
+	}
+	if _, msg := e.call(t, cora, "move_skill", map[string]any{"skill": "lint", "space": "dev", "target_space": "ops", "confirm": true}); !strings.Contains(msg, "already has a skill") {
+		t.Errorf("name taken: %q", msg)
+	}
+	e.mustCall(t, anna, "store_skill", map[string]any{"name": "draft-only", "space": "dev", "files": skillPackage("draft-only", "Never released", nil)})
+	if _, msg := e.call(t, cora, "move_skill", map[string]any{"skill": "draft-only", "target_space": "ops", "confirm": true}); !strings.Contains(msg, "released") {
+		t.Errorf("unreleased skill: %q", msg)
+	}
+
+	// Audit: both sides of the move, filterable by skill and by client.
+	log := func(args map[string]any) []string {
+		t.Helper()
+		return auditActions(e.mustCall(t, boss, "admin_audit_log", args))
+	}
+	if got := log(map[string]any{"skill": "code-review", "action": "skill_move*"}); fmt.Sprint(got) != "[skill_move_in skill_move_out]" {
+		t.Errorf("move events: %v", got)
+	}
+	for _, a := range log(map[string]any{"skill": "lint"}) {
+		if !strings.HasPrefix(a, "skill_") {
+			t.Errorf("skill filter let %q through", a)
+		}
+	}
+	if n := len(log(map[string]any{"skill": "nope"})); n != 0 {
+		t.Errorf("unknown skill: %d entries", n)
+	}
+	if n := len(log(map[string]any{"client": "claude", "skill": "code-review"})); n == 0 {
+		t.Error("client filter found nothing")
+	}
+	if n := len(log(map[string]any{"client": "chatgpt"})); n != 0 {
+		t.Errorf("client chatgpt: %d entries", n)
+	}
+}
