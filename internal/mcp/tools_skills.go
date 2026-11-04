@@ -39,6 +39,7 @@ func (s *Server) registerSkillTools(ms *mcp.Server) {
 	addTool(s, ms, "get_skill", "Load skill", tierUser, false, s.getSkill)
 	addTool(s, ms, "get_skill_resource", "Load skill file", tierUser, false, s.getSkillResource)
 	addTool(s, ms, "store_skill", "Store skill", tierUser, true, s.storeSkill)
+	addTool(s, ms, "tag_skill", "Set skill tags", tierUser, true, s.tagSkill)
 	// Like their knowledge counterparts these are open to every user in the tool list: the
 	// role (curator or admin of the space, instance admin, owner of a personal space) is
 	// checked per skill.
@@ -85,7 +86,11 @@ func (s *Server) skillLines(ctx context.Context, a docs.Actor) []string {
 		if utf8.RuneCountInString(desc) > maxSkillDescInInstr {
 			desc = string([]rune(desc)[:maxSkillDescInInstr]) + "..."
 		}
-		lines = append(lines, fmt.Sprintf("- %s (%s): %s", v.Name, spaceNames[v.SpaceID], desc))
+		line := fmt.Sprintf("- %s (%s): %s", v.Name, spaceNames[v.SpaceID], desc)
+		if len(v.Tags) > 0 {
+			line += " [" + strings.Join(v.Tags, ", ") + "]"
+		}
+		lines = append(lines, line)
 		if len(lines) == maxSkillsInInstructions {
 			break
 		}
@@ -236,12 +241,17 @@ type listSkillsIn struct {
 	Name       string `json:"name,omitempty" jsonschema:"Only the skill with this name"`
 	AllVersion bool   `json:"all_versions,omitempty" jsonschema:"true = also drafts, rejected and blocked versions that you may see as author or curator (default: released versions only)"`
 	Archived   bool   `json:"archived,omitempty" jsonschema:"true = list the archive instead: archived skills with all their versions, visible to curators and admins of the space only"`
+	Tag        string `json:"tag,omitempty" jsonschema:"Only skills with this tag"`
+	Status     string `json:"status,omitempty" jsonschema:"Only versions in this state: draft (waiting for review), approved, rejected, published or blocked; drafts and the like are shown only to their author and the curators of the space"`
+	Query      string `json:"query,omitempty" jsonschema:"Only skills whose name, description or tags contain this text"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Number of skills, default 50, at most 200"`
 }
 
 type skillSummary struct {
 	Name        string             `json:"name"`
 	Space       string             `json:"space"`
 	Description string             `json:"description"`
+	Tags        []string           `json:"tags"`
 	Archived    bool               `json:"archived,omitempty"`
 	Latest      int                `json:"latest_published,omitempty"`
 	Versions    []skillVersionInfo `json:"versions"`
@@ -256,7 +266,10 @@ func (s *Server) listSkills(ctx context.Context, c *call, in listSkillsIn) (list
 	if s.Skills == nil {
 		return listSkillsOut{}, errNoSkills
 	}
-	filter := skills.ListFilter{PublishedOnly: !in.AllVersion && !in.Archived}
+	filter := skills.ListFilter{PublishedOnly: !in.AllVersion && !in.Archived && in.Status == "", Tag: in.Tag, Status: strings.ToLower(strings.TrimSpace(in.Status)), Query: in.Query}
+	if st := filter.Status; st != "" && st != skills.StatusDraft && st != skills.StatusApproved && st != skills.StatusRejected && st != skills.StatusPublished && st != skills.StatusBlocked {
+		return listSkillsOut{}, userErr("status must be draft, approved, rejected, published or blocked.")
+	}
 	if in.Archived {
 		filter.Archive = skills.ArchiveOnly
 	}
@@ -290,7 +303,7 @@ func (s *Server) listSkills(ctx context.Context, c *call, in listSkillsIn) (list
 		if !ok {
 			i = len(out.Skills)
 			idx[key] = i
-			out.Skills = append(out.Skills, skillSummary{Name: v.Name, Space: names[v.SpaceID], Description: v.Description, Archived: v.Archived})
+			out.Skills = append(out.Skills, skillSummary{Name: v.Name, Space: names[v.SpaceID], Description: v.Description, Archived: v.Archived, Tags: tagsOrEmpty(v.Tags)})
 		}
 		sm := &out.Skills[i]
 		sm.Versions = append(sm.Versions, versionInfo(v))
@@ -300,10 +313,24 @@ func (s *Server) listSkills(ctx context.Context, c *call, in listSkillsIn) (list
 		}
 	}
 	sort.SliceStable(out.Skills, func(i, j int) bool { return out.Skills[i].Name < out.Skills[j].Name })
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	truncated := len(out.Skills) > limit
+	if truncated {
+		out.Skills = out.Skills[:limit]
+	}
 	if len(out.Skills) == 0 {
 		out.Message = "No skills found."
 	} else if in.Archived {
 		out.Message = "These skills are archived and not offered to anyone. unarchive_skill brings one back."
+	}
+	if truncated {
+		out.Message = strings.TrimSpace(out.Message + " More skills match than were returned; narrow the search with query, tag or space.")
 	}
 	return out, nil
 }
@@ -324,6 +351,7 @@ type getSkillOut struct {
 	Space     string              `json:"space,omitempty"`
 	Version   *skillVersionInfo   `json:"version,omitempty"`
 	Resources []skillResourceInfo `json:"resources,omitempty"`
+	Tags      []string            `json:"tags,omitempty"`
 	Content   string              `json:"content,omitempty"`
 	Notice    string              `json:"notice,omitempty"`
 }
@@ -350,7 +378,7 @@ func (s *Server) getSkill(ctx context.Context, c *call, in getSkillIn) (getSkill
 	}
 	s.Skills.Audit(ctx, c.Actor, v, "skill_get", "tool")
 	info := versionInfo(v)
-	return getSkillOut{Skill: v.Name, Space: spaceDisplayName(m.Space), Version: &info, Resources: resourceInfos(v), Content: text, Notice: noticeFor(v)}, nil
+	return getSkillOut{Skill: v.Name, Space: spaceDisplayName(m.Space), Version: &info, Resources: resourceInfos(v), Tags: v.Tags, Content: text, Notice: noticeFor(v)}, nil
 }
 
 func noticeFor(v skills.Version) string {
@@ -414,6 +442,7 @@ type storeSkillIn struct {
 	Name  string        `json:"name" jsonschema:"Name of the skill: lower case letters, digits and hyphens, equal to name in the front matter of SKILL.md"`
 	Files []skillFileIn `json:"files" jsonschema:"All files of the package, including SKILL.md with a front matter block (name, description)"`
 	Space string        `json:"space,omitempty" jsonschema:"Target space (slug or name); empty = the user's default space"`
+	Tags  []string      `json:"tags,omitempty" jsonschema:"Optional keywords, applied when the skill is new; change them later with tag_skill"`
 }
 
 type storeSkillOut struct {
@@ -424,6 +453,7 @@ type storeSkillOut struct {
 	Space     string              `json:"space,omitempty"`
 	Version   *skillVersionInfo   `json:"version,omitempty"`
 	Resources []skillResourceInfo `json:"resources,omitempty"`
+	Tags      []string            `json:"tags,omitempty"`
 }
 
 func (s *Server) storeSkill(ctx context.Context, c *call, in storeSkillIn) (storeSkillOut, error) {
@@ -456,7 +486,7 @@ func (s *Server) storeSkill(ctx context.Context, c *call, in storeSkillIn) (stor
 	for _, f := range in.Files {
 		files = append(files, skills.File{Path: strings.TrimSpace(f.Path), Content: f.Content})
 	}
-	v, err := s.Skills.Save(ctx, a, target.ID, strings.TrimSpace(in.Name), files)
+	v, err := s.Skills.Save(ctx, a, target.ID, strings.TrimSpace(in.Name), files, in.Tags)
 	if err != nil {
 		return storeSkillOut{}, err
 	}
@@ -466,7 +496,7 @@ func (s *Server) storeSkill(ctx context.Context, c *call, in storeSkillIn) (stor
 	if v.Status == skills.StatusPublished {
 		msg = fmt.Sprintf("Version %d of the skill %q is saved and published in your personal space; only you can see it.", v.Version, v.Name)
 	}
-	return storeSkillOut{Message: msg, Skill: v.Name, Space: spaceDisplayName(*target), Version: &info, Resources: resourceInfos(v)}, nil
+	return storeSkillOut{Message: msg, Skill: v.Name, Space: spaceDisplayName(*target), Version: &info, Resources: resourceInfos(v), Tags: v.Tags}, nil
 }
 
 // ---- review, publish, block -------------------------------------------------------------
@@ -667,4 +697,52 @@ func (s *Server) skillLifecycle(ctx context.Context, c *call, in skillRefIn, arc
 		return skillActionOut{}, err
 	}
 	return skillActionOut{Message: fmt.Sprintf(doneFmt, v.Name), Skill: v.Name}, nil
+}
+
+func tagsOrEmpty(t []string) []string {
+	if t == nil {
+		return []string{}
+	}
+	return t
+}
+
+// ---- tag_skill --------------------------------------------------------------------------
+
+type tagSkillIn struct {
+	Skill string   `json:"skill" jsonschema:"Name of the skill"`
+	Space string   `json:"space,omitempty" jsonschema:"Space; needed only when several spaces have a skill of this name"`
+	Tags  []string `json:"tags" jsonschema:"The complete new tag list (empty = remove all tags)"`
+}
+
+type tagSkillOut struct {
+	Result  string      `json:"result,omitempty"`
+	Message string      `json:"message,omitempty"`
+	Spaces  []spaceInfo `json:"spaces,omitempty"`
+	Skill   string      `json:"skill,omitempty"`
+	Tags    []string    `json:"tags"`
+}
+
+func (s *Server) tagSkill(ctx context.Context, c *call, in tagSkillIn) (tagSkillOut, error) {
+	if s.Skills == nil {
+		return tagSkillOut{}, errNoSkills
+	}
+	v, choice, err := s.skillOf(ctx, c, skillRefIn{Skill: in.Skill, Space: in.Space}, "")
+	if err != nil {
+		return tagSkillOut{}, err
+	}
+	if choice != nil {
+		return tagSkillOut{Result: choice.Result, Message: choice.Message, Spaces: choice.Spaces, Tags: []string{}}, nil
+	}
+	tags, err := s.Skills.SetTags(ctx, c.Actor, v.SkillID, in.Tags)
+	if err != nil {
+		return tagSkillOut{}, err
+	}
+	return tagSkillOut{Skill: v.Name, Tags: tags, Message: fmt.Sprintf("The tags of the skill %q are now: %s. No new version was needed.", v.Name, tagList(tags))}, nil
+}
+
+func tagList(tags []string) string {
+	if len(tags) == 0 {
+		return "(none)"
+	}
+	return strings.Join(tags, ", ")
 }

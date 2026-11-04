@@ -77,10 +77,11 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 
 | Tool | Who | Purpose |
 |---|---|---|
-| `list_skills` | everyone | Skills the caller can use (released versions); with `all_versions=true` also the drafts and blocked versions the caller may see, with `archived=true` the archive (curators and admins) |
+| `list_skills` | everyone | Skills the caller can use (released versions). Filters: `tag`, `query` (text in name, description or tags), `space`, `name`, `limit` (default 50, at most 200); `status` shows versions in one state (`draft` = waiting for review; drafts are visible to the author and the curators only); `all_versions=true` also the drafts and blocked versions the caller may see; `archived=true` the archive (curators and admins) |
 | `get_skill` | everyone | `SKILL.md`, file list with hashes, version, digest, risk class. Without a version: the newest released one |
 | `get_skill_resource` | everyone | One file of a skill, checked against its hash |
-| `store_skill` | authors and up | Saves the package as a new version or revises the author's own draft |
+| `store_skill` | authors and up | Saves the package as a new version or revises the author's own draft. `tags` are applied when the skill is new |
+| `tag_skill` | creator of the skill, curators | Replaces the tags of a skill without a new version or review |
 | `review_skill` | curators | Approve (with confirmation and risk class) or reject (with note) |
 | `publish_skill` | curators | Release an approved version (confirmation required) |
 | `block_skill` | curators | Withdraw a version (reason and confirmation required) |
@@ -91,6 +92,10 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 All of them work in every MCP client. A client that does not know any skills extension can still use a skill: the assistant loads it through the tools. Released skills are announced in the instructions each connection receives (name, space, description, at most 25 entries), because the assistant would not know otherwise that they exist. It is told to use one only when the user asks or agrees.
 
 To stay on the version it started with, an assistant passes the exact version to `get_skill` and `get_skill_resource`. The default (newest released version) is only a lookup aid.
+
+## Tags
+
+A skill has tags like a knowledge entry: normalised (lower case, no duplicates, at most 20 tags of 50 characters), shown by `list_skills` and `get_skill`, searchable with `list_skills tag=...`, and listed behind the name in the instructions an assistant receives. They belong to the skill, not to a version: a version is frozen once it leaves draft, and fixing a keyword must not need a new version and a new review. Tags are no part of the digest and no instruction. `store_skill` applies them when it creates the skill; later changes go through `tag_skill`, which the creator of the skill and curators and admins of the space (in a personal space the owner) may call. Every change is audited as `skill_tag`.
 
 ## MCP Skills extension (SEP-2640)
 

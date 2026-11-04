@@ -33,6 +33,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/guard"
+	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 )
 
@@ -126,7 +127,9 @@ type Version struct {
 	ReviewNote     string
 	BlockReason    string
 	// Archived is a property of the whole skill, repeated on each of its versions.
-	Archived  bool
+	Archived bool
+	// Tags belong to the skill and are repeated on each of its versions.
+	Tags      []string
 	Resources []Resource
 }
 
@@ -346,9 +349,14 @@ func (s *Store) space(ctx context.Context, a docs.Actor, id uuid.UUID, min authz
 
 // Save stores a package as a new version of the skill, or replaces the draft of the same
 // author. In a team space the result is a draft that a curator has to review. In a personal
-// space only the owner can ever see it, so it is published at once.
-func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name string, files []File) (Version, error) {
+// space only the owner can ever see it, so it is published at once. tags are set when the
+// skill is created and ignored for an existing one (SetTags changes them).
+func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name string, files []File, tags []string) (Version, error) {
 	p, err := prepare(name, files)
+	if err != nil {
+		return Version{}, err
+	}
+	norm, err := normalizeTags(tags)
 	if err != nil {
 		return Version{}, err
 	}
@@ -363,9 +371,9 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 	defer tx.Rollback(ctx)
 
 	var skillID uuid.UUID
-	err = tx.QueryRow(ctx, `INSERT INTO skills (space_id, name, created_by) VALUES ($1, $2, $3)
+	err = tx.QueryRow(ctx, `INSERT INTO skills (space_id, name, created_by, tags) VALUES ($1, $2, $3, $4)
 		ON CONFLICT (space_id, name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
-		sp.ID, name, a.User.ID).Scan(&skillID)
+		sp.ID, name, a.User.ID, norm).Scan(&skillID)
 	if err != nil {
 		return Version{}, err
 	}
@@ -751,13 +759,13 @@ type querier interface {
 
 const versionSelect = `SELECT s.id, v.id, s.space_id, s.name, v.version, v.status, v.description, v.requested_tools,
   COALESCE(v.risk_class, ''), v.digest, v.created_by, v.created_at, COALESCE(v.review_note, ''), COALESCE(v.block_reason, ''),
-  s.archived_at IS NOT NULL
+  s.archived_at IS NOT NULL, s.tags
 FROM skill_versions v JOIN skills s ON s.id = v.skill_id `
 
 func scanVersion(row pgx.Row) (Version, error) {
 	var v Version
 	err := row.Scan(&v.SkillID, &v.VersionID, &v.SpaceID, &v.Name, &v.Version, &v.Status, &v.Description, &v.RequestedTools,
-		&v.RiskClass, &v.Digest, &v.CreatedBy, &v.CreatedAt, &v.ReviewNote, &v.BlockReason, &v.Archived)
+		&v.RiskClass, &v.Digest, &v.CreatedBy, &v.CreatedAt, &v.ReviewNote, &v.BlockReason, &v.Archived, &v.Tags)
 	return v, err
 }
 
@@ -800,6 +808,11 @@ type ListFilter struct {
 	Name          string
 	SpaceID       uuid.UUID
 	PublishedOnly bool
+	// Tag keeps skills with this tag, Status versions in this state, Query skills whose name,
+	// description or tags contain the text (case-insensitive).
+	Tag    string
+	Status string
+	Query  string
 	// Archive selects by archive state: "" only active skills, ArchiveOnly only archived
 	// ones, ArchiveAny both. Archived skills are visible to curators of the space only.
 	Archive string
@@ -815,6 +828,7 @@ const (
 // List returns the versions the caller may see, newest version of each skill first.
 func (s *Store) List(ctx context.Context, a docs.Actor, f ListFilter) ([]Version, error) {
 	vis, cur := scope(a)
+	tag := strings.ToLower(strings.TrimSpace(f.Tag))
 	limit := f.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 500
@@ -823,8 +837,10 @@ func (s *Store) List(ctx context.Context, a docs.Actor, f ListFilter) ([]Version
 		AND ($4 = '' OR s.name = $4) AND ($5::uuid = '00000000-0000-0000-0000-000000000000'::uuid OR s.space_id = $5)
 		AND (NOT $6 OR v.status = 'published')
 		AND ($8 = 'any' OR ($8 = 'only') = (s.archived_at IS NOT NULL))
+		AND ($9 = '' OR $9 = ANY(s.tags)) AND ($10 = '' OR v.status = $10)
+		AND ($11 = '' OR strpos(lower(s.name || ' ' || v.description || ' ' || array_to_string(s.tags, ' ')), lower($11)) > 0)
 		ORDER BY s.name, s.space_id, v.version DESC LIMIT $7`,
-		vis, a.User.ID, cur, f.Name, f.SpaceID, f.PublishedOnly, limit, f.Archive)
+		vis, a.User.ID, cur, f.Name, f.SpaceID, f.PublishedOnly, limit, f.Archive, tag, f.Status, strings.TrimSpace(f.Query))
 	if err != nil {
 		return nil, err
 	}
@@ -906,4 +922,58 @@ func (s *Store) AuditList(ctx context.Context, a docs.Actor, via string, count i
 		UserID: &uid, Client: a.Client, Action: "skill_list",
 		Details: map[string]any{"count": count, "via": via},
 	})
+}
+
+// ---- tags ---------------------------------------------------------------------------
+
+// normalizeTags applies the rules of knowledge entry tags and reports a violation as ErrInvalid.
+func normalizeTags(tags []string) ([]string, error) {
+	norm, err := ingest.NormalizeTags(tags)
+	if err != nil {
+		return nil, invalid(strings.TrimPrefix(err.Error(), ingest.ErrInvalid.Error()+": "))
+	}
+	return norm, nil
+}
+
+// SetTags replaces the tags of a skill without a new version: tags are no instruction and
+// no part of the digest. The creator of the skill, the curators and admins of the space (in
+// a personal space the owner) may do it. It returns the normalised tags.
+func (s *Store) SetTags(ctx context.Context, a docs.Actor, skillID uuid.UUID, tags []string) ([]string, error) {
+	norm, err := normalizeTags(tags)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var name string
+	var spaceID uuid.UUID
+	var createdBy *uuid.UUID
+	var archived bool
+	err = tx.QueryRow(ctx, `SELECT name, space_id, created_by, archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).
+		Scan(&name, &spaceID, &createdBy, &archived)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	sp, role, err := s.space(ctx, a, spaceID, authz.Author)
+	if err != nil {
+		return nil, err
+	}
+	if archived {
+		return nil, ErrArchived
+	}
+	if role < authz.Curator && (createdBy == nil || *createdBy != a.User.ID) {
+		return nil, ErrForbidden
+	}
+	if _, err := tx.Exec(ctx, `UPDATE skills SET tags = $2 WHERE id = $1`, skillID, norm); err != nil {
+		return nil, err
+	}
+	if err := record(ctx, tx, a, "skill_tag", sp, map[string]any{"skill": name, "tags": norm}); err != nil {
+		return nil, err
+	}
+	return norm, tx.Commit(ctx)
 }
