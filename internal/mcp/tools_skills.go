@@ -348,7 +348,7 @@ func (s *Server) getSkill(ctx context.Context, c *call, in getSkillIn) (getSkill
 	if err != nil {
 		return getSkillOut{}, err
 	}
-	s.Skills.Audit(ctx, c.Actor, v, "skill_get")
+	s.Skills.Audit(ctx, c.Actor, v, "skill_get", "tool")
 	info := versionInfo(v)
 	return getSkillOut{Skill: v.Name, Space: spaceDisplayName(m.Space), Version: &info, Resources: resourceInfos(v), Content: text, Notice: noticeFor(v)}, nil
 }
@@ -399,7 +399,7 @@ func (s *Server) getSkillResource(ctx context.Context, c *call, in getSkillResou
 	if err != nil {
 		return getSkillResourceOut{}, err
 	}
-	s.Skills.Audit(ctx, c.Actor, v, "skill_resource")
+	s.Skills.Audit(ctx, c.Actor, v, "skill_resource", "tool")
 	return getSkillResourceOut{Skill: v.Name, Version: v.Version, Path: r.Path, SHA256: r.SHA256, Content: content, Notice: noticeFor(v)}, nil
 }
 

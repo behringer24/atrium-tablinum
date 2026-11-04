@@ -203,6 +203,7 @@ func (s *Server) skillsListResult(ctx context.Context, a docs.Actor) (any, error
 		}
 		out = append(out, e)
 	}
+	s.Skills.AuditList(ctx, a, "rpc", len(out))
 	return map[string]any{"resultType": "complete", "skills": out}, nil
 }
 
@@ -223,6 +224,7 @@ func (s *Server) skillsGetResult(ctx context.Context, a docs.Actor, uri string) 
 		slog.Error("skills/get failed", "skill", v.Name, "error", err)
 		return nil, &rpcError{Code: -32603, Message: "internal error"}
 	}
+	s.Skills.Audit(ctx, a, v, "skill_get", "rpc")
 	return map[string]any{"resultType": "complete", "skill": e}, nil
 }
 
@@ -256,10 +258,22 @@ func (s *Server) skillsRPC(next http.Handler) http.Handler {
 			ID     json.RawMessage `json:"id"`
 			Method string          `json:"method"`
 			Params struct {
-				URI string `json:"uri"`
+				URI        string `json:"uri"`
+				Name       string `json:"name"`
+				ClientInfo struct {
+					Name string `json:"name"`
+				} `json:"clientInfo"`
 			} `json:"params"`
 		}
-		if json.Unmarshal(head, &req) != nil || len(req.ID) == 0 || (req.Method != "skills/list" && req.Method != "skills/get") {
+		if json.Unmarshal(head, &req) != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if slog.Default().Enabled(r.Context(), slog.LevelDebug) && req.Method != "" {
+			slog.Debug("MCP request", "method", req.Method, "tool", req.Params.Name, "uri", req.Params.URI,
+				"client_info", req.Params.ClientInfo.Name, "user_agent", r.UserAgent())
+		}
+		if len(req.ID) == 0 || (req.Method != "skills/list" && req.Method != "skills/get") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -343,7 +357,7 @@ func (s *Server) readSkillResource(ctx context.Context, req *mcp.ReadResourceReq
 	if ref.file == skills.EntryPoint {
 		action = "skill_get"
 	}
-	s.Skills.Audit(ctx, a, v, action)
+	s.Skills.Audit(ctx, a, v, action, "resource")
 	return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{
 		URI: uri, MIMEType: skillMIME(res.Path), Text: content,
 		Meta: mcp.Meta{
@@ -423,7 +437,7 @@ func (s *Server) exportSkill(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.Skills.Audit(r.Context(), a, v, "skill_export")
+	s.Skills.Audit(r.Context(), a, v, "skill_export", "export")
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fmt.Sprintf("%s-v%d.zip", v.Name, v.Version)))
 	w.Header().Set("X-Atrium-Skill-Version", strconv.Itoa(v.Version))

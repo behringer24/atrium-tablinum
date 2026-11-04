@@ -884,8 +884,10 @@ func (s *Store) Resource(ctx context.Context, a docs.Actor, v Version, path stri
 	return content, r, nil
 }
 
-// Audit records that a caller read a skill. Reads of a personal space keep no details.
-func (s *Store) Audit(ctx context.Context, a docs.Actor, v Version, action string) {
+// Audit records that a caller read a skill and by which route: "tool" (get_skill,
+// get_skill_resource), "resource" (resources/read), "rpc" (skills/get) or "export". Reads of
+// a personal space keep no details.
+func (s *Store) Audit(ctx context.Context, a docs.Actor, v Version, action, via string) {
 	sp, err := s.sp.GetByID(ctx, v.SpaceID)
 	if err != nil {
 		return
@@ -893,6 +895,15 @@ func (s *Store) Audit(ctx context.Context, a docs.Actor, v Version, action strin
 	uid, sid := a.User.ID, sp.ID
 	_ = audit.Insert(ctx, s.pool, audit.Event{
 		UserID: &uid, Client: a.Client, Action: action, SpaceID: &sid, Personal: sp.Type == "personal",
-		Details: map[string]any{"skill": v.Name, "version": v.Version},
+		Details: map[string]any{"skill": v.Name, "version": v.Version, "via": via},
+	})
+}
+
+// AuditList records a skills/list call (the skills offered to the caller, not one skill).
+func (s *Store) AuditList(ctx context.Context, a docs.Actor, via string, count int) {
+	uid := a.User.ID
+	_ = audit.Insert(ctx, s.pool, audit.Event{
+		UserID: &uid, Client: a.Client, Action: "skill_list",
+		Details: map[string]any{"count": count, "via": via},
 	})
 }

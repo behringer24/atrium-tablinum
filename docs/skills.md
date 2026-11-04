@@ -114,6 +114,10 @@ An export is a copy: blocking or archiving cannot recall it. A client that insta
 
 `store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept.
 
+Every read carries `via` in its details, the route the client took: `tool` (`get_skill`, `get_skill_resource`), `resource` (`resources/read` of a `skill://` URI), `rpc` (`skills/get`) or `export` (the ZIP download). `skills/list` is written as `skill_list` with the number of skills offered. So `admin_audit_log action=skill_*` shows whether a client uses the SEP-2640 methods or the tools. Calls through `skills/*` carry the client `mcp-skills`, as that route has no MCP session to read the client name from.
+
+To see the requests themselves, set `instance.log_level: debug`: the server then logs one line per MCP request (`MCP request`, with `method`, `tool`, `uri`, `client_info` on `initialize` and `user_agent`), e.g. `docker logs <container> 2>&1 | grep 'MCP request' | grep -E 'skills/|resources/read|get_skill'`.
+
 ## Limits to know
 
 - Blocking, archiving and deleting stop new reads. A client that already holds a copy keeps it until it fetches again; Atrium cannot recall it.

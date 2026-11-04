@@ -252,3 +252,39 @@ func TestSkillExport(t *testing.T) {
 		t.Errorf("blocked version exported: %d", res.StatusCode)
 	}
 }
+
+// The audit log tells which route a client took: tool, resource read or skills/* method.
+func TestSkillAuditNamesTheRoute(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{
+		"anna@x.de": authz.Author, "cora@x.de": authz.Curator, "bob@x.de": authz.Reader,
+	})
+	anna, cora, bob := e.session(t, "anna@x.de"), e.session(t, "cora@x.de"), e.session(t, "bob@x.de")
+	e.releaseSkill(t, anna, cora, "code-review", nil)
+
+	uri := "skill://dev/code-review/SKILL.md"
+	e.rpc(t, "bob@x.de", "skills/list", map[string]any{})
+	e.rpc(t, "bob@x.de", "skills/get", map[string]any{"uri": uri})
+	if _, err := bob.ReadResource(e.ctx, &mcp.ReadResourceParams{URI: uri}); err != nil {
+		t.Fatal(err)
+	}
+	e.mustCall(t, bob, "get_skill", map[string]any{"skill": "code-review"})
+
+	rows, err := e.srv.Pool.Query(e.ctx, `SELECT action, details->>'via' FROM audit_log
+		WHERE action IN ('skill_list', 'skill_get') AND details ? 'via' ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var action, via string
+		if err := rows.Scan(&action, &via); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, action+"/"+via)
+	}
+	if want := "skill_list/rpc skill_get/rpc skill_get/resource skill_get/tool"; strings.Join(got, " ") != want {
+		t.Errorf("audit routes: %v, want %s", got, want)
+	}
+}
