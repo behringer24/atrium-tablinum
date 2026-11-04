@@ -13,6 +13,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **Skill export:** `GET /skills/export/<space>/<skill>[?version=N]` returns a released version as a reproducible ZIP in the Agent Skills layout, behind the same bearer authentication as `/mcp`. Audited as `skill_export`.
 - **Server icon:** Atrium serves an icon at `/favicon.ico` and `/icon` and sends it in the MCP server info. Built-in default; `instance.icon_file` sets an own image. See [docs/deployment.md](docs/deployment.md).
 - **Audit shows the route of a skill read:** the details of `skill_get`, `skill_resource` and `skill_export` carry `via` (`tool`, `resource`, `rpc`, `export`), and `skills/list` is logged as `skill_list`. New setting `instance.log_level` (default `info`); `debug` adds one log line per MCP request. See [docs/skills.md](docs/skills.md).
+- **Skill tags and filters:** skills have tags like knowledge entries (`store_skill tags`, new tool `tag_skill`; they belong to the skill, so retagging needs no new version). `list_skills` gained `tag`, `query` (text in name, description or tags), `status` (e.g. `draft` for the review queue) and `limit`, and the tags appear in `get_skill` and in the skill list of the instructions. See [docs/skills.md](docs/skills.md).
 
 ### Fixed
 - **Cleaner package list:** image builds no longer push provenance attestations (two extra untagged entries per build), and the new workflow `cleanup.yml` removes old `canary-*` versions with their platform images (newest 10 and anything younger than a week stay; release tags are never touched). It lists only until `PACKAGES_PAT` is set up and the dry run has been checked. See [docs/release.md](docs/release.md).
@@ -21,6 +22,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ### Upgrade notes
 - Migration `00007` creates the skill tables and the triggers that freeze released versions. Migration `00008` adds the archive columns and lets a blocked version go back to approved (and only there).
+- Migration `00009` adds the tags column to `skills`.
 
 ### Changed
 - Everything is English now: documentation, code comments, tool descriptions, the MCP instructions, error and confirmation messages, log texts and the browser pages of the login flow. Assistants still answer users in the user's language.

@@ -330,3 +330,103 @@ func TestSkillReleasesAreFrozenInTheDatabase(t *testing.T) {
 		t.Fatalf("tampered files are served: %q", msg)
 	}
 }
+
+// skillNames returns the names list_skills returned.
+func skillNames(m map[string]any) []string {
+	var out []string
+	for _, x := range m["skills"].([]any) {
+		out = append(out, x.(map[string]any)["name"].(string))
+	}
+	return out
+}
+
+func TestSkillTagsAndFilters(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{
+		"anna@x.de": authz.Author, "cora@x.de": authz.Curator, "bob@x.de": authz.Reader, "dan@x.de": authz.Author,
+	})
+	anna, cora, bob, dan := e.session(t, "anna@x.de"), e.session(t, "cora@x.de"), e.session(t, "bob@x.de"), e.session(t, "dan@x.de")
+
+	// Tags are normalised like the tags of knowledge entries and shown on the skill.
+	st := e.mustCall(t, anna, "store_skill", map[string]any{"name": "code-review", "space": "dev",
+		"files": skillPackage("code-review", "Review a change before it is merged", nil), "tags": []string{"Review", "QA", "review"}})
+	if got := fmt.Sprint(st["tags"]); got != "[qa review]" {
+		t.Fatalf("tags after store: %s", got)
+	}
+	if _, msg := e.call(t, anna, "store_skill", map[string]any{"name": "other", "space": "dev",
+		"files": skillPackage("other", "Another skill", nil), "tags": []string{strings.Repeat("x", 80)}}); !strings.Contains(msg, "tag") {
+		t.Fatalf("overlong tag: %q", msg)
+	}
+	e.mustCall(t, cora, "review_skill", map[string]any{"skill": "code-review", "version": 1, "decision": "approve", "risk_class": "A", "confirm": true})
+	e.mustCall(t, cora, "publish_skill", map[string]any{"skill": "code-review", "version": 1, "confirm": true})
+	e.releaseSkill(t, anna, cora, "lint", nil)
+
+	list := func(cs *mcp.ClientSession, args map[string]any) []string {
+		t.Helper()
+		return skillNames(e.mustCall(t, cs, "list_skills", args))
+	}
+	for _, tc := range []struct {
+		args map[string]any
+		want string
+	}{
+		{map[string]any{}, "[code-review lint]"},
+		{map[string]any{"tag": "QA"}, "[code-review]"},
+		{map[string]any{"tag": "none"}, "[]"},
+		{map[string]any{"query": "CODE-REV"}, "[code-review]"},
+		{map[string]any{"query": "merged"}, "[code-review lint]"},
+		{map[string]any{"query": "qa"}, "[code-review]"},
+		{map[string]any{"query": "zzz"}, "[]"},
+		{map[string]any{"query": "100%"}, "[]"},
+	} {
+		if got := fmt.Sprint(list(bob, tc.args)); got != tc.want {
+			t.Errorf("list_skills %v: %s, want %s", tc.args, got, tc.want)
+		}
+	}
+	if m := e.mustCall(t, bob, "list_skills", map[string]any{"limit": 1}); len(skillNames(m)) != 1 || !strings.Contains(fmt.Sprint(m["message"]), "More skills") {
+		t.Errorf("limit: %v", m)
+	}
+	// The tags come with get_skill and the version is untouched by tagging.
+	if got := fmt.Sprint(e.mustCall(t, bob, "get_skill", map[string]any{"skill": "code-review"})["tags"]); got != "[qa review]" {
+		t.Errorf("get_skill tags: %s", got)
+	}
+
+	// Readers and authors of other skills cannot tag; the creator and curators can, without a new version.
+	for _, cs := range []*mcp.ClientSession{bob, dan} {
+		if _, msg := e.call(t, cs, "tag_skill", map[string]any{"skill": "code-review", "tags": []string{"x"}}); !strings.Contains(msg, "permission") {
+			t.Errorf("tagged without the right: %q", msg)
+		}
+	}
+	e.mustCall(t, anna, "tag_skill", map[string]any{"skill": "code-review", "tags": []string{"Ops"}})
+	if got := fmt.Sprint(list(bob, map[string]any{"tag": "ops"})); got != "[code-review]" {
+		t.Errorf("after retag: %s", got)
+	}
+	if got := fmt.Sprint(list(bob, map[string]any{"tag": "qa"})); got != "[]" {
+		t.Errorf("old tag still found: %s", got)
+	}
+	e.mustCall(t, cora, "tag_skill", map[string]any{"skill": "code-review", "tags": []string{}})
+	if got := fmt.Sprint(e.mustCall(t, bob, "get_skill", map[string]any{"skill": "code-review"})["tags"]); got != "<nil>" {
+		t.Errorf("tags not removed: %s", got)
+	}
+	var versions int
+	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM skill_versions v JOIN skills s ON s.id = v.skill_id WHERE s.name = 'code-review'`).Scan(&versions); err != nil || versions != 1 {
+		t.Errorf("tagging made versions: %d %v", versions, err)
+	}
+
+	// A new version of an existing skill leaves the tags alone.
+	e.mustCall(t, cora, "tag_skill", map[string]any{"skill": "code-review", "tags": []string{"keep"}})
+	e.mustCall(t, anna, "store_skill", map[string]any{"name": "code-review", "space": "dev",
+		"files": skillPackage("code-review", "Review, second version", nil), "tags": []string{"ignored"}})
+	if got := fmt.Sprint(list(bob, map[string]any{"tag": "keep"})); got != "[code-review]" {
+		t.Errorf("store changed the tags: %s", got)
+	}
+
+	// status=draft finds the version waiting for review for author and curator, not for a reader.
+	for cs, want := range map[*mcp.ClientSession]string{cora: "[code-review]", anna: "[code-review]", bob: "[]"} {
+		if got := fmt.Sprint(list(cs, map[string]any{"status": "draft"})); got != want {
+			t.Errorf("status=draft: %s, want %s", got, want)
+		}
+	}
+	if _, msg := e.call(t, cora, "list_skills", map[string]any{"status": "bogus"}); !strings.Contains(msg, "status") {
+		t.Errorf("bad status: %q", msg)
+	}
+}
