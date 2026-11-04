@@ -126,7 +126,7 @@ func (s *Server) Handler(verifier auth.TokenVerifier, resourceMetadataURL string
 	return auth.RequireBearerToken(verifier, &auth.RequireBearerTokenOptions{
 		ResourceMetadataURL:    resourceMetadataURL,
 		AllowMissingExpiration: true,
-	})(h)
+	})(s.skillsRPC(h))
 }
 
 // instructions are the server-level hints a client shows its model. Users mostly say the
@@ -163,8 +163,15 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 		return nil
 	}
 	a := docs.Actor{User: u, Roles: roles}
-	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a)})
+	caps := &mcp.ServerCapabilities{Logging: &mcp.LoggingCapabilities{}} // the SDK default
+	if s.Skills != nil {
+		caps.AddExtension(skillsExtension, nil)
+	}
+	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a), Capabilities: caps})
 	s.registerUserTools(ms)
+	if s.Skills != nil {
+		s.registerSkillResources(ms)
+	}
 	if cur, err := s.teamSpacesAtLeast(r.Context(), a, authz.Curator); err == nil && len(cur) > 0 {
 		s.registerCuratorTools(ms)
 	}
@@ -311,10 +318,17 @@ func userErr(msg string) error { return errors.Join(errUser, errors.New(msg)) }
 
 // clientName maps the MCP client's self-reported name to the audit/source label.
 func clientName(req *mcp.CallToolRequest) string {
-	if req == nil || req.Session == nil {
+	if req == nil {
 		return "api"
 	}
-	p := req.Session.InitializeParams()
+	return clientLabel(req.Session)
+}
+
+func clientLabel(ss *mcp.ServerSession) string {
+	if ss == nil {
+		return "api"
+	}
+	p := ss.InitializeParams()
 	if p == nil || p.ClientInfo == nil {
 		return "api"
 	}

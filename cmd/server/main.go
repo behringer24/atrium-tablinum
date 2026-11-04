@@ -186,6 +186,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	}
 
 	mux.Handle("/mcp", mcpSrv.Handler(verifier, resourceMetadataURL))
+	mux.Handle("GET /skills/export/{space}/{name}", mcpSrv.SkillExportHandler(verifier, resourceMetadataURL))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		cctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)

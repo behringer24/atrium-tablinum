@@ -138,21 +138,48 @@ type frontmatter struct {
 	AllowedTools any    `yaml:"allowed-tools"`
 }
 
-// parseSkillMD reads the front matter of a SKILL.md and returns name, description and the
-// requested tools as one space separated string.
-func parseSkillMD(text string) (name, description, tools string, err error) {
+// frontmatterBlock returns the YAML between the two --- lines at the top of a SKILL.md.
+func frontmatterBlock(text string) (string, error) {
 	text = strings.TrimPrefix(text, "\ufeff")
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	if !strings.HasPrefix(text, "---\n") {
-		return "", "", "", invalid("SKILL.md must start with a front matter block (--- name and description ---)")
+		return "", invalid("SKILL.md must start with a front matter block (--- name and description ---)")
 	}
 	rest := text[4:]
 	end := strings.Index(rest, "\n---")
 	if end < 0 {
-		return "", "", "", invalid("the front matter of SKILL.md is not closed with ---")
+		return "", invalid("the front matter of SKILL.md is not closed with ---")
+	}
+	return rest[:end], nil
+}
+
+// Frontmatter returns the front matter of a SKILL.md with every field the author wrote, as
+// the MCP skills extension lists it. Keys that are not strings cannot be rendered as JSON
+// and make the file invalid.
+func Frontmatter(text string) (map[string]any, error) {
+	block, err := frontmatterBlock(text)
+	if err != nil {
+		return nil, err
+	}
+	var fm map[string]any
+	if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
+		return nil, invalid("the front matter of SKILL.md is not valid YAML")
+	}
+	if fm == nil {
+		fm = map[string]any{}
+	}
+	return fm, nil
+}
+
+// parseSkillMD reads the front matter of a SKILL.md and returns name, description and the
+// requested tools as one space separated string.
+func parseSkillMD(text string) (name, description, tools string, err error) {
+	block, err := frontmatterBlock(text)
+	if err != nil {
+		return "", "", "", err
 	}
 	var fm frontmatter
-	if err := yaml.Unmarshal([]byte(rest[:end]), &fm); err != nil {
+	if err := yaml.Unmarshal([]byte(block), &fm); err != nil {
 		return "", "", "", invalid("the front matter of SKILL.md is not valid YAML")
 	}
 	switch v := fm.AllowedTools.(type) {

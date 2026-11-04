@@ -142,6 +142,7 @@ type env struct {
 	users  *users.Store
 	spaces *spaces.Store
 	http   *httptest.Server
+	export *httptest.Server  // the skill export route
 	tokens map[string]string // token -> email
 }
 
@@ -184,6 +185,10 @@ func setup(t *testing.T, writesPerMinute int) *env {
 	}
 	e.http = httptest.NewServer(e.srv.Handler(verifier, ""))
 	t.Cleanup(e.http.Close)
+	exportMux := http.NewServeMux()
+	exportMux.Handle("GET /skills/export/{space}/{name}", e.srv.SkillExportHandler(verifier, ""))
+	e.export = httptest.NewServer(exportMux)
+	t.Cleanup(e.export.Close)
 	return e
 }
 

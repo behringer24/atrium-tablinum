@@ -24,6 +24,18 @@ func TestParseSkillMD(t *testing.T) {
 	}
 }
 
+func TestFrontmatter(t *testing.T) {
+	fm, err := Frontmatter("---\nname: sample\ndescription: A sample skill\nlicense: MIT\nmetadata:\n  version: \"2.1\"\n---\nBody")
+	if err != nil || fm["name"] != "sample" || fm["license"] != "MIT" || fm["metadata"].(map[string]any)["version"] != "2.1" {
+		t.Fatalf("%v %v", fm, err)
+	}
+	for _, bad := range []string{"", "no front matter", "---\nname: [unclosed\n---\n"} {
+		if _, err := Frontmatter(bad); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%q: want ErrInvalid, got %v", bad, err)
+		}
+	}
+}
+
 func TestValidatePath(t *testing.T) {
 	for _, ok := range []string{"SKILL.md", "references/guide.md", "data/table.csv", "a/b/c.txt", "x.JSON"} {
 		if err := validatePath(ok); err != nil {
