@@ -8,6 +8,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
+	"github.com/behringer24/atrium-tablinum/internal/skills"
 )
 
 // skillPackage builds the files argument of store_skill.
@@ -429,4 +430,73 @@ func TestSkillTagsAndFilters(t *testing.T) {
 	if _, msg := e.call(t, cora, "list_skills", map[string]any{"status": "bogus"}); !strings.Contains(msg, "status") {
 		t.Errorf("bad status: %q", msg)
 	}
+}
+
+func TestSkillQuota(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{"anna@x.de": authz.Author, "cora@x.de": authz.Curator})
+	anna, cora := e.session(t, "anna@x.de"), e.session(t, "cora@x.de")
+
+	// Versions per skill: three are allowed in total, a draft revised in place adds none.
+	e.srv.Skills = skills.New(e.srv.Pool, e.spaces, skills.Options{MaxVersionsPerSkill: 3})
+	save := func(desc string) (map[string]any, string) {
+		return e.call(t, anna, "store_skill", map[string]any{"name": "code-review", "space": "dev", "files": skillPackage("code-review", desc, nil)})
+	}
+	release := func(v int) {
+		e.mustCall(t, cora, "review_skill", map[string]any{"skill": "code-review", "version": v, "decision": "approve", "risk_class": "A", "confirm": true})
+		e.mustCall(t, cora, "publish_skill", map[string]any{"skill": "code-review", "version": v, "confirm": true})
+	}
+	for v := 1; v <= 2; v++ {
+		if _, msg := save(fmt.Sprintf("Version %d", v)); msg != "" {
+			t.Fatalf("version %d: %s", v, msg)
+		}
+		release(v)
+	}
+	if _, msg := save("Version 3"); msg != "" {
+		t.Fatalf("version 3: %s", msg)
+	}
+	if m, msg := save("Version 3, revised"); msg != "" || versionNumber(m) != 3 {
+		t.Fatalf("revising the draft at the limit: %v %q", m, msg)
+	}
+	release(3)
+	if _, msg := save("Version 4"); !strings.Contains(msg, "limit of 3 versions") {
+		t.Fatalf("fourth version: %q", msg)
+	}
+	// Another skill is not affected.
+	if _, msg := e.call(t, anna, "store_skill", map[string]any{"name": "lint", "space": "dev", "files": skillPackage("lint", "Lint", nil)}); msg != "" {
+		t.Fatalf("other skill: %s", msg)
+	}
+
+	// Personal space: number of skills ...
+	e.srv.Skills = skills.New(e.srv.Pool, e.spaces, skills.Options{PersonalMaxSkills: 2})
+	mine := func(name string) string {
+		_, msg := e.call(t, anna, "store_skill", map[string]any{"name": name, "space": "my personal space", "files": skillPackage(name, "Private", nil)})
+		return msg
+	}
+	for _, n := range []string{"one", "two"} {
+		if msg := mine(n); msg != "" {
+			t.Fatalf("personal skill %s: %s", n, msg)
+		}
+	}
+	if msg := mine("three"); !strings.Contains(msg, "limited to 2 skills") {
+		t.Fatalf("third personal skill: %q", msg)
+	}
+	if msg := mine("two"); msg != "" { // a new version of an existing skill is no new skill
+		t.Fatalf("new version of a personal skill: %s", msg)
+	}
+	// ... and stored bytes over all versions.
+	e.srv.Skills = skills.New(e.srv.Pool, e.spaces, skills.Options{PersonalMaxBytes: 300})
+	if msg := mine("two"); !strings.Contains(msg, "300 bytes") {
+		t.Fatalf("personal bytes: %q", msg)
+	}
+	// The team space has no byte limit.
+	if _, msg := e.call(t, anna, "store_skill", map[string]any{"name": "big", "space": "dev", "files": skillPackage("big", "Big", map[string]string{"references/a.md": strings.Repeat("x", 5000)})}); msg != "" {
+		t.Fatalf("team space: %s", msg)
+	}
+}
+
+func versionNumber(m map[string]any) int {
+	v, _ := m["version"].(map[string]any)
+	n, _ := v["version"].(float64)
+	return int(n)
 }

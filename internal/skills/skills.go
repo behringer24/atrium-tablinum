@@ -49,6 +49,8 @@ var (
 	ErrTampered = errors.New("the stored files do not match the digest of this version")
 	// ErrArchived is returned when a change needs an active skill but the skill is archived.
 	ErrArchived = errors.New("the skill is archived: restore it first (unarchive_skill)")
+	// ErrQuota is returned when a save would exceed a storage limit (see Options).
+	ErrQuota = errors.New("skill quota exceeded")
 )
 
 // Statuses of a version.
@@ -85,6 +87,12 @@ type Options struct {
 	// AllowSelfApproval lets the author of a version also approve it. Off by default: it is
 	// meant for small installations that have only one curator.
 	AllowSelfApproval bool
+	// PersonalMaxSkills and PersonalMaxBytes limit the skills and the stored file bytes of one
+	// personal space (all versions); 0 = unlimited. MaxVersionsPerSkill limits the versions of
+	// one skill in any space, drafts and blocked ones included; 0 = unlimited.
+	PersonalMaxSkills   int
+	PersonalMaxBytes    int64
+	MaxVersionsPerSkill int
 }
 
 type Store struct {
@@ -371,9 +379,10 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 	defer tx.Rollback(ctx)
 
 	var skillID uuid.UUID
+	var created bool
 	err = tx.QueryRow(ctx, `INSERT INTO skills (space_id, name, created_by, tags) VALUES ($1, $2, $3, $4)
-		ON CONFLICT (space_id, name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
-		sp.ID, name, a.User.ID, norm).Scan(&skillID)
+		ON CONFLICT (space_id, name) DO UPDATE SET name = EXCLUDED.name RETURNING id, (xmax = 0)`,
+		sp.ID, name, a.User.ID, norm).Scan(&skillID, &created)
 	if err != nil {
 		return Version{}, err
 	}
@@ -386,6 +395,9 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 		return Version{}, ErrArchived
 	}
 
+	if err := s.checkQuota(ctx, tx, sp, skillID, a.User.ID, created, p); err != nil {
+		return Version{}, err
+	}
 	var latestID uuid.UUID
 	var latest int
 	var latestStatus string
@@ -976,4 +988,65 @@ func (s *Store) SetTags(ctx context.Context, a docs.Actor, skillID uuid.UUID, ta
 		return nil, err
 	}
 	return norm, tx.Commit(ctx)
+}
+
+// ---- quota --------------------------------------------------------------------------
+
+// checkQuota enforces the limits of Options inside the saving transaction, after the skill row
+// is locked. A draft the author revises does not add a version, so it is not counted twice.
+func (s *Store) checkQuota(ctx context.Context, tx pgx.Tx, sp spaces.Space, skillID, by uuid.UUID, created bool, p prepared) error {
+	quota := func(msg string) error { return fmt.Errorf("%w: %s", ErrQuota, msg) }
+	if max := s.opt.MaxVersionsPerSkill; max > 0 {
+		var n int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM skill_versions WHERE skill_id = $1`, skillID).Scan(&n); err != nil {
+			return err
+		}
+		if n >= max {
+			var ownDraft bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM skill_versions WHERE skill_id = $1 AND status = 'draft' AND created_by = $2
+				AND version = (SELECT max(version) FROM skill_versions WHERE skill_id = $1))`, skillID, by).Scan(&ownDraft); err != nil {
+				return err
+			}
+			if !ownDraft {
+				return quota(fmt.Sprintf("this skill has reached the limit of %d versions", max))
+			}
+		}
+	}
+	if sp.Type != "personal" {
+		return nil
+	}
+	if max := s.opt.PersonalMaxSkills; max > 0 && created {
+		var n int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM skills WHERE space_id = $1`, sp.ID).Scan(&n); err != nil {
+			return err
+		}
+		if n > max {
+			return quota(fmt.Sprintf("your personal space is limited to %d skills", max))
+		}
+	}
+	if max := s.opt.PersonalMaxBytes; max > 0 {
+		var used int64
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(r.size), 0) FROM skill_resources r
+			JOIN skill_versions v ON v.id = r.version_id JOIN skills k ON k.id = v.skill_id WHERE k.space_id = $1`, sp.ID).Scan(&used); err != nil {
+			return err
+		}
+		var add int64
+		for _, r := range p.resources {
+			add += int64(r.Size)
+		}
+		if used+add > max {
+			return quota(fmt.Sprintf("your personal space is limited to %s of skill files", humanBytes(max)))
+		}
+	}
+	return nil
+}
+
+func humanBytes(n int64) string {
+	if n >= 1<<20 && n%(1<<20) == 0 {
+		return fmt.Sprintf("%d MB", n>>20)
+	}
+	if n >= 1<<10 {
+		return fmt.Sprintf("%d KB", n>>10)
+	}
+	return fmt.Sprintf("%d bytes", n)
 }

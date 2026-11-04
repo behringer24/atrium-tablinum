@@ -95,7 +95,8 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		HandoffTTLDays:       cfg.Spaces.HandoffTTLDays,
 		DuplicateThreshold:   cfg.Policy.DuplicateThreshold,
 	})
-	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval})
+	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval,
+		PersonalMaxSkills: cfg.Skills.PersonalMaxSkills, PersonalMaxBytes: cfg.Skills.PersonalMaxBytes, MaxVersionsPerSkill: cfg.Skills.MaxVersionsPerSkill})
 	searchSvc, err := search.New(pool, emb, search.Config{
 		FTSLanguages: cfg.Search.FTSLanguages, CandidatesPerMethod: cfg.Search.CandidatesPerMethod, RRFK: cfg.Search.RRFK,
 		DefaultLimit: cfg.Search.DefaultLimit, MaxLimit: cfg.Search.MaxLimit, HNSWEfSearch: cfg.Search.HNSWEfSearch,

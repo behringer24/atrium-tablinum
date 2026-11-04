@@ -127,5 +127,6 @@ To see the requests themselves, set `instance.log_level: debug`: the server then
 
 - Blocking, archiving and deleting stop new reads. A client that already holds a copy keeps it until it fetches again; Atrium cannot recall it.
 - How reliably a given assistant follows a skill it loaded through a tool is up to the client and has to be tested per client. Models usually treat tool results as data, which is why the tool descriptions and notices say when a skill is to be followed.
-- Skills have no search: find them with `list_skills` or the instructions.
+- Skills have no semantic search: find them with `list_skills` (`query`, `tag`, `status`) or the instructions.
+- **Quotas** (`skills:` in `config.yaml`, 0 = unlimited): a personal space holds at most `personal_max_skills` skills (default 50) and `personal_max_bytes` of skill files over all versions (default 5 MB); one skill has at most `max_versions_per_skill` versions in any space (default 100, drafts and blocked ones count, a draft the author revises in place adds none). A save over the limit is refused with the reason. Old versions cannot be removed one by one; a skill that reaches the limit is archived or deleted by a curator or admin and filed again. The per-user quotas of knowledge entries do not apply to skills.
 - Planned next: a sync adapter for clients that install skills (with update and revocation rules), and scripts. See the [roadmap](../ROADMAP.md).
