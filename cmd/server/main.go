@@ -38,19 +38,23 @@ func main() {
 	cfgPath := flag.String("config", "config.yaml", "path to config.yaml")
 	flag.Parse()
 
-	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	level := new(slog.LevelVar)
+	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(log)
 
-	if err := run(*cfgPath, log); err != nil {
+	if err := run(*cfgPath, log, level); err != nil {
 		log.Error("Startup failed", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(cfgPath string, log *slog.Logger) error {
+func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return err
+	}
+	if cfg.Instance.LogLevel != "" {
+		_ = level.UnmarshalText([]byte(cfg.Instance.LogLevel))
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

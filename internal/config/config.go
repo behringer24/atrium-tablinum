@@ -42,6 +42,9 @@ type Instance struct {
 	// IconFile is an image (svg, png, ico, jpg, webp; up to 256 KB) shown as favicon and in the
 	// server info. Empty = the built-in Atrium icon.
 	IconFile string `yaml:"icon_file"`
+	// LogLevel is debug, info (default), warn or error. debug adds one line per MCP request
+	// (method, tool, resource URI, client), useful to see which route a client takes.
+	LogLevel string `yaml:"log_level"`
 	// BaseURL is the public HTTPS address clients see. It is the same whether TLS is
 	// terminated by the bundled nginx, an existing reverse proxy or a tunnel.
 	BaseURL string `yaml:"base_url"`
@@ -273,6 +276,11 @@ func (c *Config) Validate() error {
 
 	if c.Instance.ProductName == "" {
 		add("instance.product_name must not be empty")
+	}
+	switch c.Instance.LogLevel {
+	case "", "debug", "info", "warn", "error":
+	default:
+		add("instance.log_level must be debug, info, warn or error")
 	}
 	if c.Instance.Listen == "" {
 		add("instance.listen must not be empty")
