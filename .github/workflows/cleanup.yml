@@ -29,7 +29,7 @@ jobs:
           image-names: atrium-tablinum
           image-tags: "canary-*"
           tag-selection: both
-          cut-off: 1w
+          cut-off: 1h
           keep-n-most-recent: 10
           # Scheduled runs only list what they would delete. After a manual dry run has been
           # checked, replace 'true' below with 'false' so the weekly run really deletes
