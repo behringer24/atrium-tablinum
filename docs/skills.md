@@ -90,7 +90,7 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 | `archive_skill`, `unarchive_skill` | curators | Hide a whole skill from everyone else, or bring it back (confirmation required) |
 | `delete_skill` | instance admins, owners of a personal space | Delete a skill with all versions for good (confirmation required) |
 
-All of them work in every MCP client. A client that does not know any skills extension can still use a skill: the assistant loads it through the tools. Released skills are announced in the instructions each connection receives (name, space, description, at most 25 entries), because the assistant would not know otherwise that they exist. It is told to use one only when the user asks or agrees.
+All of them work in every MCP client. A `/name` command a user types (e.g. `/helloworld`) is meant as a skill: the descriptions of `list_skills` and `get_skill` say so in their first words, because clients that load tools on demand show an assistant little more than that before the server instructions arrive (a description overridden with `tools.descriptions` loses the hint). A client that does not know any skills extension can still use a skill: the assistant loads it through the tools. Released skills are announced in the instructions each connection receives (name, space, description, at most 25 entries), because the assistant would not know otherwise that they exist. It is told to use one only when the user asks or agrees.
 
 To stay on the version it started with, an assistant passes the exact version to `get_skill` and `get_skill_resource`. The default (newest released version) is only a lookup aid.
 

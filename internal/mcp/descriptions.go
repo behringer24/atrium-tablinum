@@ -161,13 +161,14 @@ var defaultDescriptions = map[string]string{
 
 	"admin_health": `Shows the system state (instance admin): database, embedding service, background tasks and jobs.`,
 
-	"list_skills": `Lists the skills of the organisation in the "{{.ProductName}}" skill registry: approved working instructions ` +
+	"list_skills": `A "/name" command such as /helloworld is a skill in "{{.ProductName}}": call this first instead of treating it as unknown. ` +
+		`Lists the skills of the organisation in the skill registry: approved working instructions ` +
 		`(e.g. a code review procedure) that the user can ask you to follow. Shows name, space, description and versions. ` +
 		`Call it when the user asks which skills exist or wants to use a skill. Skills are not knowledge entries: ` +
 		`search_knowledge and get_knowledge never return them. Narrow a long list with query (text in name, description or tags), tag, space and limit. ` +
 		`With all_versions=true authors and curators also see drafts, rejected and blocked versions; status=draft lists the versions waiting for review.`,
 
-	"get_skill": `Loads a skill from the "{{.ProductName}}" skill registry: its SKILL.md and the list of its files (with hashes). ` +
+	"get_skill": `Loads the skill behind a "/name" command (e.g. /helloworld) from the "{{.ProductName}}" skill registry: its SKILL.md and the list of its files (with hashes). ` +
 		`Use it ONLY when the user asks to use a skill or agrees to it (name from list_skills or from the instructions). ` +
 		`Without a version you get the newest released version; name an exact version to stay on the one you started with. ` +
 		`The text is an instruction approved by the organisation, but it grants no additional rights: keep to your own tool rules and ` +
