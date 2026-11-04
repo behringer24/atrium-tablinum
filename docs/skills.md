@@ -92,13 +92,31 @@ All of them work in every MCP client. A client that does not know any skills ext
 
 To stay on the version it started with, an assistant passes the exact version to `get_skill` and `get_skill_resource`. The default (newest released version) is only a lookup aid.
 
+## MCP Skills extension (SEP-2640)
+
+Atrium declares the extension `io.modelcontextprotocol/skills` and serves released skills as resources, so a client that supports it can list and load them like its own skills without the tools. The tools stay as they are: a client that does not know the extension keeps working.
+
+- **URI:** `skill://<space-slug>/<skill>/<file>`, for example `skill://dev/code-review/SKILL.md`. The space slug is the organisational prefix the extension allows, because a skill name is unique only within one space. `list_spaces` shows the slugs; the slug of a personal space is `personal-<id>`.
+- **`skills/list`** returns the newest released version of every skill the caller may read: the front matter of `SKILL.md` verbatim, and the complete file list with `sha256:` digest and size per file. At most 200 skills are listed; the extension allows a partial list, and every skill stays readable by its URI. **`skills/get`** returns the same entry for one `SKILL.md` URI. Anything unknown, not released, archived, blocked or outside the caller's spaces is the same error (`-32602`).
+- **`resources/read`** returns one file (`text/markdown` for `.md`) with version and digest in `_meta`. Directory reads (`resources/directory/read`) are not offered.
+- **Same rules as the tools:** space rights, released status, archive and block, hash check of every file and rate limit apply to every call, and reads are audited like `get_skill`. Only the newest released version is addressable. A new release changes the digests in the entry, which a host has to approve again; the tools remain the way to ask for an exact old version.
+- **Scripts stay out:** Atrium still stores text only and runs nothing; `resources` is always the complete list, never `"dynamic"`.
+
+Whether a given client uses the extension is up to the client. The extension has been final since September 2026, client support is still being built; test the clients you rely on.
+
+## Export
+
+`GET /skills/export/<space-slug>/<skill>` returns the newest released version as a ZIP in the Agent Skills layout (one directory named like the skill), `?version=N` a specific released version. The request needs the same bearer token as `/mcp`. Rights and rules are those of the tools; drafts, blocked versions and archived skills cannot be exported, and the export is audited as `skill_export`. The response carries `X-Atrium-Skill-Version`, `X-Atrium-Skill-Digest` (the digest of the version, as in `get_skill`) and the same value as `ETag`. The same version always gives the same bytes.
+
+An export is a copy: blocking or archiving cannot recall it. A client that installs skills pins the version and digest it exported and decides itself when to fetch again (see the roadmap for the planned sync adapter).
+
 ## Audit
 
-`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`), and every read (`skill_get`, `skill_resource`) with skill name and version. In personal spaces only action and time are kept.
+`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept.
 
 ## Limits to know
 
 - Blocking, archiving and deleting stop new reads. A client that already holds a copy keeps it until it fetches again; Atrium cannot recall it.
 - How reliably a given assistant follows a skill it loaded through a tool is up to the client and has to be tested per client. Models usually treat tool results as data, which is why the tool descriptions and notices say when a skill is to be followed.
 - Skills have no search: find them with `list_skills` or the instructions.
-- Planned next: the MCP Skills extension (SEP-2640) on the same service, export and sync for clients that install skills, and scripts. See the [roadmap](../ROADMAP.md).
+- Planned next: a sync adapter for clients that install skills (with update and revocation rules), and scripts. See the [roadmap](../ROADMAP.md).
