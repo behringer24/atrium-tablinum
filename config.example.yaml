@@ -111,6 +111,12 @@ skills:
   # true: the author of a skill version may also approve it. Leave it off wherever a second
   # curator exists; it is meant for small installations with a single curator (docs/skills.md).
   allow_self_approval: false
+  # Limits against runaway storage (0 = unlimited). A personal space holds at most this many
+  # skills and this many bytes of skill files over all versions; one skill, in any space, at
+  # most this many versions (drafts and blocked ones count). docs/skills.md, "Limits".
+  personal_max_skills: 50
+  personal_max_bytes: 5242880      # 5 MB
+  max_versions_per_skill: 100
 
 tools:
   descriptions: {}

@@ -173,6 +173,12 @@ type Skills struct {
 	// AllowSelfApproval lets the author of a skill version also approve it. Off by default;
 	// meant for small installations with a single curator.
 	AllowSelfApproval bool `yaml:"allow_self_approval"`
+	// PersonalMaxSkills and PersonalMaxBytes limit one personal space (count of skills, stored
+	// file bytes over all versions); MaxVersionsPerSkill limits the versions of one skill in any
+	// space. 0 = unlimited.
+	PersonalMaxSkills   int   `yaml:"personal_max_skills"`
+	PersonalMaxBytes    int64 `yaml:"personal_max_bytes"`
+	MaxVersionsPerSkill int   `yaml:"max_versions_per_skill"`
 }
 
 type Tools struct {
@@ -213,6 +219,7 @@ func Defaults() Config {
 			},
 			HandoffTTLDays: 14,
 		},
+		Skills: Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100},
 		Policy: Policy{
 			DuplicateThreshold:       0.90,
 			MaxDocumentBytes:         200000,
@@ -276,6 +283,9 @@ func (c *Config) Validate() error {
 
 	if c.Instance.ProductName == "" {
 		add("instance.product_name must not be empty")
+	}
+	if c.Skills.PersonalMaxSkills < 0 || c.Skills.PersonalMaxBytes < 0 || c.Skills.MaxVersionsPerSkill < 0 {
+		add("skills quotas must not be negative (0 = unlimited)")
 	}
 	switch c.Instance.LogLevel {
 	case "", "debug", "info", "warn", "error":
