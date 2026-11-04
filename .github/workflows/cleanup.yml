@@ -1,0 +1,37 @@
+# Retention for the container package: every push to dev leaves a canary-<short sha> version
+# (plus untagged per-platform images) behind. This keeps the newest ones and removes the
+# rest. Release tags (1.2.3, 1.2, 1, latest) are never selected. Description: docs/release.md
+#
+# Needs the secret PACKAGES_PAT: a classic personal access token with the scopes
+# read:packages and delete:packages (wildcards in image-tags do not work with GITHUB_TOKEN).
+name: cleanup
+
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "List what would be deleted without deleting"
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.PACKAGES_PAT }}
+          image-names: atrium-tablinum
+          image-tags: "canary-*"
+          tag-selection: both
+          cut-off: 1w
+          keep-n-most-recent: 10
+          # Scheduled runs only list what they would delete. After a manual dry run has been
+          # checked, replace 'true' below with 'false' so the weekly run really deletes
+          # (see docs/release.md).
+          dry-run: ${{ github.event_name != 'workflow_dispatch' && 'true' || inputs.dry-run }}

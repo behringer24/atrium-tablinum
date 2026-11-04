@@ -13,6 +13,7 @@ import (
 // tiers it is a convenience for the tool list; docs.Review re-checks the role per entry.
 func (s *Server) registerCuratorTools(ms *mcp.Server) {
 	addTool(s, ms, "review_knowledge", "Review draft", tierCurator, true, s.reviewKnowledge)
+	s.registerCuratorSkillTools(ms)
 }
 
 type reviewIn struct {

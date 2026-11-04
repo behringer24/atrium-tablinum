@@ -21,6 +21,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
@@ -47,7 +48,10 @@ func TestMatchSpace(t *testing.T) {
 		{"my space", "personal-1", 0},
 		{"privat", "personal-1", 0},
 		{"doesnotexist", "", 0},
-		{"anna", "", 0}, // personal spaces only via alias
+		{"anna", "", 0}, // personal spaces only via alias or exact slug
+		{"personal-1", "personal-1", 0},
+		{"Personal-1", "personal-1", 0},
+		{"personal-", "", 0}, // no fragment match on personal slugs
 		{"  ", "", 0},
 	}
 	for _, tc := range cases {
@@ -138,6 +142,7 @@ type env struct {
 	users  *users.Store
 	spaces *spaces.Store
 	http   *httptest.Server
+	export *httptest.Server  // the skill export route
 	tokens map[string]string // token -> email
 }
 
@@ -160,7 +165,7 @@ func setup(t *testing.T, writesPerMinute int) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
+	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{}), Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
 		Health: []HealthCheck{{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }}}},
 		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute})
 
@@ -180,6 +185,10 @@ func setup(t *testing.T, writesPerMinute int) *env {
 	}
 	e.http = httptest.NewServer(e.srv.Handler(verifier, ""))
 	t.Cleanup(e.http.Close)
+	exportMux := http.NewServeMux()
+	exportMux.Handle("GET /skills/export/{space}/{name}", e.srv.SkillExportHandler(verifier, ""))
+	e.export = httptest.NewServer(exportMux)
+	t.Cleanup(e.export.Close)
 	return e
 }
 
@@ -288,7 +297,8 @@ func TestToolListAndDescriptions(t *testing.T) {
 		got[tool.Name] = tool
 	}
 	for name := range defaultDescriptions {
-		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" {
+		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" ||
+			name == "review_skill" || name == "publish_skill" || name == "block_skill" || name == "unblock_skill" {
 			continue // tools for admins and curators depend on the role, see TestToolListFollowsRole
 		}
 		if got[name] == nil {

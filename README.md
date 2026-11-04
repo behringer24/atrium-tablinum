@@ -26,6 +26,8 @@ The embedding backend is selectable: your own TEI server, OpenAI and compatible 
 
 Drafts, mandatory approval and review by curators: [docs/approval.md](docs/approval.md).
 
+Company-wide skills (approved working instructions for assistants) with their own review and immutable versions: [docs/skills.md](docs/skills.md).
+
 ## Development
 
 ```bash

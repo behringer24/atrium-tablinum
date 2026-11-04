@@ -103,5 +103,10 @@ policy:
   rate_limit_writes_per_minute: 20
   rate_limit_reads_per_minute: 120   # search, read, list per user; every search costs one embedding; 0 = unlimited
 
+skills:
+  # true: the author of a skill version may also approve it. Leave it off wherever a second
+  # curator exists; it is meant for small installations with a single curator (docs/skills.md).
+  allow_self_approval: false
+
 tools:
   descriptions: {}

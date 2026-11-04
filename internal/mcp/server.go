@@ -25,6 +25,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
@@ -59,9 +60,11 @@ type HealthCheck struct {
 }
 
 type Deps struct {
-	Users   *users.Store
-	Spaces  *spaces.Store
-	Docs    *docs.Store
+	Users  *users.Store
+	Spaces *spaces.Store
+	Docs   *docs.Store
+	// Skills serves the skill tools; nil = no skill registry.
+	Skills  *skills.Store
 	Search  *search.Service
 	Checker *authz.Checker
 	// Pool serves audit reads/writes of the admin tools.
@@ -123,7 +126,7 @@ func (s *Server) Handler(verifier auth.TokenVerifier, resourceMetadataURL string
 	return auth.RequireBearerToken(verifier, &auth.RequireBearerTokenOptions{
 		ResourceMetadataURL:    resourceMetadataURL,
 		AllowMissingExpiration: true,
-	})(h)
+	})(s.skillsRPC(h))
 }
 
 // instructions are the server-level hints a client shows its model. Users mostly say the
@@ -160,8 +163,15 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 		return nil
 	}
 	a := docs.Actor{User: u, Roles: roles}
-	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a)})
+	caps := &mcp.ServerCapabilities{Logging: &mcp.LoggingCapabilities{}} // the SDK default
+	if s.Skills != nil {
+		caps.AddExtension(skillsExtension, nil)
+	}
+	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a), Capabilities: caps})
 	s.registerUserTools(ms)
+	if s.Skills != nil {
+		s.registerSkillResources(ms)
+	}
 	if cur, err := s.teamSpacesAtLeast(r.Context(), a, authz.Curator); err == nil && len(cur) > 0 {
 		s.registerCuratorTools(ms)
 	}
@@ -287,13 +297,14 @@ func translate(tool string, err error) error {
 	switch {
 	case errors.As(err, &ge):
 		return err
-	case errors.Is(err, docs.ErrNotFound), errors.Is(err, spaces.ErrNotFound), errors.Is(err, users.ErrNotFound):
+	case errors.Is(err, docs.ErrNotFound), errors.Is(err, spaces.ErrNotFound), errors.Is(err, users.ErrNotFound), errors.Is(err, skills.ErrNotFound):
 		return errors.New("not found")
 	case errors.Is(err, docs.ErrForbidden), errors.Is(err, docs.ErrQuota), errors.Is(err, docs.ErrConflict),
 		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, docs.ErrOwnDraft), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
-		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap):
+		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap),
+		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived):
 		return err
 	}
 	slog.Error("Tool error", "tool", tool, "error", err)
@@ -307,10 +318,17 @@ func userErr(msg string) error { return errors.Join(errUser, errors.New(msg)) }
 
 // clientName maps the MCP client's self-reported name to the audit/source label.
 func clientName(req *mcp.CallToolRequest) string {
-	if req == nil || req.Session == nil {
+	if req == nil {
 		return "api"
 	}
-	p := req.Session.InitializeParams()
+	return clientLabel(req.Session)
+}
+
+func clientLabel(ss *mcp.ServerSession) string {
+	if ss == nil {
+		return "api"
+	}
+	p := ss.InitializeParams()
 	if p == nil || p.ClientInfo == nil {
 		return "api"
 	}

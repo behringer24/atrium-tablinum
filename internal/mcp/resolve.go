@@ -33,6 +33,12 @@ func matchSpace(list []spaces.Space, ref string) (*spaces.Space, []spaces.Space)
 			}
 		}
 	}
+	// The slug is unique and spaceInfos hands it out, so it also identifies a personal space.
+	for i := range list {
+		if list[i].Type == "personal" && strings.ToLower(list[i].Slug) == ref {
+			return &list[i], nil
+		}
+	}
 	tiers := []func(sp spaces.Space) bool{
 		func(sp spaces.Space) bool { return strings.ToLower(sp.Slug) == ref },
 		func(sp spaces.Space) bool { return strings.ToLower(sp.Name) == ref },
@@ -57,6 +63,15 @@ func matchSpace(list []spaces.Space, ref string) (*spaces.Space, []spaces.Space)
 		}
 	}
 	return nil, nil
+}
+
+// spaceDisplayName is the name shown to assistants; personal spaces carry the owner's name
+// internally.
+func spaceDisplayName(sp spaces.Space) string {
+	if sp.Type == "personal" {
+		return "My personal space"
+	}
+	return sp.Name
 }
 
 // spacesAtLeast loads the spaces where the caller holds at least min.

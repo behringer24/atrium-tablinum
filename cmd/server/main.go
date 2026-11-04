@@ -28,6 +28,7 @@ import (
 	mcpserver "github.com/behringer24/atrium-tablinum/internal/mcp"
 	"github.com/behringer24/atrium-tablinum/internal/oauth"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
@@ -89,6 +90,7 @@ func run(cfgPath string, log *slog.Logger) error {
 		HandoffTTLDays:       cfg.Spaces.HandoffTTLDays,
 		DuplicateThreshold:   cfg.Policy.DuplicateThreshold,
 	})
+	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval})
 	searchSvc, err := search.New(pool, emb, search.Config{
 		FTSLanguages: cfg.Search.FTSLanguages, CandidatesPerMethod: cfg.Search.CandidatesPerMethod, RRFK: cfg.Search.RRFK,
 		DefaultLimit: cfg.Search.DefaultLimit, MaxLimit: cfg.Search.MaxLimit, HNSWEfSearch: cfg.Search.HNSWEfSearch,
@@ -117,7 +119,7 @@ func run(cfgPath string, log *slog.Logger) error {
 
 	mcpSrv := mcpserver.New(
 		mcpserver.Deps{
-			Users: userStore, Spaces: spaceStore, Docs: docStore, Search: searchSvc, Checker: checker,
+			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Search: searchSvc, Checker: checker,
 			Pool: pool, Jobs: runner, EmbeddingModel: cfg.Embedding.Model, EmbeddingDimensions: cfg.Embedding.Dimensions,
 			Health: []mcpserver.HealthCheck{
 				{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }},
@@ -184,6 +186,7 @@ func run(cfgPath string, log *slog.Logger) error {
 	}
 
 	mux.Handle("/mcp", mcpSrv.Handler(verifier, resourceMetadataURL))
+	mux.Handle("GET /skills/export/{space}/{name}", mcpSrv.SkillExportHandler(verifier, resourceMetadataURL))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		cctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)

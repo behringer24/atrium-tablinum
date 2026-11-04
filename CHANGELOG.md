@@ -6,6 +6,19 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ### Added
 - **Canary builds:** every push to the `dev` branch builds an image tagged `canary` (moving) and `canary-<short sha>` (immutable), never `latest` or a version tag. `server_info` reports the canary version. See [docs/release.md](docs/release.md).
+- **Skill registry:** Atrium distributes skills, approved working instructions in the Agent Skills layout (`SKILL.md` plus text files), as a kind of its own, separate from knowledge entries. Versions are immutable once released and carry a SHA-256 digest; review, publishing and blocking are separate steps, a curator other than the author must approve, and class C skills can only be published by an instance admin. New tools: `list_skills`, `get_skill`, `get_skill_resource`, `store_skill`, `review_skill`, `publish_skill`, `block_skill`. Released skills are announced in the per-user instructions. Text only: scripts and binary files are refused and Atrium runs nothing. See [docs/skills.md](docs/skills.md).
+- **Skills now have the same life cycle tools as knowledge entries:** `archive_skill` and `unarchive_skill` hide a whole skill from everyone who cannot restore it (`list_skills archived=true` shows the archive), `delete_skill` removes a skill with all versions for good (only instance admins in a team space, the owner in a personal space; the audit log keeps name and digests), and `unblock_skill` lifts a block (space admins and instance admins, reason required). An unblocked version is approved again, not released. See [docs/skills.md](docs/skills.md).
+- New setting `skills.allow_self_approval` (default `false`) for installations with a single curator.
+- **MCP Skills extension (SEP-2640):** Atrium declares `io.modelcontextprotocol/skills` and serves released skills as resources (`skill://<space>/<skill>/<file>`, `skills/list`, `skills/get`, `resources/read`) with digest and size per file, so clients that support the extension can load them like their own skills. Same rights, release, archive and block rules as the tools, which keep working for every other client. See [docs/skills.md](docs/skills.md).
+- **Skill export:** `GET /skills/export/<space>/<skill>[?version=N]` returns a released version as a reproducible ZIP in the Agent Skills layout, behind the same bearer authentication as `/mcp`. Audited as `skill_export`.
+
+### Fixed
+- **Cleaner package list:** image builds no longer push provenance attestations (two extra untagged entries per build), and the new workflow `cleanup.yml` removes old `canary-*` versions with their platform images (newest 10 and anything younger than a week stay; release tags are never touched). It lists only until `PACKAGES_PAT` is set up and the dry run has been checked. See [docs/release.md](docs/release.md).
+- **Instance admins can release their own skills:** the four-eyes rule for skills no longer blocks instance admins from reviewing and publishing a version they wrote themselves. The audit entry `skill_approve` carries `self_approved`. Curators and space admins still need another curator unless `skills.allow_self_approval` is set.
+- **Personal space by slug:** the `space` argument now accepts the slug of the caller's own personal space, which `choose_space` offers but was rejected before, so an assistant could loop on the question. Skill tools also show the personal space as "My personal space" instead of the owner's name.
+
+### Upgrade notes
+- Migration `00007` creates the skill tables and the triggers that freeze released versions. Migration `00008` adds the archive columns and lets a blocked version go back to approved (and only there).
 
 ### Changed
 - Everything is English now: documentation, code comments, tool descriptions, the MCP instructions, error and confirmation messages, log texts and the browser pages of the login flow. Assistants still answer users in the user's language.

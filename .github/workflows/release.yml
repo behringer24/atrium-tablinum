@@ -99,6 +99,9 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
+          # Without this buildx pushes a provenance attestation per platform, two more untagged
+          # entries in the package list per build that nobody uses.
+          provenance: false
           build-args: VERSION=${{ steps.version.outputs.value }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
