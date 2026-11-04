@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -103,6 +104,9 @@ func NormalizeTags(tags []string) ([]string, error) {
 	out := []string{}
 	for _, t := range tags {
 		t = strings.ToLower(strings.TrimSpace(t))
+		if strings.IndexFunc(t, isHidden) >= 0 {
+			return nil, fmt.Errorf("%w: tags must not contain line breaks or control characters", ErrInvalid)
+		}
 		if t == "" || seen[t] {
 			continue
 		}
@@ -265,4 +269,11 @@ func nonNil(ids []uuid.UUID) []uuid.UUID {
 		return []uuid.UUID{}
 	}
 	return ids
+}
+
+// isHidden reports runes that have no place in a keyword: control characters (line breaks,
+// tabs), invisible format characters and line or paragraph separators. A tag with one of
+// them could break the layout of the text it is shown in.
+func isHidden(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp)
 }

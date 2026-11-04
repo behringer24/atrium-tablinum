@@ -87,10 +87,8 @@ func (s *Server) skillLines(ctx context.Context, a docs.Actor) []string {
 		if utf8.RuneCountInString(desc) > maxSkillDescInInstr {
 			desc = string([]rune(desc)[:maxSkillDescInInstr]) + "..."
 		}
+		// Only the reviewed description goes into the instructions. Tags are set without a review.
 		line := fmt.Sprintf("- %s (%s): %s", v.Name, spaceNames[v.SpaceID], desc)
-		if len(v.Tags) > 0 {
-			line += " [" + strings.Join(v.Tags, ", ") + "]"
-		}
 		lines = append(lines, line)
 		if len(lines) == maxSkillsInInstructions {
 			break
@@ -510,6 +508,7 @@ type reviewSkillIn struct {
 	Note      string `json:"note,omitempty" jsonschema:"Note for the author; required when rejecting"`
 	Space     string `json:"space,omitempty" jsonschema:"Space; needed only when several spaces have a skill of this name"`
 	Confirm   bool   `json:"confirm,omitempty" jsonschema:"For approve: true only after the user has read the files and confirmed"`
+	Digest    string `json:"digest,omitempty" jsonschema:"For approve (required): the digest that get_skill returned for the version you read; refused if the draft has changed since"`
 }
 
 type skillActionOut struct {
@@ -554,7 +553,7 @@ func (s *Server) reviewSkill(ctx context.Context, c *call, in reviewSkillIn) (sk
 	if choice != nil {
 		return skillActionOut{Result: choice.Result, Message: choice.Message, Spaces: choice.Spaces}, nil
 	}
-	out, err := s.Skills.Review(ctx, c.Actor, skills.ReviewParams{Ref: skills.Ref{SkillID: v.SkillID, Version: v.Version}, Approve: approve, Note: in.Note, RiskClass: in.RiskClass})
+	out, err := s.Skills.Review(ctx, c.Actor, skills.ReviewParams{Ref: skills.Ref{SkillID: v.SkillID, Version: v.Version}, Approve: approve, Note: in.Note, RiskClass: in.RiskClass, Digest: in.Digest})
 	if err != nil {
 		return skillActionOut{}, err
 	}

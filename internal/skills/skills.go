@@ -51,6 +51,8 @@ var (
 	ErrArchived = errors.New("the skill is archived: restore it first (unarchive_skill)")
 	// ErrQuota is returned when a save would exceed a storage limit (see Options).
 	ErrQuota = errors.New("skill quota exceeded")
+	// ErrChanged is returned when a draft is not the one the reviewer read.
+	ErrChanged = errors.New("the draft changed since you read it: read it again (get_skill) and review that version")
 )
 
 // Statuses of a version.
@@ -461,6 +463,9 @@ type ReviewParams struct {
 	Approve   bool
 	Note      string
 	RiskClass string // required to approve: A, B or C
+	// Digest is the digest of the version the reviewer read (from get_skill). Approving needs it,
+	// so that a draft its author rewrote in the meantime cannot be approved unseen.
+	Digest string
 }
 
 // Review approves or rejects a draft. Only curators of the space may, and not for their own
@@ -474,6 +479,9 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 		return Version{}, invalid("a note for the author is required when rejecting")
 	}
 	risk := strings.ToUpper(strings.TrimSpace(p.RiskClass))
+	if p.Approve && strings.TrimSpace(p.Digest) == "" {
+		return Version{}, invalid("approving needs the digest of the version you read: pass the digest that get_skill returned")
+	}
 	if p.Approve && risk != "A" && risk != "B" && risk != "C" {
 		return Version{}, invalid("approving needs a risk class: A (instructions only), B (uses tools), C (critical actions)")
 	}
@@ -497,7 +505,10 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 		if v.RequestedTools != "" && risk == "A" {
 			return "", nil, invalid("the skill asks for tools (" + v.RequestedTools + "), so its risk class cannot be A")
 		}
-		details := map[string]any{"skill": v.Name, "version": v.Version, "risk_class": risk}
+		if d := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(p.Digest)), "sha256:"); d != v.Digest {
+			return "", nil, ErrChanged
+		}
+		details := map[string]any{"skill": v.Name, "version": v.Version, "risk_class": risk, "digest": v.Digest}
 		if selfApproved {
 			details["self_approved"] = true
 		}
@@ -944,6 +955,9 @@ func normalizeTags(tags []string) ([]string, error) {
 	if err != nil {
 		return nil, invalid(strings.TrimPrefix(err.Error(), ingest.ErrInvalid.Error()+": "))
 	}
+	if err := guard.Check(strings.Join(norm, ", ")); err != nil {
+		return nil, err
+	}
 	return norm, nil
 }
 
@@ -1159,4 +1173,46 @@ func (s *Store) Move(ctx context.Context, a docs.Actor, skillID, targetID uuid.U
 		return Version{}, err
 	}
 	return out, tx.Commit(ctx)
+}
+
+// ---- transfer of a personal space ------------------------------------------------------
+
+// Blocked names a version BlockReleased withdrew.
+type Blocked struct {
+	Skill   string
+	Version int
+}
+
+// BlockReleased withdraws every released or approved version of the skills in a space. It is
+// used when a personal space becomes a team space: the owner released those versions alone,
+// nobody reviewed them, and the approval of a single person must not turn into an
+// organisation's skill. To use one again, a space admin lifts the block (unblock_skill) and a
+// curator releases it.
+func (s *Store) BlockReleased(ctx context.Context, a docs.Actor, spaceID uuid.UUID, reason string) ([]Blocked, error) {
+	rows, err := s.pool.Query(ctx, `UPDATE skill_versions v SET status = 'blocked', blocked_by = $2, blocked_at = now(), block_reason = $3
+		FROM skills k WHERE k.id = v.skill_id AND k.space_id = $1 AND v.status IN ('published', 'approved')
+		RETURNING k.name, v.version`, spaceID, a.User.ID, reason)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Blocked
+	for rows.Next() {
+		var b Blocked
+		if err := rows.Scan(&b.Skill, &b.Version); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// AuditBlocked writes the skill_block events of BlockReleased once the space is a team space,
+// so that the names stay in the log (events of a personal space keep no details).
+func (s *Store) AuditBlocked(ctx context.Context, a docs.Actor, sp spaces.Space, blocked []Blocked, reason string) {
+	uid, sid := a.User.ID, sp.ID
+	for _, b := range blocked {
+		_ = audit.Insert(ctx, s.pool, audit.Event{UserID: &uid, Client: a.Client, Action: "skill_block", SpaceID: &sid,
+			Details: map[string]any{"skill": b.Skill, "version": b.Version, "reason": reason}})
+	}
 }

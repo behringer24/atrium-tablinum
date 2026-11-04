@@ -307,7 +307,7 @@ func translate(tool string, err error) error {
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
 		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap),
-		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived), errors.Is(err, skills.ErrQuota):
+		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived), errors.Is(err, skills.ErrQuota), errors.Is(err, skills.ErrChanged):
 		return err
 	}
 	slog.Error("Tool error", "tool", tool, "error", err)

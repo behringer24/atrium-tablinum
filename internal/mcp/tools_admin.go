@@ -13,6 +13,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/audit"
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
+	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
@@ -509,10 +510,11 @@ type transferIn struct {
 }
 
 type transferOut struct {
-	Message   string   `json:"message"`
-	Documents int      `json:"documents"`
-	Slug      string   `json:"slug,omitempty"`
-	Warnings  []string `json:"warnings,omitempty"`
+	Message       string   `json:"message"`
+	Documents     int      `json:"documents"`
+	Slug          string   `json:"slug,omitempty"`
+	Warnings      []string `json:"warnings,omitempty"`
+	SkillsBlocked int      `json:"skills_blocked,omitempty"`
 }
 
 func (s *Server) adminTransferPersonalSpace(ctx context.Context, c *call, in transferIn) (transferOut, error) {
@@ -556,12 +558,24 @@ func (s *Server) adminTransferPersonalSpace(ctx context.Context, c *call, in tra
 		if _, err := s.Docs.DeleteHandoffs(ctx, from); err != nil {
 			return transferOut{}, err
 		}
+		// Skills the owner released alone were never reviewed: withdraw them before the space gets members.
+		var blocked []skills.Blocked
+		const blockReason = "released by the owner in a personal space and never reviewed; the space was transferred"
+		if s.Skills != nil {
+			if blocked, err = s.Skills.BlockReleased(ctx, c.Actor, from, blockReason); err != nil {
+				return transferOut{}, err
+			}
+		}
 		sp, err := s.Spaces.ConvertPersonal(ctx, from, spaces.CreateParams{Slug: in.Slug, Name: in.Name, Description: in.Description})
 		if err != nil {
 			return transferOut{}, err
 		}
 		n := stats[u.ID].Documents
+		if len(blocked) > 0 {
+			s.Skills.AuditBlocked(ctx, c.Actor, sp, blocked, blockReason)
+		}
 		out := transferOut{Documents: n, Slug: sp.Slug, Warnings: s.addInitialMembers(ctx, c, sp.ID, in.Members)}
+		out.SkillsBlocked = len(blocked)
 		added := len(in.Members) - len(out.Warnings)
 		if added == 0 {
 			out.Warnings = append(out.Warnings, "The space has no members; until some are added, only instance admins can see it.")
@@ -569,6 +583,9 @@ func (s *Server) adminTransferPersonalSpace(ctx context.Context, c *call, in tra
 		s.record(ctx, c.Actor, "admin_transfer_personal_space", &sp, map[string]any{"user": u.Email, "mode": "space", "slug": sp.Slug,
 			"documents": n, "members": added})
 		out.Message = fmt.Sprintf("The personal space of %s is now the team space \"%s\" (%s) with %d entries.", u.Email, sp.Name, sp.Slug, n)
+		if len(blocked) > 0 {
+			out.Message += fmt.Sprintf(" %d skill versions the owner had released alone were blocked because nobody reviewed them: a space admin lifts a block (unblock_skill) and a curator releases it again.", len(blocked))
+		}
 		return out, nil
 	}
 	return transferOut{}, userErr("mode must be space or merge.")
