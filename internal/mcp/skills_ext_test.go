@@ -271,7 +271,7 @@ func TestSkillAuditNamesTheRoute(t *testing.T) {
 	e.mustCall(t, bob, "get_skill", map[string]any{"skill": "code-review"})
 
 	rows, err := e.srv.Pool.Query(e.ctx, `SELECT action, details->>'via' FROM audit_log
-		WHERE action IN ('skill_list', 'skill_get') AND details ? 'via' ORDER BY id`)
+		WHERE action IN ('skill_list', 'skill_get') AND details ? 'via' AND user_id = (SELECT id FROM users WHERE email = 'bob@x.de') ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}

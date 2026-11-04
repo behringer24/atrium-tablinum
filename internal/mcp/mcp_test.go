@@ -219,6 +219,9 @@ func (e *env) session(t *testing.T, email string) *mcp.ClientSession {
 // call invokes a tool; it returns the structured result as a map, or the error text.
 func (e *env) call(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]any) (map[string]any, string) {
 	t.Helper()
+	if tool == "review_skill" && args["decision"] == "approve" && args["digest"] == nil {
+		args = e.withDigest(t, cs, args)
+	}
 	res, err := cs.CallTool(e.ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
 	if err != nil {
 		t.Fatalf("%s: protocol error %v", tool, err)
@@ -818,4 +821,31 @@ func TestAdminAllowlistTool(t *testing.T) {
 	if n := queryCount(t, e, `SELECT count(*) FROM audit_log WHERE action IN ('admin_allowlist_add', 'admin_allowlist_remove')`); n != 4 {
 		t.Errorf("audit entries: %d", n)
 	}
+}
+
+// withDigest adds the digest of the version a reviewer would have read with get_skill, as an
+// honest reviewer does; tests that probe a changed draft pass their own digest.
+func (e *env) withDigest(t *testing.T, cs *mcp.ClientSession, args map[string]any) map[string]any {
+	t.Helper()
+	read := map[string]any{"skill": args["skill"], "version": args["version"]}
+	if sp, ok := args["space"]; ok {
+		read["space"] = sp
+	}
+	res, err := cs.CallTool(e.ctx, &mcp.CallToolParams{Name: "get_skill", Arguments: read})
+	if err != nil || res.IsError {
+		return args
+	}
+	b, _ := json.Marshal(res.StructuredContent)
+	var m struct {
+		Version struct {
+			Digest string `json:"digest"`
+		} `json:"version"`
+	}
+	_ = json.Unmarshal(b, &m)
+	out := map[string]any{}
+	for k, v := range args {
+		out[k] = v
+	}
+	out["digest"] = m.Version.Digest
+	return out
 }

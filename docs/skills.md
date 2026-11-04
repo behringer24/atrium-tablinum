@@ -83,7 +83,7 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 | `store_skill` | authors and up | Saves the package as a new version or revises the author's own draft. `tags` are applied when the skill is new |
 | `tag_skill` | creator of the skill, curators | Replaces the tags of a skill without a new version or review |
 | `move_skill` | curators of the old space who may also write in the new one | Files the newest released version in another space; a release never travels along (see below) |
-| `review_skill` | curators | Approve (with confirmation and risk class) or reject (with note) |
+| `review_skill` | curators | Approve (with confirmation, risk class and the digest of the version that was read) or reject (with note). An approval is refused if the author changed the draft after it was read |
 | `publish_skill` | curators | Release an approved version (confirmation required) |
 | `block_skill` | curators | Withdraw a version (reason and confirmation required) |
 | `unblock_skill` | space admins | Lift a block (reason and confirmation required); the version is approved again, not released |
@@ -96,7 +96,7 @@ To stay on the version it started with, an assistant passes the exact version to
 
 ## Tags
 
-A skill has tags like a knowledge entry: normalised (lower case, no duplicates, at most 20 tags of 50 characters), shown by `list_skills` and `get_skill`, searchable with `list_skills tag=...`, and listed behind the name in the instructions an assistant receives. They belong to the skill, not to a version: a version is frozen once it leaves draft, and fixing a keyword must not need a new version and a new review. Tags are no part of the digest and no instruction. `store_skill` applies them when it creates the skill; later changes go through `tag_skill`, which the creator of the skill and curators and admins of the space (in a personal space the owner) may call. Every change is audited as `skill_tag`.
+A skill has tags like a knowledge entry: normalised (lower case, no duplicates, at most 20 tags of 50 characters), shown by `list_skills` and `get_skill`, and searchable with `list_skills tag=...`. Tags must not contain line breaks, control or invisible characters, and are checked for credentials. They are deliberately not part of the instructions an assistant receives: they are set without a review, and the instruction block only carries what a curator approved. They belong to the skill, not to a version: a version is frozen once it leaves draft, and fixing a keyword must not need a new version and a new review. Tags are no part of the digest and no instruction. `store_skill` applies them when it creates the skill; later changes go through `tag_skill`, which the creator of the skill and curators and admins of the space (in a personal space the owner) may call. Every change is audited as `skill_tag`.
 
 ## Moving a skill
 

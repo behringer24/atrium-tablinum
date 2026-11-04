@@ -191,6 +191,7 @@ var defaultDescriptions = map[string]string{
 		`Allowed for the creator of the skill and for curators and admins of the space. Call it only when the user asks to tag or retag a skill.`,
 
 	"review_skill": `Reviews a draft version of a skill (curators and admins): approve or reject with a note. Read ALL files of the draft first ` +
+		`and pass the digest that get_skill returned for it when you approve: the review is refused if the author changed the draft after you read it. ` +
 		`(get_skill with the version, get_skill_resource) and show them to the user. Approving needs the user's confirmation (confirm=true) and a risk class ` +
 		`judged from the real content: A instructions only, B uses tools, C critical actions (deploy, delete, send data out). ` +
 		`Authors cannot approve their own version. Approved is not released: publish_skill does that.`,
