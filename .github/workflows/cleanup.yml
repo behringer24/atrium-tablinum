@@ -29,9 +29,9 @@ jobs:
           image-names: atrium-tablinum
           image-tags: "canary-*"
           tag-selection: both
-          cut-off: 1h
+          cut-off: 1w
           keep-n-most-recent: 10
           # Scheduled runs only list what they would delete. After a manual dry run has been
           # checked, replace 'true' below with 'false' so the weekly run really deletes
           # (see docs/release.md).
-          dry-run: ${{ github.event_name != 'workflow_dispatch' && 'true' || inputs.dry-run }}
+          dry-run: ${{ github.event_name != 'workflow_dispatch' && 'false' || inputs.dry-run }}
