@@ -182,6 +182,16 @@ func TestSkillSelfApprovalAndRiskClass(t *testing.T) {
 	if m := e.mustCall(t, boss, "publish_skill", map[string]any{"skill": "deploy", "version": 1, "confirm": true}); versionStatus(t, m) != "published" {
 		t.Fatalf("instance admin publish: %v", m)
 	}
+	// An instance admin can take their own skill through review and release, class C included.
+	e.mustCall(t, boss, "store_skill", map[string]any{"name": "admin-own", "space": "ops", "files": skillPackage("admin-own", "Written by the admin", nil)})
+	e.mustCall(t, boss, "review_skill", map[string]any{"skill": "admin-own", "version": 1, "decision": "approve", "risk_class": "C", "confirm": true})
+	if m := e.mustCall(t, boss, "publish_skill", map[string]any{"skill": "admin-own", "version": 1, "confirm": true}); versionStatus(t, m) != "published" {
+		t.Fatalf("admin release of own skill: %v", m)
+	}
+	var marked int
+	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE action = 'skill_approve' AND details->>'skill' = 'admin-own' AND details->>'self_approved' = 'true'`).Scan(&marked); err != nil || marked != 1 {
+		t.Fatalf("self approval not marked in the audit log: %d %v", marked, err)
+	}
 	// A skill that asks for tools cannot be class A.
 	tools := "---\nname: runner\ndescription: Run things\nallowed-tools: Bash(git:*) Read\n---\nBody\n"
 	e.mustCall(t, cora, "store_skill", map[string]any{"name": "runner", "space": "ops", "files": []map[string]any{{"path": "SKILL.md", "content": tools}}})

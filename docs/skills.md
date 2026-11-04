@@ -69,7 +69,7 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 | `delete_skill` (team space) | no | no | no | yes |
 | Publish a class C skill | no | no | no | yes |
 
-- **No self-approval:** the author of a version cannot approve it, not even as curator or admin; another curator has to. This is stricter than for knowledge entries on purpose. Small installations with a single curator can set `skills.allow_self_approval: true` in `config.yaml`.
+- **No self-approval, except for instance admins:** the author of a version cannot approve it, not even as curator or space admin; another curator has to. This is stricter than for knowledge entries on purpose. Instance admins are the exception: they can review and release their own skills (class C included), and the audit entry `skill_approve` is marked `self_approved`. Small installations without an instance admin among the curators can set `skills.allow_self_approval: true` in `config.yaml` to allow it for every curator.
 - **Personal spaces:** the owner saves and publishes in one step. Nobody else can ever see a personal skill, instance admins included.
 - Rights are checked on every call, also for old versions and single files. What the caller may not see is reported as "not found".
 

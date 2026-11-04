@@ -444,7 +444,7 @@ type ReviewParams struct {
 }
 
 // Review approves or rejects a draft. Only curators of the space may, and not for their own
-// version unless the instance allows self-approval.
+// version unless the instance allows self-approval. Instance admins always may.
 func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Version, error) {
 	note := strings.TrimSpace(p.Note)
 	if utf8.RuneCountInString(note) > maxNote {
@@ -464,7 +464,11 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 		if v.Status != StatusDraft {
 			return "", nil, ErrState
 		}
-		if v.CreatedBy != nil && *v.CreatedBy == a.User.ID && !s.opt.AllowSelfApproval {
+		own := v.CreatedBy != nil && *v.CreatedBy == a.User.ID
+		// An instance admin carries the responsibility for the whole instance and may release
+		// their own skills; the audit log marks it.
+		selfApproved := own && p.Approve && a.User.InstanceAdmin
+		if own && !s.opt.AllowSelfApproval && !a.User.InstanceAdmin {
 			return "", nil, ErrOwnVersion
 		}
 		if !p.Approve {
@@ -473,7 +477,11 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 		if v.RequestedTools != "" && risk == "A" {
 			return "", nil, invalid("the skill asks for tools (" + v.RequestedTools + "), so its risk class cannot be A")
 		}
-		return "skill_approve", map[string]any{"skill": v.Name, "version": v.Version, "risk_class": risk}, nil
+		details := map[string]any{"skill": v.Name, "version": v.Version, "risk_class": risk}
+		if selfApproved {
+			details["self_approved"] = true
+		}
+		return "skill_approve", details, nil
 	}, func(ctx context.Context, tx pgx.Tx, v Version, action string) error {
 		if action == "skill_reject" {
 			_, err := tx.Exec(ctx, `UPDATE skill_versions SET status = 'rejected', reviewed_by = $2, reviewed_at = now(), review_note = $3 WHERE id = $1`,
