@@ -3,6 +3,9 @@ instance:
   product_name: "Atrium Tablinum"
   short_name: "Atrium"                  # how users say it in chat
   organization_name: "Example Corp"          # appears in tool descriptions
+  # Icon for the favicon and the MCP server info: svg, png, ico, jpg or webp, up to 256 KB.
+  # Empty = the built-in Atrium icon. Served without login at /favicon.ico and /icon.
+  # icon_file: "/etc/atrium/logo.svg"
   base_url: "https://knowledge.example.com"   # public address, no matter which proxy sits in front
   listen: ":8080"
   dev_mode: false                         # local only (base_url on localhost); static test token

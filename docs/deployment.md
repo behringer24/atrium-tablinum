@@ -20,6 +20,10 @@ Common rules for all variants:
 
 The SDK rejects requests that arrive via loopback but carry a foreign `Host` header (protection against DNS rebinding). A reverse proxy on the same host that forwards to `127.0.0.1:8080` would be blocked by this. The server therefore switches the protection off as soon as `instance.trusted_proxies` is set. Anyone using a local proxy must therefore always enter `trusted_proxies` (e.g. `["127.0.0.1"]`).
 
+## Icon
+
+Clients show an icon next to the server. Atrium serves one without login at `/favicon.ico` and `/icon` and also names it in the server info (`icons`), so clients that read either find it. The built-in Atrium icon is used unless `instance.icon_file` points to an image (svg, png, ico, jpg or webp, up to 256 KB). Which of the two sources a client uses is up to the client; many only fetch the favicon of the domain. For that, the proxy must forward `/favicon.ico` to Atrium and not answer it itself, otherwise the favicon of the proxy's default site is shown.
+
 ## Requirements for every proxy
 
 For MCP (Streamable HTTP/SSE) and OAuth to work:

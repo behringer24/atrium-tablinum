@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -117,6 +118,10 @@ func run(cfgPath string, log *slog.Logger) error {
 		}})
 	}
 
+	icon, err := mcpserver.LoadIcon(cfg.Instance.IconFile)
+	if err != nil {
+		return err
+	}
 	mcpSrv := mcpserver.New(
 		mcpserver.Deps{
 			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Search: searchSvc, Checker: checker,
@@ -128,6 +133,7 @@ func run(cfgPath string, log *slog.Logger) error {
 		},
 		mcpserver.Settings{
 			ProductName: cfg.Instance.ProductName, ShortName: cfg.Instance.ShortName, OrganizationName: cfg.Instance.OrganizationName,
+			IconURL: strings.TrimRight(cfg.Instance.BaseURL, "/") + "/icon", IconMIME: icon.MIME,
 			HandoffTTLDays: cfg.Spaces.HandoffTTLDays, DescriptionOverrides: cfg.Tools.Descriptions,
 			DefaultSpaceByGroup: cfg.Spaces.DefaultSpaceByGr, WritesPerMinute: cfg.Policy.RateLimitWritesPerMinute, ReadsPerMinute: cfg.Policy.RateLimitReadsPerMinute,
 			PersonalRetentionDays: cfg.Spaces.Personal.RetentionDaysAfterOffboarding,
@@ -186,6 +192,8 @@ func run(cfgPath string, log *slog.Logger) error {
 	}
 
 	mux.Handle("/mcp", mcpSrv.Handler(verifier, resourceMetadataURL))
+	mux.Handle("GET /icon", icon.Handler())
+	mux.Handle("GET /favicon.ico", icon.Handler())
 	mux.Handle("GET /skills/export/{space}/{name}", mcpSrv.SkillExportHandler(verifier, resourceMetadataURL))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
