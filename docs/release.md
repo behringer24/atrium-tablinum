@@ -53,7 +53,8 @@ docker compose pull && docker compose up -d
 Things to know:
 
 - Migrations only go forward. A server that ran a canary build must not simply go back to a release with an older schema: use a test database or take a backup first (`scripts/backup.sh`).
-- Every build leaves a `canary-<short sha>` tag behind. Delete old ones under "Packages" now and then, or add a retention rule.
+- Every build leaves a `canary-<short sha>` version behind, plus one untagged entry per platform (amd64, arm64) that belongs to it. Those untagged entries are the per-platform images of the tagged one, not garbage: never delete them by hand or with a rule for "all untagged", the tagged image would stop working. Provenance attestations, which would add two more entries per build, are switched off.
+- The workflow `cleanup.yml` removes old canary versions (`canary-*`, older than a week, keeping the newest 10) together with their orphaned platform images. Release tags are never selected. One-time setup: create a classic personal access token with the scopes `read:packages` and `delete:packages`, store it as the repository secret `PACKAGES_PAT`, then start the workflow by hand (Actions, "cleanup", Run workflow, `dry-run` on) and read the list of what it would delete. If it only names old canary versions, set `dry-run` in `cleanup.yml` to `'false'` for scheduled runs (it runs Mondays); a manual run with `dry-run` off deletes at once.
 - A canary build is untested by users. Run it on a test server, not where people work.
 
 ## Using the image

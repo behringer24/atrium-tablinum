@@ -13,6 +13,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **Skill export:** `GET /skills/export/<space>/<skill>[?version=N]` returns a released version as a reproducible ZIP in the Agent Skills layout, behind the same bearer authentication as `/mcp`. Audited as `skill_export`.
 
 ### Fixed
+- **Cleaner package list:** image builds no longer push provenance attestations (two extra untagged entries per build), and the new workflow `cleanup.yml` removes old `canary-*` versions with their platform images (newest 10 and anything younger than a week stay; release tags are never touched). It lists only until `PACKAGES_PAT` is set up and the dry run has been checked. See [docs/release.md](docs/release.md).
 - **Instance admins can release their own skills:** the four-eyes rule for skills no longer blocks instance admins from reviewing and publishing a version they wrote themselves. The audit entry `skill_approve` carries `self_approved`. Curators and space admins still need another curator unless `skills.allow_self_approval` is set.
 - **Personal space by slug:** the `space` argument now accepts the slug of the caller's own personal space, which `choose_space` offers but was rejected before, so an assistant could loop on the question. Skill tools also show the personal space as "My personal space" instead of the owner's name.
 
