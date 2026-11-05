@@ -25,6 +25,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/guard"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
+	"github.com/behringer24/atrium-tablinum/internal/license"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
@@ -70,6 +71,8 @@ type Deps struct {
 	Docs   *docs.Store
 	// Skills serves the skill tools; nil = no skill registry.
 	Skills *skills.Store
+	// License serves admin_license and the edition shown by server_info; nil = not managed.
+	License *license.Manager
 	// Quota serves admin_quotas and the usage shown to space admins; nil = not managed.
 	Quota   *quota.Store
 	Search  *search.Service

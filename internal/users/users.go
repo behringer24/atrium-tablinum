@@ -59,6 +59,10 @@ type Options struct {
 	// in the allowed domain at a second provider would otherwise become that account,
 	// including an instance admin from bootstrap_admins.
 	LinkByEmail bool
+	// MaxUsers returns the number of active users the instance may have; nil or 0 = unlimited. It is
+	// asked when a new account would be created, so a change (a licence installed) applies at once.
+	// Instance admins from bootstrap_admins are exempt, so that a limit can never lock them out.
+	MaxUsers func() int
 }
 
 type Store struct {
@@ -66,6 +70,7 @@ type Store struct {
 	bootstrap map[string]bool
 	personal  bool
 	linkEmail bool
+	maxUsers  func() int
 
 	// OnChange is called after changes that can alter effective roles (status, admin
 	// flag, group membership). Wire it to authz.Checker.InvalidateAll.
@@ -77,7 +82,7 @@ func New(pool *pgxpool.Pool, opt Options) *Store {
 	for _, e := range opt.BootstrapAdmins {
 		b[strings.ToLower(strings.TrimSpace(e))] = true
 	}
-	return &Store{pool: pool, bootstrap: b, personal: opt.PersonalEnabled, linkEmail: opt.LinkByEmail}
+	return &Store{pool: pool, bootstrap: b, personal: opt.PersonalEnabled, linkEmail: opt.LinkByEmail, maxUsers: opt.MaxUsers}
 }
 
 func (s *Store) changed() {
@@ -202,6 +207,17 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 			if aerr := audit.Insert(ctx, tx, audit.Event{UserID: &uid, Client: "system", Action: "account_linked",
 				Details: map[string]any{"idp": id.IDP, "email": id.Email}}); aerr != nil {
 				return uuid.Nil, aerr
+			}
+		}
+	}
+	if errors.Is(err, pgx.ErrNoRows) && s.maxUsers != nil && !s.bootstrap[strings.ToLower(id.Email)] {
+		if max := s.maxUsers(); max > 0 {
+			var n int
+			if qerr := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n); qerr != nil {
+				return uuid.Nil, qerr
+			}
+			if n >= max {
+				return uuid.Nil, ErrUserLimit
 			}
 		}
 	}

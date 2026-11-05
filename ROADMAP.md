@@ -32,6 +32,10 @@ The findings of the second audit (external attack surface, authorisation and int
 - **Database roles by default:** the separate accounts are opt-in (`scripts/db-roles.sql`); make them part of the compose setup and the install steps, so that new installations start hardened.
 - A client whose `client_name` is shown in `my_sessions` should be marked as data.
 
+### Commercial editions and licence file (proposal)
+
+A free Community edition and a Pro edition with extra, non-public code, switched by an offline-verified signed licence file that lifts limits and enables features without a restart. The design, the options that were rejected, the phases and the open decisions (free limit, first Pro features, price model, grace period) are in [docs/design/licensing.md](docs/design/licensing.md). The licence core (format, verification with five embedded issuer keys, `admin_license`, the release line, the user limit, the issuing tool) is built; the licensed ceilings for the quotas, the release mechanics (CI guard for the line file, start-line script, release branches, SBOM) and the extension points for Pro code are not. Needed before sales: real issuer keys in `internal/license/anchors.txt`, the legal review, `SECURITY.md` with a reporting route (the CRA reporting duty applies since 11 September 2026).
+
 ### Documentation and operations
 
 - The user guides in `docs/user/` exist (Markdown and PDF). Still to do after the rollout: adapt the manual in the space "Allgemein" to them and to the archive behaviour, and set the description of "Allgemein" and the instance context.

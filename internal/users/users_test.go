@@ -214,3 +214,43 @@ func TestUnverifiedEmailCannotLinkOrBecomeAdmin(t *testing.T) {
 		t.Fatalf("linking off: %v", err)
 	}
 }
+
+// The limit on users applies when a new account would be created, never to existing accounts, and
+// never to a bootstrap admin, so that it cannot lock the administrators out.
+func TestUserLimitRefusesNewAccountsOnly(t *testing.T) {
+	ctx := context.Background()
+	limit := 2
+	s := users.New(dbtest.NewPool(t), users.Options{BootstrapAdmins: []string{"boss@x.de"}, PersonalEnabled: true, MaxUsers: func() int { return limit }})
+	prov := func(sub, mail string) error {
+		_, err := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: sub, Email: mail})
+		return err
+	}
+	for _, u := range []string{"a", "b"} {
+		if err := prov(u, u+"@x.de"); err != nil {
+			t.Fatalf("within the limit: %v", err)
+		}
+	}
+	if err := prov("c", "c@x.de"); !errors.Is(err, users.ErrUserLimit) {
+		t.Fatalf("over the limit: %v", err)
+	}
+	if err := prov("a", "a@x.de"); err != nil {
+		t.Errorf("an existing account logs in over the limit: %v", err)
+	}
+	if err := prov("boss", "boss@x.de"); err != nil {
+		t.Errorf("a bootstrap admin is exempt: %v", err)
+	}
+	// raised at run time, applies at once; unlimited with 0
+	limit = 10
+	if err := prov("c", "c@x.de"); err != nil {
+		t.Errorf("after raising the limit: %v", err)
+	}
+	limit = 0
+	if err := prov("d", "d@x.de"); err != nil {
+		t.Errorf("unlimited: %v", err)
+	}
+	// lowering it below the number of users changes nothing for them
+	limit = 1
+	if err := prov("b", "b@x.de"); err != nil {
+		t.Errorf("an existing account after lowering the limit: %v", err)
+	}
+}

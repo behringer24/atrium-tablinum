@@ -1,0 +1,11 @@
+# The issuer public keys this build trusts: one "<id> <base64 public key>" per line.
+#
+# Five keys are provided from the start: only one signs, the others are cold spares, so that the
+# signing key can be replaced without a release (docs/design/licensing.md, "The licence file").
+# The private halves are generated offline and never come near this repository:
+#
+#   go run ./cmd/atrium-license genesis -out /path/on/offline/media -count 5
+#
+# and the lines of the anchors.txt that command writes are pasted below. Public keys are not secret.
+#
+# Until real keys are entered here, no licence verifies and every instance is Community.

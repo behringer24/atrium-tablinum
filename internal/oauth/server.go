@@ -429,6 +429,12 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		deny("This account is disabled")
 		return
 	}
+	if errors.Is(err, users.ErrUserLimit) {
+		s.log.Warn("Login refused: the number of users the instance may have is reached", "provider", providerID)
+		s.store.RecordDenied(r.Context(), providerID, "user limit reached")
+		deny("This instance has reached the number of users it may have. Please contact the administrator.")
+		return
+	}
 	if errors.Is(err, users.ErrEmailUnverified) {
 		s.log.Warn("Login refused: e-mail not verified for linking or admin rights", "provider", providerID)
 		s.store.RecordDenied(r.Context(), providerID, "e-mail not verified: needed to link an account or for an administrator account")

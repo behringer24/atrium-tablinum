@@ -28,8 +28,10 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/idp"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
+	"github.com/behringer24/atrium-tablinum/internal/license"
 	mcpserver "github.com/behringer24/atrium-tablinum/internal/mcp"
 	"github.com/behringer24/atrium-tablinum/internal/oauth"
+	"github.com/behringer24/atrium-tablinum/internal/product"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
@@ -99,7 +101,22 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	}
 	log.Info("Embedding backend", "backend", cfg.Embedding.Backend, "model", cfg.Embedding.Model, "dimensions", cfg.Embedding.Dimensions)
 
-	userStore := users.New(pool, users.Options{BootstrapAdmins: cfg.Auth.BootstrapAdmins, PersonalEnabled: cfg.Spaces.Personal.Enabled, LinkByEmail: cfg.Auth.LinkAccountsByEmail})
+	// The licence is checked offline against the issuer keys compiled into the binary; an instance
+	// admin installs or removes one at run time (admin_license). Without one this is Community.
+	anchors, err := license.EmbeddedAnchors()
+	if err != nil {
+		return err
+	}
+	licenseMgr := license.NewManager(license.Config{Anchors: anchors, Line: product.CurrentLine(), BaseURL: cfg.Instance.BaseURL,
+		File: cfg.License.File, Pool: pool, CommunityMaxUsers: cfg.License.CommunityMaxUsers})
+	if err := licenseMgr.Load(ctx); err != nil {
+		return err
+	}
+	st := licenseMgr.State()
+	log.Info("Edition", "edition", st.Edition, "licence", string(st.Status), "line", product.CurrentLine().Name, "line_date", product.CurrentLine().Coverage().Format("2006-01-02"))
+
+	userStore := users.New(pool, users.Options{BootstrapAdmins: cfg.Auth.BootstrapAdmins, PersonalEnabled: cfg.Spaces.Personal.Enabled, LinkByEmail: cfg.Auth.LinkAccountsByEmail,
+		MaxUsers: licenseMgr.MaxUsers})
 	spaceStore := spaces.New(pool)
 	checker := authz.NewChecker(pool, authz.DefaultCacheTTL)
 	userStore.OnChange = checker.InvalidateAll
@@ -159,11 +176,16 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	}
 	mcpSrv := mcpserver.New(
 		mcpserver.Deps{
-			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Quota: quotaStore, Search: searchSvc, Checker: checker,
+			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Quota: quotaStore, License: licenseMgr, Search: searchSvc, Checker: checker,
 			Pool: pool, Jobs: runner, EmbeddingModel: cfg.Embedding.Model, EmbeddingDimensions: cfg.Embedding.Dimensions,
 			Health: []mcpserver.HealthCheck{
 				{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }},
 				{Name: "embedder", Check: func(ctx context.Context) (string, error) { return cfg.Embedding.Backend, emb.Ping(ctx) }},
+				// Informational: a licence problem never makes the instance unhealthy.
+				{Name: "license", Check: func(context.Context) (string, error) {
+					s := licenseMgr.State()
+					return fmt.Sprintf("%s edition, licence %s. %s", s.Edition, s.Status, s.Detail), nil
+				}},
 			},
 		},
 		mcpserver.Settings{

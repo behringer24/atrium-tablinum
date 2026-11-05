@@ -26,7 +26,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock, reactivate and transfer; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context; query the audit log; set storage limits (quotas); check health.
+- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock, reactivate and transfer; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context; query the audit log; set storage limits (quotas); install the licence; check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -202,7 +202,7 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `admin_transfer_personal_space`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
-| Instance | `admin_context_set`, `admin_context_clear`, `admin_quota_set` (scope, target, old and new values) |
+| Instance | `admin_context_set`, `admin_context_clear`, `admin_quota_set`, `license_install`, `license_remove` (scope, target, old and new values) |
 
 Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
 
@@ -238,6 +238,16 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 - **Releases** are tagged `vX.Y.Z`; use a fixed version in your compose file and update on purpose. **Canary** images (`canary`) follow the development branch: for a test instance only, migrations only go forward, so take a backup first. See [Releases](../release.md).
 - Read the **Upgrade notes** in the [changelog](../../CHANGELOG.md) before every update: the server refuses to start with some old settings, and new limits may apply.
 - Configuration changes need a restart; the allowlist, context, groups, spaces and members change at runtime.
+
+### The licence
+
+Without a licence the instance is the free **Community** edition. A licence is a signed line of text that switches limits and features on, is bound to the host of `instance.base_url`, and is checked **offline**: nothing calls anybody. Ask *"Show the Atrium licence."* (`admin_license action=get`) to see the state (`none`, `valid`, `not covered`, `expired`, `wrong domain`, `invalid`), what the licence covers (features, limits, the maintenance date) and the release line of the running build; *"Install this licence: atrium-license-v1.…"* installs one without a restart (after your confirmation), *"Remove the installed licence."* deletes it. Every change is audited (`license_install`, `license_remove`), the licence text itself is not.
+
+- **Maintenance, not an expiry.** A licence carries a date, `maintenance_until`. A build is covered, for ever, when the release line it comes from was released on or before that date. You can run the version you have indefinitely; patch releases of your line are always covered; a **newer line** needs a licence with a later date, which you install once, in the running instance, usually once a year. After an update that says `not covered`, either go back to the covered version or renew the maintenance.
+- **Nothing is ever blocked.** In every state other than `valid` the instance runs as Community, and the content stays readable and exportable. The one hard limit built so far is the **number of users**: a new account beyond the limit is refused with a message, existing accounts and the administrators in `bootstrap_admins` are never affected. Without a licence that sets it, the limit is `license.community_max_users` in `config.yaml` (0 = unlimited).
+- A licence from `license.file` works too; one you install at run time takes precedence.
+
+See [Licences](../licensing.md).
 
 ### Separate database accounts
 

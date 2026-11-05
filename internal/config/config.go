@@ -31,6 +31,7 @@ type Config struct {
 	Policy    Policy    `yaml:"policy"`
 	Tools     Tools     `yaml:"tools"`
 	Skills    Skills    `yaml:"skills"`
+	License   License   `yaml:"license"`
 }
 
 type Instance struct {
@@ -204,6 +205,16 @@ type Skills struct {
 	TeamMaxBytes  int64 `yaml:"team_max_bytes"`
 }
 
+// License configures the licence of the instance (docs/design/licensing.md).
+type License struct {
+	// File is a licence file; a licence installed by an instance admin at run time (admin_license)
+	// takes precedence. Empty = none.
+	File string `yaml:"file"`
+	// CommunityMaxUsers is the number of active users allowed without a licence that sets a limit;
+	// new accounts beyond it are refused, existing accounts are never affected. 0 = unlimited.
+	CommunityMaxUsers int `yaml:"community_max_users"`
+}
+
 type Tools struct {
 	Descriptions map[string]string `yaml:"descriptions"`
 }
@@ -307,6 +318,9 @@ func (c *Config) Validate() error {
 
 	if c.Instance.ProductName == "" {
 		add("instance.product_name must not be empty")
+	}
+	if c.License.CommunityMaxUsers < 0 {
+		add("license.community_max_users must not be negative (0 = unlimited)")
 	}
 	if c.Skills.PersonalMaxSkills < 0 || c.Skills.PersonalMaxBytes < 0 || c.Skills.MaxVersionsPerSkill < 0 || c.Skills.TeamMaxSkills < 0 || c.Skills.TeamMaxBytes < 0 || c.Spaces.Team.MaxDocuments < 0 || c.Spaces.Team.MaxBytes < 0 {
 		add("skills quotas must not be negative (0 = unlimited)")

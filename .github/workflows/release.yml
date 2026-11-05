@@ -97,6 +97,8 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="canary-${GITHUB_SHA::7}"; fi
           echo "value=$v" >> "$GITHUB_OUTPUT"
+      - id: commitdate
+        run: echo "value=$(git log -1 --format=%cs)" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
@@ -104,7 +106,9 @@ jobs:
           # Without this buildx pushes a provenance attestation per platform, two more untagged
           # entries in the package list per build that nobody uses.
           provenance: false
-          build-args: VERSION=${{ steps.version.outputs.value }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            BUILD_DATE=${{ steps.commitdate.outputs.value }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
