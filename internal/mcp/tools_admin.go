@@ -13,6 +13,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/audit"
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
@@ -38,6 +39,9 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_revoke_sessions", "End a user's sessions", tierInstanceAdmin, true, s.adminRevokeSessions)
 	addTool(s, ms, "admin_allowlist", "Manage login allowlist", tierInstanceAdmin, true, s.adminAllowlist)
 	addTool(s, ms, "admin_context", "Manage context", tierInstanceAdmin, true, s.adminContext)
+	if s.Quota != nil {
+		addTool(s, ms, "admin_quotas", "Manage quotas", tierInstanceAdmin, true, s.adminQuotas)
+	}
 	addTool(s, ms, "admin_audit_log", "Query audit log", tierInstanceAdmin, false, s.adminAuditLog)
 	addTool(s, ms, "admin_health", "System health", tierInstanceAdmin, false, s.adminHealth)
 }
@@ -113,12 +117,15 @@ type memberInfo struct {
 }
 
 type spaceMembersOut struct {
-	Space            string       `json:"space"`
-	Slug             string       `json:"slug"`
-	RequiresApproval bool         `json:"requires_approval"`
-	DefaultRole      string       `json:"default_role,omitempty"`
-	Archived         bool         `json:"archived,omitempty"`
-	Members          []memberInfo `json:"members"`
+	Space            string `json:"space"`
+	Slug             string `json:"slug"`
+	RequiresApproval bool   `json:"requires_approval"`
+	DefaultRole      string `json:"default_role,omitempty"`
+	Archived         bool   `json:"archived,omitempty"`
+	// Quota shows the limits of the space with their source and the current usage (0 = unlimited);
+	// an instance admin changes them (admin_quotas).
+	Quota   map[string]quotaLimit `json:"quota,omitempty"`
+	Members []memberInfo          `json:"members"`
 }
 
 func (s *Server) spaceMembers(ctx context.Context, c *call, in spaceRef) (spaceMembersOut, error) {
@@ -134,6 +141,11 @@ func (s *Server) spaceMembers(ctx context.Context, c *call, in spaceRef) (spaceM
 		DefaultRole: sp.DefaultRole.String(), Archived: sp.Archived, Members: make([]memberInfo, 0, len(ms))}
 	for _, m := range ms {
 		out.Members = append(out.Members, memberInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String()})
+	}
+	if s.Quota != nil {
+		if qt, err := s.quotaTargetFor(ctx, quota.Space, sp.Name, sp, quota.Overrides{}); err == nil {
+			out.Quota = qt.Limits
+		}
 	}
 	return out, nil
 }

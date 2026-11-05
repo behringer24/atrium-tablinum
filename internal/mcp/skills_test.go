@@ -5,10 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
-	"github.com/behringer24/atrium-tablinum/internal/skills"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 )
 
 // skillPackage builds the files argument of store_skill.
@@ -438,7 +439,14 @@ func TestSkillQuota(t *testing.T) {
 	anna, cora := e.session(t, "anna@x.de"), e.session(t, "cora@x.de")
 
 	// Versions per skill: three are allowed in total, a draft revised in place adds none.
-	e.srv.Skills = skills.New(e.srv.Pool, e.spaces, skills.Options{MaxVersionsPerSkill: 3})
+	n := func(v int64) *int64 { return &v }
+	set := func(scope quota.Scope, p quota.Patch) {
+		t.Helper()
+		if _, _, err := e.quota.Set(e.ctx, scope, uuid.Nil, p, uuid.Nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(quota.TeamDefault, quota.Patch{SkillVersions: n(3)})
 	save := func(desc string) (map[string]any, string) {
 		return e.call(t, anna, "store_skill", map[string]any{"name": "code-review", "space": "dev", "files": skillPackage("code-review", desc, nil)})
 	}
@@ -468,7 +476,7 @@ func TestSkillQuota(t *testing.T) {
 	}
 
 	// Personal space: number of skills ...
-	e.srv.Skills = skills.New(e.srv.Pool, e.spaces, skills.Options{PersonalMaxSkills: 2})
+	set(quota.PersonalDefault, quota.Patch{Skills: n(2)})
 	mine := func(name string) string {
 		_, msg := e.call(t, anna, "store_skill", map[string]any{"name": name, "space": "my personal space", "files": skillPackage(name, "Private", nil)})
 		return msg
@@ -485,13 +493,26 @@ func TestSkillQuota(t *testing.T) {
 		t.Fatalf("new version of a personal skill: %s", msg)
 	}
 	// ... and stored bytes over all versions.
-	e.srv.Skills = skills.New(e.srv.Pool, e.spaces, skills.Options{PersonalMaxBytes: 300})
+	set(quota.PersonalDefault, quota.Patch{Skills: n(0), SkillBytes: n(300)})
 	if msg := mine("two"); !strings.Contains(msg, "300 bytes") {
 		t.Fatalf("personal bytes: %q", msg)
 	}
-	// The team space has no byte limit.
-	if _, msg := e.call(t, anna, "store_skill", map[string]any{"name": "big", "space": "dev", "files": skillPackage("big", "Big", map[string]string{"references/a.md": strings.Repeat("x", 5000)})}); msg != "" {
-		t.Fatalf("team space: %s", msg)
+	// A team space has its own limits, changeable at runtime: bytes of skill files and number of skills.
+	big := func(name string) string {
+		_, msg := e.call(t, anna, "store_skill", map[string]any{"name": name, "space": "dev", "files": skillPackage(name, "Big", map[string]string{"references/a.md": strings.Repeat("x", 5000)})})
+		return msg
+	}
+	set(quota.TeamDefault, quota.Patch{SkillBytes: n(3000)})
+	if msg := big("big"); !strings.Contains(msg, "limited to 2 KB of skill files") && !strings.Contains(msg, "KB of skill files") {
+		t.Fatalf("team bytes: %q", msg)
+	}
+	set(quota.TeamDefault, quota.Patch{SkillBytes: n(0)})
+	if msg := big("big"); msg != "" {
+		t.Fatalf("team space after raising the limit: %s", msg)
+	}
+	set(quota.TeamDefault, quota.Patch{Skills: n(2)}) // the space already holds code-review, lint and big
+	if msg := big("bigger"); !strings.Contains(msg, "limited to 2 skills") || !strings.Contains(msg, "instance admin") {
+		t.Fatalf("team skills: %q", msg)
 	}
 }
 

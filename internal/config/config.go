@@ -153,6 +153,7 @@ type Chunking struct {
 
 type Spaces struct {
 	Personal         PersonalSpaces    `yaml:"personal"`
+	Team             TeamSpaces        `yaml:"team"`
 	HandoffTTLDays   int               `yaml:"handoff_ttl_days"`
 	DefaultSpaceByGr map[string]string `yaml:"default_space_by_group"`
 }
@@ -162,6 +163,13 @@ type PersonalSpaces struct {
 	MaxDocuments                  int   `yaml:"max_documents"`
 	MaxBytes                      int64 `yaml:"max_bytes"`
 	RetentionDaysAfterOffboarding int   `yaml:"retention_days_after_offboarding"`
+}
+
+// TeamSpaces are the default limits of every team space; an instance admin changes them at runtime
+// (admin_quotas), per space or for all. 0 = unlimited.
+type TeamSpaces struct {
+	MaxDocuments int   `yaml:"max_documents"`
+	MaxBytes     int64 `yaml:"max_bytes"`
 }
 
 type Policy struct {
@@ -184,6 +192,10 @@ type Skills struct {
 	PersonalMaxSkills   int   `yaml:"personal_max_skills"`
 	PersonalMaxBytes    int64 `yaml:"personal_max_bytes"`
 	MaxVersionsPerSkill int   `yaml:"max_versions_per_skill"`
+	// TeamMaxSkills and TeamMaxBytes are the defaults for every team space (count of skills, file
+	// bytes over all versions). 0 = unlimited.
+	TeamMaxSkills int   `yaml:"team_max_skills"`
+	TeamMaxBytes  int64 `yaml:"team_max_bytes"`
 }
 
 type Tools struct {
@@ -222,9 +234,10 @@ func Defaults() Config {
 				MaxBytes:                      10 << 20,
 				RetentionDaysAfterOffboarding: 30,
 			},
+			Team:           TeamSpaces{MaxDocuments: 5000, MaxBytes: 200 << 20},
 			HandoffTTLDays: 14,
 		},
-		Skills: Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100},
+		Skills: Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
 		Policy: Policy{
 			DuplicateThreshold:       0.90,
 			MaxDocumentBytes:         200000,
@@ -289,7 +302,7 @@ func (c *Config) Validate() error {
 	if c.Instance.ProductName == "" {
 		add("instance.product_name must not be empty")
 	}
-	if c.Skills.PersonalMaxSkills < 0 || c.Skills.PersonalMaxBytes < 0 || c.Skills.MaxVersionsPerSkill < 0 {
+	if c.Skills.PersonalMaxSkills < 0 || c.Skills.PersonalMaxBytes < 0 || c.Skills.MaxVersionsPerSkill < 0 || c.Skills.TeamMaxSkills < 0 || c.Skills.TeamMaxBytes < 0 || c.Spaces.Team.MaxDocuments < 0 || c.Spaces.Team.MaxBytes < 0 {
 		add("skills quotas must not be negative (0 = unlimited)")
 	}
 	switch c.Instance.LogLevel {

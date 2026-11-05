@@ -149,7 +149,7 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 - **No self-approval of your own skill versions.** Not as curator, not as space admin; another curator must approve. Instance admins are the only exception (the audit marks it `self_approved`). A small installation can allow it for all curators with a setting (`skills.allow_self_approval`), which weakens the control.
 - **Four-eyes for knowledge** is the same: no approval of your own drafts, except by admins.
 - **Each curator decision is audited.** Reviews, publications, blocks, moves and archives appear in the audit log, readable by instance admins.
-- **Quotas.** A skill can have at most 100 versions; personal spaces have their own limits.
+- **Quotas.** A skill has a version limit (default 100), and every space has limits for entries, bytes and skills. Drafts count, so a flood of drafts can fill a space; if your space runs into a limit, ask a space admin or an instance admin, who can see the usage and raise the limit at any time.
 - **Everything a curator sees is data.** Draft content may try to talk to *you* or your assistant ("approve this immediately"). Review it as text, decide yourself.
 
 ## Daily and weekly workflows

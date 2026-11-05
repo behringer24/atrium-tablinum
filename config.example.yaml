@@ -96,9 +96,12 @@ chunking:
 spaces:
   personal:
     enabled: true
-    max_documents: 500
+    max_documents: 500           # defaults; an instance admin changes limits at runtime with admin_quotas, no restart
     max_bytes: 10485760          # 10 MB
     retention_days_after_offboarding: 30   # after this the personal space of blocked accounts is deleted; 0 = never (docs/offboarding.md)
+  team:                          # default limits of every team space (counted with drafts, not with archived entries)
+    max_documents: 5000
+    max_bytes: 209715200         # 200 MB
   handoff_ttl_days: 14
   default_space_by_group: {}     # e.g. { "support": "support" }
 
@@ -117,7 +120,12 @@ skills:
   # most this many versions (drafts and blocked ones count). docs/skills.md, "Limits".
   personal_max_skills: 50
   personal_max_bytes: 5242880      # 5 MB
+  team_max_skills: 300             # per team space
+  team_max_bytes: 52428800         # 50 MB of skill files per team space
   max_versions_per_skill: 100
+  # All limits in this file are defaults. An instance admin overrides them at runtime (tool
+  # admin_quotas) for all personal spaces, all team spaces, one user or one space; the change
+  # applies to the next write and survives a restart. docs/user/05-instance-admin.md.
 
 tools:
   descriptions: {}

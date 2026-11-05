@@ -147,7 +147,7 @@ The author of a version cannot approve it; another curator must. That is on purp
 
 - Tags on a skill help people find it (*"skills about support"*). Set them when you file a **new** skill (`tags`), later change them with *"Set the tags of support-reply to support, tickets"* (`tag_skill`). You can retag skills you created; curators can retag any. Tags are not part of the reviewed content and need no new version. Do not put instructions in tags: they are only keywords.
 - **Names are unique per space.** Use a distinct, descriptive name; saving under an existing name adds a new version to that skill.
-- **Limits:** at most 100 versions per skill in any space. Personal spaces hold 50 skills and 5 MB. A skill that has reached its 100 versions can only continue under a new name: archiving does not free the name or reset the count. An instance admin can delete the old skill (in your personal space you can) so that the name becomes free again.
+- **Limits:** by default at most 100 versions per skill; a personal space holds 50 skills and 5 MB, a team space 300 skills and 50 MB of skill files. Knowledge in a team space is limited too (by default 5000 entries and 200 MB per space, drafts included). A save over a limit is refused with the reason, and an instance admin can raise any of these limits for a space, for you or for everybody at any time, without a restart: ask for it. A skill that has reached its version limit can only continue under a new name unless the limit is raised: archiving does not free the name or reset the count, and deleting the old skill is for instance admins (in your personal space you can).
 - Moving a skill to another space is done by curators (`move_skill`): only the newest released version moves, as a new draft that the curators of the target review.
 
 ### Skills in your personal space
@@ -185,7 +185,7 @@ Your personal skills are released at once and visible only to you. This is a goo
 | The entry does not show up in search | Other readers cannot find it while it is a draft; you see your own drafts yourself, with status `draft`. If you cannot find it either, it may still be indexed or your wording differs. Check with `list_knowledge status=draft` |
 | "Approval required" when changing an entry | The space needs approval for approved entries; ask a curator |
 | The skill is refused | The message names the reason: a script or binary file, a bad path, a missing `name` or `description`, a credential in a file, a limit |
-| A skill save says a limit is reached | At most 100 versions per skill, 50 skills and 5 MB in a personal space |
+| A save says a limit is reached | The message names the limit (entries, bytes, skills or versions). Archive or delete something, or ask an instance admin to raise the limit; `space_members` shows the limits and usage of a space to its admins |
 | An approval-related message you do not understand | Ask a curator of the space, `space_contacts` names them |
 
 ## FAQ

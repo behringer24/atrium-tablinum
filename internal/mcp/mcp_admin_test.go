@@ -11,6 +11,7 @@ import (
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 )
 
 func toolNames(t *testing.T, e *env, cs *mcp.ClientSession) map[string]bool {
@@ -573,14 +574,15 @@ func TestOffboardingMergesIntoSuccessor(t *testing.T) {
 	}
 	// the successor's quota applies; if exceeded, nothing is moved
 	u, _ := e.users.GetByEmail(e.ctx, "ben@x.de")
-	two := 2
-	if err := e.users.SetQuota(e.ctx, u.ID, &two, nil); err != nil {
+	two := int64(2)
+	if _, _, err := e.quota.Set(e.ctx, quota.User, u.ID, quota.Patch{Documents: &two}, uuid.Nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, msg := merge("ben@x.de"); !strings.Contains(msg, "entries") {
 		t.Errorf("quota: %q", msg)
 	}
-	if err := e.users.SetQuota(e.ctx, u.ID, nil, nil); err != nil {
+	inherit := int64(-1)
+	if _, _, err := e.quota.Set(e.ctx, quota.User, u.ID, quota.Patch{Documents: &inherit}, uuid.Nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -870,5 +872,118 @@ func TestMoveAndDeleteTools(t *testing.T) {
 	e.mustCall(t, sadmin, "delete_knowledge", map[string]any{"id": teamID, "confirm": true})
 	if _, msg := e.call(t, anna, "get_knowledge", map[string]any{"id": teamID}); msg != "not found" {
 		t.Errorf("deleted entry: %q", msg)
+	}
+}
+
+// An instance admin changes the limits at runtime: for all personal or team spaces, for one user
+// or one space, and every change applies to the next write.
+func TestAdminQuotas(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{"anna@x.de": authz.Author})
+	boss, anna := e.session(t, "boss@x.de"), e.session(t, "anna@x.de")
+	store := func(space, title string) string {
+		_, msg := e.call(t, anna, "store_knowledge", map[string]any{"title": title, "content": "Inhalt von " + title, "space": space, "force": true})
+		return msg
+	}
+
+	// the tool does not even exist for users (it is not in their tool list)
+	if res, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_quotas", Arguments: map[string]any{"action": "get"}}); err == nil && !res.IsError {
+		t.Fatal("a user used admin_quotas")
+	}
+	// get shows both defaults with their source
+	defs := e.mustCall(t, boss, "admin_quotas", map[string]any{"action": "get"})["targets"].([]any)
+	if len(defs) != 2 {
+		t.Fatalf("defaults: %v", defs)
+	}
+	personal := defs[0].(map[string]any)["limits"].(map[string]any)["documents"].(map[string]any)
+	if personal["limit"] != float64(100) || personal["source"] != "config" {
+		t.Fatalf("personal default: %v", personal)
+	}
+
+	// invalid and unconfirmed requests change nothing
+	set := func(args map[string]any) (map[string]any, string) {
+		args["action"] = "set"
+		return e.call(t, boss, "admin_quotas", args)
+	}
+	for name, tc := range map[string]struct {
+		args map[string]any
+		want string
+	}{
+		"no values":       {map[string]any{"scope": "personal_default", "confirm": true}, "at least one"},
+		"no confirmation": {map[string]any{"scope": "personal_default", "documents": 2}, "confirm"},
+		"below -1":        {map[string]any{"scope": "personal_default", "documents": -5, "confirm": true}, "or more"},
+		"unknown scope":   {map[string]any{"scope": "planet", "documents": 2, "confirm": true}, "scope must be"},
+		"unknown user":    {map[string]any{"scope": "user", "user_email": "ghost@x.de", "documents": 2, "confirm": true}, "unknown"},
+		"unknown space":   {map[string]any{"scope": "space", "space": "nowhere", "documents": 2, "confirm": true}, "not found"},
+	} {
+		if _, msg := set(tc.args); !strings.Contains(msg, tc.want) {
+			t.Errorf("%s: %q", name, msg)
+		}
+	}
+
+	// all personal spaces: two entries, applied at once
+	if _, msg := set(map[string]any{"scope": "personal_default", "documents": 2, "confirm": true}); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("my personal space", "eins"); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("my personal space", "zwei"); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("my personal space", "drei"); !strings.Contains(msg, "limit of this space is 2") || !strings.Contains(msg, "instance admin") {
+		t.Fatalf("third entry: %q", msg)
+	}
+	// one user gets more: the user override wins over the default
+	if _, msg := set(map[string]any{"scope": "user", "user_email": "anna@x.de", "documents": 5, "confirm": true}); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("my personal space", "drei"); msg != "" {
+		t.Fatalf("after the user override: %q", msg)
+	}
+	got := e.mustCall(t, boss, "admin_quotas", map[string]any{"action": "get", "scope": "user", "user_email": "anna@x.de"})["targets"].([]any)[0].(map[string]any)
+	docs := got["limits"].(map[string]any)["documents"].(map[string]any)
+	if docs["limit"] != float64(5) || docs["source"] != "user" || docs["used"] != float64(3) || got["overrides"].(map[string]any)["documents"] != float64(5) {
+		t.Fatalf("user target: %v", got)
+	}
+	// -1 removes the override again: the default of 2 applies, and the user is over it
+	set(map[string]any{"scope": "user", "user_email": "anna@x.de", "documents": -1, "confirm": true})
+	if msg := store("my personal space", "vier"); !strings.Contains(msg, "limit of this space is 2") {
+		t.Fatalf("after removing the override: %q", msg)
+	}
+
+	// one team space, and all team spaces
+	if _, msg := set(map[string]any{"scope": "space", "space": "dev", "documents": 1, "confirm": true}); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("dev", "a"); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("dev", "b"); !strings.Contains(msg, "limit of this space is 1") {
+		t.Fatalf("team space: %q", msg)
+	}
+	set(map[string]any{"scope": "space", "space": "dev", "documents": -1, "confirm": true})
+	set(map[string]any{"scope": "team_default", "documents": 50, "skills": 7, "confirm": true})
+	if msg := store("dev", "b"); msg != "" {
+		t.Fatalf("after raising all team spaces: %q", msg)
+	}
+	team := e.mustCall(t, boss, "admin_quotas", map[string]any{"action": "get", "scope": "space", "space": "dev"})["targets"].([]any)[0].(map[string]any)["limits"].(map[string]any)
+	if d := team["documents"].(map[string]any); d["limit"] != float64(50) || d["source"] != "runtime default" || d["used"] != float64(2) {
+		t.Errorf("team documents: %v", d)
+	}
+	if s := team["skills"].(map[string]any); s["limit"] != float64(7) || s["source"] != "runtime default" {
+		t.Errorf("team skills: %v", s)
+	}
+
+	// every change is audited with old and new values
+	var n int
+	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE action = 'admin_quota_set' AND details->'changes' IS NOT NULL`).Scan(&n); err != nil || n < 6 {
+		t.Errorf("audit entries: %d %v", n, err)
+	}
+	// space admins see the limits and usage of their space
+	e.team(t, "ops", "Operations", false, map[string]authz.Role{"anna@x.de": authz.Admin})
+	m := e.mustCall(t, anna, "space_members", map[string]any{"space": "ops"})
+	if q, _ := m["quota"].(map[string]any); q == nil || q["documents"] == nil {
+		t.Errorf("space_members shows no quota: %v", m)
 	}
 }

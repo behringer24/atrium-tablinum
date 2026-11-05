@@ -31,7 +31,11 @@ func (s *Store) SaveHandoff(ctx context.Context, a Actor, title, content string,
 	if err != nil {
 		return Document{}, err
 	}
-	if err := s.checkQuota(ctx, a, space, 0, int64(len(n.Content))); err != nil {
+	hsp, err := s.spaces.GetByID(ctx, space)
+	if err != nil {
+		return Document{}, err
+	}
+	if err := s.checkQuota(ctx, hsp, 0, int64(len(n.Content))); err != nil {
 		return Document{}, err
 	}
 	if ttlDays < 1 {

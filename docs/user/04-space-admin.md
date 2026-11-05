@@ -35,6 +35,8 @@ Do not confuse the two admin roles. A **space admin** manages **one** space. An 
 
 A space admin only sees their own space(s) in the member tools. Spaces they do not administer are reported as "not found".
 
+`space_members` also shows the **limits and the current usage** of the space (entries, bytes, skills, skill bytes and versions per skill, with the source of each limit). Limits are set by instance admins; if your space is about to run into one, ask for it to be raised.
+
 ## Members, roles and groups
 
 ### Who is in a space
@@ -97,6 +99,7 @@ Deleting skills for good is for instance admins, because skills are instructions
 Ask an instance admin when you need to:
 
 - create a new space, rename it, change its description (the description appears in assistants' instructions, so keep it short and clear),
+- raise or lower the **storage limits** of the space (`admin_quotas`, effective at once),
 - switch **approval** on or off for the space,
 - set the **default role** for everybody logged in (reader or author) or remove it,
 - archive or restore the space,

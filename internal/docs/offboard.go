@@ -41,8 +41,12 @@ SELECT count(*), COALESCE(sum(octet_length(content)), 0)
 FROM documents WHERE space_id = $1 AND kind = 'knowledge' AND status <> 'archived'`, from).Scan(&docs, &bytes); err != nil {
 		return 0, err
 	}
-	// checkQuota reads the limits from the actor; here they are the receiver's.
-	if err := s.checkQuota(ctx, Actor{User: to}, *to.PersonalSpaceID, docs, bytes); err != nil {
+	// The limits of the receiver's personal space apply.
+	recv, err := s.spaces.GetByID(ctx, *to.PersonalSpaceID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.checkQuota(ctx, recv, docs, bytes); err != nil {
 		return 0, err
 	}
 

@@ -103,7 +103,7 @@ Every user has a personal space for private, work-related notes: drafts, checkli
 Things to know:
 
 - **Nobody else can read it**, including instance admins. The separation applies within the application; people with direct access to the database or backups could technically read everything.
-- **Quota:** by default up to 500 entries and 10 MB. Archived entries do not count, and handoffs count towards the size only. If you reach the limit, archive or delete something.
+- **Quota:** by default up to 500 entries and 10 MB (and 50 skills with 5 MB of skill files). Archived entries do not count, and handoffs count towards the size only. If you reach the limit, archive or delete something, or ask an instance admin for more room: limits can be raised for you personally at any time, without a restart.
 - **Work-related only.** If you leave the organisation, an administrator may be asked to hand your personal space to a successor. See [Offboarding](../offboarding.md).
 - **Default space.** Without naming a space, new entries go to your default space, normally your personal space. Say *"Make the Support space my default"* (`set_default_space`) to change this.
 - **No secrets.** Atrium rejects text that looks like passwords, API keys or private keys. Do not store personal customer data, passwords or credentials.

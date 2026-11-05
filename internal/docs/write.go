@@ -3,6 +3,7 @@ package docs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -89,10 +90,8 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 	if err != nil {
 		return StoreResult{}, err
 	}
-	if sp.Type == "personal" {
-		if err := s.checkQuota(ctx, a, sp.ID, 1, int64(len(n.Content))); err != nil {
-			return StoreResult{}, err
-		}
+	if err := s.checkQuota(ctx, sp, 1, int64(len(n.Content))); err != nil {
+		return StoreResult{}, err
 	}
 	prep, err := s.ing.Prepare(ctx, n.Title, n.Content)
 	if err != nil {
@@ -200,9 +199,8 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 		}
 		status = "draft" // an author revising their own draft or rejected entry
 	}
-	if sp.Type == "personal" {
-		delta := int64(len(n.Content) - len(cur.Content))
-		if err := s.checkQuota(ctx, a, sp.ID, 0, delta); err != nil {
+	if delta := int64(len(n.Content) - len(cur.Content)); delta > 0 {
+		if err := s.checkQuota(ctx, sp, 0, delta); err != nil {
 			return Document{}, err
 		}
 	}
@@ -300,10 +298,8 @@ func (s *Store) Unarchive(ctx context.Context, a Actor, id uuid.UUID) (Document,
 	if err != nil {
 		return Document{}, err
 	}
-	if sp.Type == "personal" {
-		if err := s.checkQuota(ctx, a, sp.ID, 1, int64(len(cur.Content))); err != nil {
-			return Document{}, err
-		}
+	if err := s.checkQuota(ctx, sp, 1, int64(len(cur.Content))); err != nil {
+		return Document{}, err
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -358,30 +354,33 @@ func record(ctx context.Context, tx pgx.Tx, a Actor, action string, sp spaces.Sp
 	})
 }
 
-// checkQuota enforces the personal-space limits. addDocs/addBytes are the growth the
-// pending write causes;
-func (s *Store) checkQuota(ctx context.Context, a Actor, space uuid.UUID, addDocs int, addBytes int64) error {
-	maxDocs, maxBytes := s.opt.PersonalMaxDocuments, s.opt.PersonalMaxBytes
-	if a.User.QuotaDocuments != nil {
-		maxDocs = *a.User.QuotaDocuments
+// checkQuota enforces the limits of a space (see package quota): those of its owner in a
+// personal space, its own in a team space, each falling back to the runtime and the configured
+// defaults. addDocs/addBytes are the growth the pending write causes. The limits are read on
+// every call, so a change by an instance admin applies to the next write.
+func (s *Store) checkQuota(ctx context.Context, sp spaces.Space, addDocs int, addBytes int64) error {
+	if s.opt.Quota == nil {
+		return nil
 	}
-	if a.User.QuotaBytes != nil {
-		maxBytes = *a.User.QuotaBytes
+	lim, err := s.opt.Quota.Resolve(ctx, sp)
+	if err != nil {
+		return err
 	}
+	maxDocs, maxBytes := lim.Documents, lim.Bytes
 	var docs int
 	var bytes int64
-	err := s.pool.QueryRow(ctx, `
+	err = s.pool.QueryRow(ctx, `
 SELECT count(*) FILTER (WHERE kind = 'knowledge'), COALESCE(sum(octet_length(content)), 0)
 FROM documents WHERE space_id = $1 AND status <> 'archived' AND (expires_at IS NULL OR expires_at > now())`,
-		space).Scan(&docs, &bytes)
+		sp.ID).Scan(&docs, &bytes)
 	if err != nil {
 		return err
 	}
 	if maxDocs > 0 && addDocs > 0 && docs+addDocs > maxDocs {
-		return errors.Join(ErrQuota, errors.New("too many entries"))
+		return errors.Join(ErrQuota, fmt.Errorf("too many entries: the limit of this space is %d (an instance admin can raise it)", maxDocs))
 	}
 	if maxBytes > 0 && addBytes > 0 && bytes+addBytes > maxBytes {
-		return errors.Join(ErrQuota, errors.New("storage limit reached"))
+		return errors.Join(ErrQuota, fmt.Errorf("storage limit reached: this space may hold %d KB (an instance admin can raise it)", maxBytes>>10))
 	}
 	return nil
 }

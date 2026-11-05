@@ -14,6 +14,7 @@ import (
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 	"github.com/behringer24/atrium-tablinum/internal/visibility"
@@ -25,7 +26,7 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrForbidden means the caller can see the space but lacks the role for the action.
 	ErrForbidden = errors.New("you do not have permission for this in this space")
-	ErrQuota     = errors.New("personal space quota exceeded")
+	ErrQuota     = errors.New("quota exceeded")
 	ErrConflict  = errors.New("the entry was changed in the meantime, please reload it")
 	// ErrNeedsApproval: authors cannot yet change approved entries of approval spaces
 	// (a draft next to the approved version is not implemented).
@@ -35,10 +36,11 @@ var (
 )
 
 type Options struct {
-	PersonalMaxDocuments int
-	PersonalMaxBytes     int64
-	HandoffTTLDays       int
-	DuplicateThreshold   float64
+	// Quota resolves the storage limits of a space (runtime settings over config defaults);
+	// nil = no limits.
+	Quota              *quota.Store
+	HandoffTTLDays     int
+	DuplicateThreshold float64
 }
 
 type Document struct {

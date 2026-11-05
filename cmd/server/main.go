@@ -30,6 +30,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
 	mcpserver "github.com/behringer24/atrium-tablinum/internal/mcp"
 	"github.com/behringer24/atrium-tablinum/internal/oauth"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -91,14 +92,20 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	if err != nil {
 		return err
 	}
-	docStore := docs.New(pool, spaceStore, ing, docs.Options{
-		PersonalMaxDocuments: cfg.Spaces.Personal.MaxDocuments,
-		PersonalMaxBytes:     cfg.Spaces.Personal.MaxBytes,
-		HandoffTTLDays:       cfg.Spaces.HandoffTTLDays,
-		DuplicateThreshold:   cfg.Policy.DuplicateThreshold,
+	// The limits come from config.yaml; an instance admin overrides them at runtime (admin_quotas)
+	// and the override applies to the next write, without a restart.
+	quotaStore := quota.New(pool, quota.Defaults{
+		Personal: quota.Limits{Documents: cfg.Spaces.Personal.MaxDocuments, Bytes: cfg.Spaces.Personal.MaxBytes,
+			Skills: cfg.Skills.PersonalMaxSkills, SkillBytes: cfg.Skills.PersonalMaxBytes, SkillVersions: cfg.Skills.MaxVersionsPerSkill},
+		Team: quota.Limits{Documents: cfg.Spaces.Team.MaxDocuments, Bytes: cfg.Spaces.Team.MaxBytes,
+			Skills: cfg.Skills.TeamMaxSkills, SkillBytes: cfg.Skills.TeamMaxBytes, SkillVersions: cfg.Skills.MaxVersionsPerSkill},
 	})
-	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval,
-		PersonalMaxSkills: cfg.Skills.PersonalMaxSkills, PersonalMaxBytes: cfg.Skills.PersonalMaxBytes, MaxVersionsPerSkill: cfg.Skills.MaxVersionsPerSkill})
+	docStore := docs.New(pool, spaceStore, ing, docs.Options{
+		Quota:              quotaStore,
+		HandoffTTLDays:     cfg.Spaces.HandoffTTLDays,
+		DuplicateThreshold: cfg.Policy.DuplicateThreshold,
+	})
+	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval, Quota: quotaStore})
 	searchSvc, err := search.New(pool, emb, search.Config{
 		FTSLanguages: cfg.Search.FTSLanguages, CandidatesPerMethod: cfg.Search.CandidatesPerMethod, RRFK: cfg.Search.RRFK,
 		DefaultLimit: cfg.Search.DefaultLimit, MaxLimit: cfg.Search.MaxLimit, HNSWEfSearch: cfg.Search.HNSWEfSearch,
@@ -131,7 +138,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	}
 	mcpSrv := mcpserver.New(
 		mcpserver.Deps{
-			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Search: searchSvc, Checker: checker,
+			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Quota: quotaStore, Search: searchSvc, Checker: checker,
 			Pool: pool, Jobs: runner, EmbeddingModel: cfg.Embedding.Model, EmbeddingDimensions: cfg.Embedding.Dimensions,
 			Health: []mcpserver.HealthCheck{
 				{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }},

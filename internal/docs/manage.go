@@ -48,10 +48,8 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 	if dst.ID == src.ID {
 		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("the entry is already in this space"))
 	}
-	if dst.Type == "personal" {
-		if err := s.checkQuota(ctx, a, dst.ID, 1, int64(len(cur.Content))); err != nil {
-			return Document{}, err
-		}
+	if err := s.checkQuota(ctx, dst, 1, int64(len(cur.Content))); err != nil {
+		return Document{}, err
 	}
 	status := statusFor(dst, dstRole, false)
 
