@@ -40,6 +40,8 @@ ATRIUM_TEST_DATABASE_URL=postgres://knowledge:knowledge@localhost:5432/knowledge
 go run ./cmd/server -config config.yaml
 ```
 
+The data model after the latest migration (all tables with columns, keys, constraints, indexes, triggers, relationships and what each table is for) is an interactive page: [docs/data-model.html](docs/data-model.html). Open it in a browser from a checkout; GitHub shows HTML files as source only. It needs no network access. A migration that changes the schema updates the page in the same change; `node tools/docs/check-data-model.mjs` compares the page with the migrations and names every difference.
+
 ## Backup
 
 `scripts/backup.sh` creates a compressed `pg_dump` and removes old dumps. Daily via cron:
