@@ -11,6 +11,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const repoURL = "https://github.com/behringer24/atrium-tablinum/blob/main/";
 
+// Branding at the start of every PDF: the Atrium icon (the same file the server serves) and the
+// logo of behringer24. Both are embedded, so the PDF needs nothing from the network.
+const dataURI = (file, mime) => `data:${mime};base64,${readFileSync(file).toString("base64")}`;
+const atriumIcon = dataURI(path.join(root, "internal", "mcp", "assets", "icon.svg"), "image/svg+xml");
+const authorLogo = dataURI(path.join(import.meta.dirname, "assets", "behringer24-logo.png"), "image/png");
+const branding = `<header class="brand">
+  <div class="brand-side"><img src="${atriumIcon}" alt="Atrium"><div><b>Atrium Tablinum</b><span>Shared memory for people and AI assistants</span></div></div>
+  <div class="brand-side right"><div><b>behringer24</b><span>Andreas Behringer</span></div><img src="${authorLogo}" alt="behringer24"></div>
+</header>`;
+
 function browser() {
   const candidates = [
     process.env.CHROME_BIN,
@@ -47,8 +57,23 @@ function rewrite(href, mdDir) {
 }
 
 const css = `
-@page { size: A4; margin: 22mm 18mm 22mm 18mm;
-  @bottom-center { content: counter(page) " / " counter(pages); font: 9pt system-ui, sans-serif; color: #666; } }
+@page { size: A4; margin: 26mm 18mm 22mm 18mm;
+  @top-left { content: "Atrium Tablinum"; vertical-align: bottom; text-align: left; padding: 0 0 7mm 25px;
+    font: 600 9pt system-ui, sans-serif; color: #1b3358;
+    background: url("${atriumIcon}") no-repeat left bottom 6.3mm / 19px 19px, linear-gradient(#c8ccd3, #c8ccd3) no-repeat left bottom 4mm / 100% 0.6pt; }
+  @top-center { content: ""; background: linear-gradient(#c8ccd3, #c8ccd3) no-repeat left bottom 4mm / 100% 0.6pt; }
+  @top-right { content: "behringer24 – Andreas Behringer"; vertical-align: bottom; text-align: right; padding: 0 25px 7mm 0;
+    font: 600 9pt system-ui, sans-serif; color: #1b3358;
+    background: url("${authorLogo}") no-repeat right bottom 6.3mm / 19px 19px, linear-gradient(#c8ccd3, #c8ccd3) no-repeat left bottom 4mm / 100% 0.6pt; }
+  @bottom-left { content: "Atrium Tablinum · behringer24 – Andreas Behringer"; font: 8.5pt system-ui, sans-serif; color: #666; }
+  @bottom-right { content: counter(page) " / " counter(pages); font: 9pt system-ui, sans-serif; color: #666; } }
+@page :first { @top-left { content: none; background: none; } @top-center { content: none; background: none; } @top-right { content: none; background: none; } }
+.brand { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; margin-bottom: 18px; border-bottom: 1px solid #c8ccd3; }
+.brand-side { display: flex; align-items: center; gap: 10px; }
+.brand-side.right { text-align: right; }
+.brand img { height: 42px; width: 42px; border-radius: 8px; }
+.brand b { display: block; font-size: 12pt; color: #1b3358; }
+.brand span { display: block; font-size: 8.5pt; color: #555; }
 html { font: 10.5pt/1.5 "Segoe UI", system-ui, -apple-system, sans-serif; color: #1c1c1c; }
 body { max-width: 100%; }
 h1 { font-size: 24pt; margin: 0 0 .3em; padding-bottom: .2em; border-bottom: 2px solid #1b3358; color: #1b3358; }
@@ -84,7 +109,7 @@ function render(mdFile) {
     },
   });
   const title = (text.match(/^#\s+(.+)$/m) || [, path.basename(mdFile)])[1];
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>${css}</style></head><body>${m.parse(text)}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>${css}</style></head><body>${branding}${m.parse(text)}</body></html>`;
 }
 
 const args = process.argv.slice(2);

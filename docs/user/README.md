@@ -8,6 +8,7 @@ You do not operate Atrium through a screen of its own. You talk to your AI assis
 
 | Guide | For | You will learn |
 |---|---|---|
+| [Why Atrium](00-why-atrium.md) | Everybody, and anyone who still needs convincing | What Atrium brings you, your team and the organisation, a day with it, your first ten minutes, and the honest limits. A good document to share first |
 | [1. Everyday use](01-user.md) | Everybody who has an Atrium login | Connect an assistant, find knowledge, use skills, work in your personal space, hand work over to another assistant, stay safe |
 | [2. Authors](02-author.md) | People who may write in team spaces | File and maintain knowledge, work with drafts and approval, write and propose skills |
 | [3. Curators](03-curator.md) | People who review and approve | Review knowledge and skills, judge risk, publish, block, keep a space tidy |
@@ -53,4 +54,4 @@ The role you have can differ from space to space. Your assistant can show your r
 - The guides describe the behaviour of the current development version. Features that are planned but not built are marked as such, and the [roadmap](../../ROADMAP.md) lists what is coming.
 - Technical reference for operators lives in the other documents of this repository: [skills](../skills.md), [approval](../approval.md), [archive and context](../archive-and-context.md), [offboarding](../offboarding.md), [login and OAuth](../auth.md), [deployment](../deployment.md), [embedding](../embedding.md), [releases](../release.md).
 
-To rebuild the PDFs after editing a guide, run `scripts/build-docs.sh` (needs Node.js and Chrome, Chromium or Edge).
+Every PDF carries the same branding: the Atrium icon and the behringer24 logo in a header block on the first page, a running header on every other page, and a footer with the names and the page number. To rebuild the PDFs after editing a guide, run `scripts/build-docs.sh` (needs Node.js and Chrome, Chromium or Edge); pass the changed file to rebuild only that one.

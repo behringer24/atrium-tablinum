@@ -24,7 +24,7 @@ Releases and the prebuilt image from the GitHub Container Registry: [docs/releas
 
 The embedding backend is selectable: your own TEI server, OpenAI and compatible services, or Amazon Bedrock. Settings, memory requirements and data protection: [docs/embedding.md](docs/embedding.md).
 
-**User guides** for every group of users (everyday use, authors, curators, space admins, instance admins), with FAQs and as PDF: [docs/user/README.md](docs/user/README.md).
+**Why Atrium, and user guides** for every group of users (everyday use, authors, curators, space admins, instance admins), with FAQs and as PDF: start with [docs/user/00-why-atrium.md](docs/user/00-why-atrium.md), index in [docs/user/README.md](docs/user/README.md).
 
 Drafts, mandatory approval and review by curators: [docs/approval.md](docs/approval.md).
 
