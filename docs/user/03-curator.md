@@ -40,7 +40,7 @@ In a space with approval every author entry is a draft until you decide. Drafts 
 
 ### The review queue
 
-Ask: *"Show the drafts waiting for review in the Support space."* (`list_knowledge` with `status=draft`). Check each space you curate.
+Ask: *"Show the drafts waiting for review in the Support space."* (`list_knowledge` with `status=draft`). Check each space you curate. For an overview across all your spaces, *"What is new in Atrium?"* (`whats_new`) also tells you how many drafts and skill drafts wait in each space you curate.
 
 ### Reviewing a draft
 

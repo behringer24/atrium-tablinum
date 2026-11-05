@@ -80,6 +80,8 @@ What you get:
 
 To read a whole entry, the assistant uses `get_knowledge` with the entry's ID from the search. To browse a space, it uses `list_knowledge` ("Show the newest entries in Engineering", optionally by tag).
 
+To catch up, ask *"What is new in Atrium?"* or *"What changed in Support since Monday?"* (`whats_new`). You get the entries of your team spaces that were published (`new`) or changed (`updated`) since then, by default in the last 7 days, and the skills released in that time. Only what you may read appears; drafts, archived entries and personal spaces never do.
+
 Good habits:
 
 - Ask the assistant to **name the entry and its date**. Knowledge can be outdated or contradict other entries; the assistant is told to point that out.
@@ -156,6 +158,8 @@ You can create your own private skills. Say *"File this as a skill called weekly
 
 **Before answering a question about the organisation.** Ask your assistant: *"Check Atrium first: what is our policy on …?"* Verify the entry's date and space in the answer.
 
+**Staying up to date.** Once a week, or after time off, ask *"What is new in Atrium since …?"* and open what concerns you. There are no notifications yet; this is the way to catch up.
+
 **Reporting a wrong or outdated entry.**
 1. Ask *"Who are the curators of the space this entry is in?"* (`space_contacts`).
 2. Tell them the entry's title or ID and what is wrong. Curators can correct or archive it.
@@ -205,3 +209,5 @@ You can create your own private skills. Say *"File this as a skill called weekly
 **How do I stop an assistant from using Atrium?** Remove the connector in the assistant, and end its session with `revoke_my_sessions`.
 
 **Where is my data stored?** On the Atrium server of your organisation. Search indexing may use an embedding service chosen by your administrator.
+
+**How do I find out what changed while I was away?** Ask *"What is new in Atrium since 1 March?"*. It lists new and changed entries and released skills of your team spaces since that date.
