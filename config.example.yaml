@@ -31,6 +31,7 @@ auth:
     #   allowed_tenants: ["<tenant-guid>"]
     #   allowed_domains: ["example.com"]
     #   groups_claim: true
+    #   # email_trusted: false   # true = treat the tenant's addresses as verified (needed for bootstrap admins and e-mail linking); only for a tenant without guests and without self-editable mail attributes
     # - id: keycloak
     #   type: oidc
     #   issuer: "https://sso.example.com/realms/main"

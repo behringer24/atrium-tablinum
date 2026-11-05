@@ -174,7 +174,7 @@ func setup(t *testing.T, writesPerMinute int) *env {
 		if !ok {
 			return nil, auth.ErrInvalidToken
 		}
-		u, err := e.users.Provision(ctx, users.Identity{IDP: "t", Subject: email, Email: email})
+		u, err := e.users.Provision(ctx, users.Identity{EmailVerified: true, IDP: "t", Subject: email, Email: email})
 		if errors.Is(err, users.ErrDisabled) {
 			return nil, auth.ErrInvalidToken // a verifier must answer 401 for disabled accounts
 		}
@@ -259,7 +259,7 @@ func (e *env) team(t *testing.T, slug, name string, approval bool, members map[s
 		t.Fatal(err)
 	}
 	for email, role := range members {
-		u, err := e.users.Provision(e.ctx, users.Identity{IDP: "t", Subject: email, Email: email})
+		u, err := e.users.Provision(e.ctx, users.Identity{EmailVerified: true, IDP: "t", Subject: email, Email: email})
 		if err != nil {
 			t.Fatal(err)
 		}

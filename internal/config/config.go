@@ -95,6 +95,11 @@ type Provider struct {
 	// AllowUnverifiedEmail accepts generic OIDC logins whose ID token lacks
 	// email_verified=true. Only for IdPs that never send the claim.
 	AllowUnverifiedEmail bool `yaml:"allow_unverified_email"`
+	// EmailTrusted (type entra only) treats the e-mail addresses of the allowed tenants as
+	// verified, so that they may be linked to existing accounts and used for bootstrap admins.
+	// Set it only for a tenant whose users cannot choose their own address and that has no
+	// guests. Default false.
+	EmailTrusted bool `yaml:"email_trusted"`
 }
 
 type Database struct {
@@ -361,6 +366,9 @@ func (c *Config) Validate() error {
 			}
 		default:
 			add("%s.type %q unknown (google | entra | oidc)", at, p.Type)
+		}
+		if p.EmailTrusted && p.Type != "entra" {
+			add("%s: email_trusted only applies to type entra (Google and OIDC send email_verified)", at)
 		}
 	}
 	for _, u := range c.Auth.AllowedRedirectURIs {

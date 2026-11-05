@@ -18,8 +18,8 @@ func TestQueryFiltersAndPrivacy(t *testing.T) {
 	ctx := context.Background()
 	us := users.New(pool, users.Options{PersonalEnabled: true})
 	ss := spaces.New(pool)
-	anna, _ := us.Provision(ctx, users.Identity{IDP: "g", Subject: "a", Email: "anna@x.de"})
-	ben, _ := us.Provision(ctx, users.Identity{IDP: "g", Subject: "b", Email: "ben@x.de"})
+	anna, _ := us.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "anna@x.de"})
+	ben, _ := us.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "b", Email: "ben@x.de"})
 	team, _ := ss.CreateTeam(ctx, spaces.CreateParams{Slug: "support", Name: "Support"})
 	doc := uuid.New()
 

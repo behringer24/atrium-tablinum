@@ -422,11 +422,17 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := s.users.Provision(r.Context(), users.Identity{
-		IDP: providerID, Subject: id.Subject, Email: id.Email, DisplayName: id.DisplayName,
+		IDP: providerID, Subject: id.Subject, Email: id.Email, DisplayName: id.DisplayName, EmailVerified: id.EmailVerified,
 	})
 	if errors.Is(err, users.ErrDisabled) {
 		s.log.Warn("Login of a disabled account", "provider", providerID)
 		deny("This account is disabled")
+		return
+	}
+	if errors.Is(err, users.ErrEmailUnverified) {
+		s.log.Warn("Login refused: e-mail not verified for linking or admin rights", "provider", providerID)
+		s.store.RecordDenied(r.Context(), providerID, "e-mail not verified: needed to link an account or for an administrator account")
+		deny("Your identity provider does not confirm this e-mail address, so it cannot be linked to an existing account or used for an administrator account. Please contact the administrator.")
 		return
 	}
 	if errors.Is(err, users.ErrEmailTaken) {

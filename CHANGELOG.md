@@ -34,10 +34,13 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **Registrations cannot fill the client table any more:** clients that never completed a login are deleted after an hour (was a day) and only they count toward the cap of 5000, so a flood of anonymous registrations does not block new connections.
 - **Redirect patterns are checked:** an `auth.allowed_redirect_uris` entry with `*` must have a `/` before it, and the host of a wildcard entry is compared exactly (`https://host*` also matched `https://host.evil.example/`). A configuration that violates this is refused at start.
 - **`dev_mode` needs a loopback listen address** (`127.0.0.1:...`), not only a `base_url` on localhost; otherwise the static dev token was reachable from the network.
+- **Only verified e-mail addresses link accounts or create admins.** The identity now says whether the provider vouches for the address (`email_verified` for Google and OIDC). An unverified address is never linked to an existing account (`auth.link_accounts_by_email`) and never creates the account of a `bootstrap_admins` address; the login is refused and recorded as `login_denied`. Entra sends no such claim, so its addresses count as unverified unless the provider sets the new option `email_trusted: true` (only for a tenant without guests and without self-editable mail attributes).
+- **Pinned and checked build:** `go.mod` pins the toolchain (`go1.26.10`, which fixes the 20 standard-library vulnerabilities that `govulncheck` found with 1.26.4), the Dockerfile pins both base images by tag and digest, all GitHub Actions are pinned to commit SHAs, `govulncheck` runs in the test job, and Dependabot opens weekly pull requests for Actions, Go modules and base images. See [docs/release.md](docs/release.md).
 
 ### Upgrade notes
 - Migration `00007` creates the skill tables and the triggers that freeze released versions. Migration `00008` adds the archive columns and lets a blocked version go back to approved (and only there).
 - Migration `00009` adds the tags column to `skills`.
+- Operators of an **Entra** provider who rely on `bootstrap_admins` or `link_accounts_by_email` must set `email_trusted: true` on that provider (only for a tenant without guests and without self-editable mail attributes), otherwise those logins are refused. Google and OIDC providers that send `email_verified` are unaffected.
 - The server now refuses to start with `dev_mode` on a non-loopback `instance.listen` or with an `allowed_redirect_uris` entry that has a `*` without a `/` before it (see the security notes). `/readyz` no longer says whether the database or the embedder is the problem; look at `admin_health` or the log.
 
 ### Changed

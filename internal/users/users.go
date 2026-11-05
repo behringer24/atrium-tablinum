@@ -48,6 +48,9 @@ type Identity struct {
 	Subject     string
 	Email       string
 	DisplayName string
+	// EmailVerified says that the identity provider vouches for the address (see idp.Identity).
+	// Only then may it be linked to an existing account or create a bootstrap admin.
+	EmailVerified bool
 }
 
 type Options struct {
@@ -193,6 +196,9 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 		if taken && !s.linkEmail {
 			return uuid.Nil, ErrEmailTaken
 		}
+		if taken && !id.EmailVerified {
+			return uuid.Nil, ErrEmailUnverified
+		}
 		if taken {
 			slog.Warn("Account linked by e-mail", "idp", id.IDP, "user", uid)
 			if aerr := audit.Insert(ctx, tx, audit.Event{UserID: &uid, Client: "system", Action: "account_linked",
@@ -202,6 +208,9 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 		}
 	}
 	switch {
+	case errors.Is(err, pgx.ErrNoRows) && s.bootstrap[strings.ToLower(id.Email)] && !id.EmailVerified:
+		// The address of an instance admin must not be claimed with an address nobody vouches for.
+		return uuid.Nil, ErrEmailUnverified
 	case errors.Is(err, pgx.ErrNoRows):
 		err = tx.QueryRow(ctx, `INSERT INTO users (email, display_name, idp, idp_subject, last_login_at)
 			VALUES ($1, $2, $3, $4, now()) RETURNING id`, id.Email, id.DisplayName, id.IDP, id.Subject).Scan(&uid)
