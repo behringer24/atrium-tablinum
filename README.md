@@ -30,7 +30,7 @@ The embedding backend is selectable: your own TEI server, OpenAI and compatible 
 
 Drafts, mandatory approval and review by curators: [docs/approval.md](docs/approval.md).
 
-Company-wide skills (approved working instructions for assistants) with their own review and immutable versions: [docs/skills.md](docs/skills.md).
+Company-wide skills (approved working instructions for assistants) with their own review and immutable versions: [docs/skills.md](docs/skills.md). Two skills for filing sources and checking spaces ship with Atrium, to be installed and reviewed by each organisation: [skills/README.md](skills/README.md).
 
 ## Development
 

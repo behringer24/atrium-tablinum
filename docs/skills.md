@@ -124,6 +124,12 @@ Whether a given client uses the extension is up to the client. The extension has
 
 An export is a copy: blocking or archiving cannot recall it. A client that installs skills pins the version and digest it exported and decides itself when to fetch again (see the roadmap for the planned sync adapter).
 
+## Skills shipped with Atrium
+
+The folder [`skills/`](../skills/README.md) of the repository holds two skills for the care of the knowledge base: `knowledge-ingest` turns a source the user provides into entries (it compares with what Atrium knows, proposes new entries and updates, and saves what the user confirms), and `knowledge-lint` checks a space for outdated entries, duplicates, contradictions, broken references, sensitive content and waiting drafts. Both use only the knowledge tools, never delete or approve, and change nothing without the user's confirmation.
+
+Atrium does **not** install them: an organisation stores a skill with `store_skill` in a space of its choice, a curator other than the one who stored it reviews it (risk class B) and releases it, like any skill of its own. Tests check with every build that each folder is a valid package and that every tool and parameter it names exists. Installation, updates and limits: [skills/README.md](../skills/README.md).
+
 ## Audit
 
 `store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept. A refusal because of the caller's role, a required approval or a rate limit is logged as `denied` with the tool and the reason, no arguments, once a minute per user, tool and reason.

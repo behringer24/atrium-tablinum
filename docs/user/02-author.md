@@ -163,6 +163,8 @@ Your personal skills are released at once and visible only to you. This is a goo
 3. *"File this in the Operations space."* If the space needs approval, tell the curator (no notification yet).
 4. Check later that it is approved: *"Show my drafts in Operations."*
 
+**Turning a document into entries.** If your organisation released the skill `knowledge-ingest`, attach or paste the source and say *"/knowledge-ingest: file this into Operations."* The assistant lists the knowledge in it, compares it with what Atrium already has and shows a plan (new, update, already covered, conflict). Nothing is saved before you confirm; conflicts are never resolved by the assistant. Without the skill, ask the same in your own words, one entry at a time.
+
 **Correcting an entry of yours.** *"Load my entry about X, fix the figure and update it."* In a space with approval and an approved entry, ask a curator instead (see above).
 
 **Reacting to a returned draft.** Read the note, revise (`update_knowledge`), and tell the curator that it is back in review.
