@@ -15,6 +15,7 @@ The guiding question for all knowledge features: does an assistant find the righ
 - **Validity and review dates:** optional owner, last review, next review, valid from/until. A periodic job (the job runner exists) flags entries whose review is due and informs owners and curators. An overdue entry only produces a warning, it is never hidden or deleted automatically.
 - **Systematic permission tests:** a test matrix of roles (reader, author, curator, admin, instance admin) across personal and team spaces and across every tool: drafts, archive, versions, search excerpts, direct ids, counts and error texts must not leak anything. Many negative tests exist in the packages; the matrix makes the gaps visible.
 - **Summarising with `replaces`:** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported.
+- **Deleting archived entries:** `delete_knowledge` cannot reach an archived entry (it has to be restored first), which makes removing personal data from the archive a two-step action. Let space admins delete archived entries directly.
 
 ### Security, remainder of the audit of 2026-11-03
 
@@ -25,9 +26,22 @@ The guiding question for all knowledge features: does an assistant find the righ
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
 - confirmation when storing into spaces of others
 
+### Security, remainder of the second audit (2026-11-04)
+
+The findings of the second audit (external attack surface, authorisation and integrity) that are fixed are listed in the changelog. Still open:
+
+- **E-mail verification flag for logins:** the identity carries no "verified" information, so `link_accounts_by_email` and `allow_unverified_email` rely on the operator's judgement. Add the flag, refuse linking and the bootstrap-admin grant without it, document Entra as tenant-trusted.
+- **Toolchain and supply chain:** pin the Go toolchain and the build image to a current patch release, add `govulncheck` to the test job, pin GitHub Actions to commit SHAs and scope the `PACKAGES_PAT` token to the package.
+- **Authors archiving approved entries** in spaces with approval: apply the same rule as for moving (curators only).
+- **Skill names:** `store_skill` on a name held by someone else's unseen draft attaches a version to it and reveals that it exists; answer like a fresh name or refuse generically, and tie tag rights to the author of the newest published version.
+- **Team space quotas** for skills and knowledge (byte and count limits like the personal ones) and rows per skill in listings, so that one author cannot crowd out a curator's queue.
+- **Denied attempts** (permission errors, rate limits) in the audit log, as the base for abuse detection.
+- **Database roles:** separate migration and runtime accounts, and `INSERT`-only rights on the audit log for the runtime account.
+- **`skills/list`** marks a truncated listing as partial. The front matter parser should require the closing `---` on a line of its own, like common clients do. A client whose `client_name` is shown in `my_sessions` should be marked as data.
+
 ### Documentation and operations
 
-- After the rollout, the user manual in the space "Allgemein" is adjusted to the archive behaviour. The description of "Allgemein" and the instance context are set.
+- The user guides in `docs/user/` exist (Markdown and PDF). Still to do after the rollout: adapt the manual in the space "Allgemein" to them and to the archive behaviour, and set the description of "Allgemein" and the instance context.
 - Make the language of server messages configurable, if customers ask for it. English is the default and only language for now. Comments in the code that refer to a "concept" document by section number should be replaced by a self-contained explanation.
 
 ## Skill registry (strategic)

@@ -1,0 +1,9 @@
+{
+  "name": "atrium-docs-build",
+  "private": true,
+  "type": "module",
+  "description": "Builds the PDF versions of the user guides in docs/user (Markdown stays the source).",
+  "dependencies": {
+    "marked": "15.0.12"
+  }
+}
