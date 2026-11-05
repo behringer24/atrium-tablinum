@@ -21,8 +21,12 @@ How an instance runs with a licence, and how the owner issues one. The reasons a
 | `edition`, `licensee`, `features`, `limits`, `maintenance_until`, `expires` | what the licence says; a limit of 0 is unlimited |
 | `source` | `installed` (by an admin, stored in the database) or `file` (`license.file`) |
 | `build` | the version, the **release line** and its date (the date compared with `maintenance_until`), and the commit date for support |
+| `users` | `active` accounts now, the user `limit` in force (the licensed one, else the Community limit; 0 = unlimited) and `over_limit` |
+| `warning` | only when the active accounts have reached the limit: existing accounts keep working, new accounts and reactivations are refused until there is room |
 
-*"Install this licence: atrium-license-v1.…"* (`action=install`, after confirmation) refuses a licence that is unreadable, signed with an unknown key or bound to another domain, and accepts one that does not cover this build, so that the report can say why it has no effect. `action=remove` deletes the installed licence (one from `license.file` stays). Both are audited (`license_install`, `license_remove`, with licence id, licensee, edition and maintenance date, never the licence text).
+*"Install this licence: atrium-license-v1.…"* (`action=install`, after confirmation) refuses a licence that is unreadable, signed with an unknown key or bound to another domain, and accepts one that does not cover this build, so that the report can say why it has no effect. `action=remove` deletes the installed licence (one from `license.file` stays); the question before the removal names how many accounts are active and what the Community limit means for them. Both are audited (`license_install`, `license_remove`, with licence id, licensee, edition and maintenance date, never the licence text).
+
+**More accounts active than the limit allows?** That happens when a licence is removed, expires or does not cover an updated build while more accounts are active than Community allows. Nobody is locked out: every active account keeps working, and the report shows `over_limit` with a warning. Only new accounts and reactivations are refused until fewer accounts are active than the limit, or a covering licence is installed again.
 
 `server_info` shows every user only the edition and the release line. `admin_health` has an informational `license` check that never makes the instance unhealthy.
 
