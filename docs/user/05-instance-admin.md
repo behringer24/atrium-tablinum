@@ -201,6 +201,7 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `admin_transfer_personal_space`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
+| Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
 | Instance | `admin_context_set`, `admin_context_clear`, `admin_quota_set` (scope, target, old and new values) |
 
 Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
@@ -218,7 +219,7 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 ### Limits to know
 
 - **Personal spaces** appear only as "personal space" with time and action, never with names, titles or contents.
-- **Denied attempts** (someone without the right tries something) are not logged yet, and there are **no alerts**; the log is only read by you. Plan a regular review (see [Routines](#routines)).
+- **Denied attempts** are logged as `denied` with the tool and the reason (`role does not allow this`, `approval required`, `own version cannot be approved`, `no permission for this tool`, `write rate limit`, `read rate limit`), no arguments, at most once a minute per user, tool and reason. A missing item (`not found`) is not logged, because it may simply not exist. There are **no alerts**; the log is only read by you. Plan a regular review (see [Routines](#routines)).
 - The log lives in the same database as the content. Anyone with database administration rights could alter it. Protect the database accordingly; an off-box copy and tamper protection are on the [roadmap](../../ROADMAP.md).
 - For request-level detail set `instance.log_level: debug`: the server then logs one line per MCP request (method, tool, resource, client) to its log.
 
@@ -237,6 +238,15 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 - **Releases** are tagged `vX.Y.Z`; use a fixed version in your compose file and update on purpose. **Canary** images (`canary`) follow the development branch: for a test instance only, migrations only go forward, so take a backup first. See [Releases](../release.md).
 - Read the **Upgrade notes** in the [changelog](../../CHANGELOG.md) before every update: the server refuses to start with some old settings, and new limits may apply.
 - Configuration changes need a restart; the allowlist, context, groups, spaces and members change at runtime.
+
+### Separate database accounts
+
+Out of the box the server connects to the database as its superuser. That is simple, but a flaw in the server (or anybody holding its connection string) could switch off the triggers that freeze released skills, rewrite the audit log or change the schema. The server logs a warning at start while it runs as a superuser. For production, set up two accounts once, with `scripts/db-roles.sql`:
+
+- `atrium_app` (the server): reads and writes the data, can only **append** to the audit log, cannot change the schema, create or drop tables or switch triggers off.
+- `atrium_migrate`: owns the schema and runs the migrations at start.
+
+Then set `database.url` to the first and `database.migration_url` to the second in `config.yaml`. The steps are in [Deployment](../deployment.md#separate-database-accounts). An update that adds tables works without further steps.
 
 ### Limits that protect the system
 
@@ -264,13 +274,13 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 |---|---|
 | An account may be compromised | `admin_revoke_sessions` for the user; if confirmed, `admin_offboard_user` to lock it; review `admin_audit_log user=...` for what it did; reset access at the identity provider |
 | A harmful or wrong skill | Block the version (curator or you), check who loaded it (`skill=..., action=skill_get`), tell the users, have a fixed version reviewed. Delete only if it must disappear |
-| Sensitive data in an entry | Archive at once to stop it being served; to remove it for good restore and delete it, or delete it directly (an archived entry cannot be deleted before it is restored); reads of knowledge entries are not logged, so the audit log shows who changed it and which searches ran, not who read it; tell the data protection officer |
+| Sensitive data in an entry | Archive at once to stop it being served, then delete it for good (that works on archived entries); reads of knowledge entries are not logged, so the audit log shows who changed it and which searches ran, not who read it; tell the data protection officer |
 | Credentials leaked in an entry | Treat them as compromised, rotate them first, then delete the entry |
 | Unwanted login attempts | `login_denied` entries; tighten the allowlist; check provider settings |
 | A curator or author misbehaves | Remove their role (space admin or you); review their recent changes in the audit log |
 | Instance admin account needs to change | Edit `auth.bootstrap_admins` and restart |
 
-**Known limits (be honest with your organisation).** No notifications or alerts yet; denied attempts are not logged; the audit log is not tamper-proof against database administrators; the application connects to the database with a powerful account; and embedding services may process content outside your network if you choose a cloud backend. These points are on the roadmap.
+**Known limits (be honest with your organisation).** No notifications or alerts yet; the audit log is not tamper-proof against database administrators; unless you set up the [separate database accounts](#separate-database-accounts) the application connects to the database with a powerful account; and embedding services may process content outside your network if you choose a cloud backend. These points are on the roadmap.
 
 ## Routines
 
@@ -279,7 +289,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 - Answer requests from space admins (spaces, approval, groups, class C skills).
 
 **Weekly**
-- Skim `admin_audit_log` for `login_denied`, `skill_publish`, `skill_approve` with `self_approved`, `skill_block`, `skill_delete`, `delete`, `admin_*`.
+- Skim `admin_audit_log` for `denied` (who keeps trying things their role does not allow), `login_denied`, `skill_publish`, `skill_approve` with `self_approved`, `skill_block`, `skill_delete`, `delete`, `admin_*`.
 - Check that backups ran.
 
 **Monthly**

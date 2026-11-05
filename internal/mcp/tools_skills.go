@@ -70,7 +70,7 @@ func (s *Server) skillLines(ctx context.Context, a docs.Actor) []string {
 	if s.Skills == nil {
 		return nil
 	}
-	list, err := s.Skills.List(ctx, a, skills.ListFilter{PublishedOnly: true, Limit: 200})
+	list, err := s.Skills.List(ctx, a, skills.ListFilter{PublishedOnly: true, NewestOnly: true, Limit: maxSkillsInInstructions})
 	if err != nil {
 		return nil
 	}
@@ -290,10 +290,19 @@ func (s *Server) listSkills(ctx context.Context, c *call, in listSkillsIn) (list
 		}
 		filter.SpaceID = sp.ID
 	}
-	list, err := s.Skills.List(ctx, c.Actor, filter)
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	filter.Limit = limit
+	list, next, err := s.Skills.ListPage(ctx, c.Actor, filter)
 	if err != nil {
 		return listSkillsOut{}, err
 	}
+	truncated := next != nil
 	out := listSkillsOut{Skills: []skillSummary{}}
 	idx := map[string]int{}
 	for _, v := range list {
@@ -312,17 +321,6 @@ func (s *Server) listSkills(ctx context.Context, c *call, in listSkillsIn) (list
 		}
 	}
 	sort.SliceStable(out.Skills, func(i, j int) bool { return out.Skills[i].Name < out.Skills[j].Name })
-	limit := in.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
-	}
-	truncated := len(out.Skills) > limit
-	if truncated {
-		out.Skills = out.Skills[:limit]
-	}
 	if len(out.Skills) == 0 {
 		out.Message = "No skills found."
 	} else if in.Archived {

@@ -116,8 +116,9 @@ func fetch(ctx context.Context, q querier, a Actor, id uuid.UUID, lock bool) (Do
 	return scanDoc(q.QueryRow(ctx, sql, id, nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator)))
 }
 
-// fetchAny also finds archived documents the actor may restore. Only reading and
-// unarchiving use it; every other write goes through fetch and so never touches the archive.
+// fetchAny also finds archived documents the actor may restore. Only reading, unarchiving and
+// the deletion by an admin use it; every other write goes through fetch and so never touches the
+// archive.
 func fetchAny(ctx context.Context, q querier, a Actor, id uuid.UUID, lock bool) (Document, error) {
 	sql := `SELECT ` + docColumns + ` FROM documents d JOIN users au ON au.id = d.author_id
 		WHERE d.id = $1 AND (` + visibility.Clause("d", 2, 3, 4) + ` OR ` + visibility.ArchiveClause("d", 2, 3, 4) + `)`

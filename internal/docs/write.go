@@ -253,9 +253,14 @@ func (s *Store) Archive(ctx context.Context, a Actor, id uuid.UUID) error {
 	if err := canEdit(a, cur); err != nil {
 		return err
 	}
-	sp, _, err := s.writableSpace(ctx, a, cur.SpaceID)
+	sp, role, err := s.writableSpace(ctx, a, cur.SpaceID)
 	if err != nil {
 		return err
+	}
+	// Like changing or moving, taking an approved entry away from the readers of a space with
+	// approval is for curators: an author's own draft or returned entry is theirs to archive.
+	if cur.Status == "approved" && sp.Type == "team" && sp.RequireApproval && role < authz.Curator {
+		return ErrNeedsApproval
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -265,6 +270,9 @@ func (s *Store) Archive(ctx context.Context, a Actor, id uuid.UUID) error {
 	locked, err := fetch(ctx, tx, a, id, true)
 	if err != nil {
 		return err
+	}
+	if locked.Status == "approved" && sp.Type == "team" && sp.RequireApproval && role < authz.Curator {
+		return ErrNeedsApproval // it was approved between the two reads
 	}
 	version := locked.Version + 1
 	if _, err := tx.Exec(ctx, `UPDATE documents SET status = 'archived', version = $2, updated_at = now(), updated_by = $3

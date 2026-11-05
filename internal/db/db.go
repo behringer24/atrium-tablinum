@@ -166,3 +166,11 @@ func mustSub() fs.FS {
 	}
 	return sub
 }
+
+// IsSuperuser reports whether the connected account is a database superuser, which can switch off
+// triggers and alter anything, the audit log included.
+func IsSuperuser(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
+	var super bool
+	err := pool.QueryRow(ctx, `SELECT rolsuper FROM pg_roles WHERE rolname = current_user`).Scan(&super)
+	return super, err
+}

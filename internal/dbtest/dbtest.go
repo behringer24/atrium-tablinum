@@ -4,7 +4,10 @@ package dbtest
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -55,5 +58,37 @@ func NewPool(t *testing.T) *pgxpool.Pool {
 	if err := db.Migrate(ctx, pool, db.Embedding{Model: "test", Dimensions: Dimensions}); err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("ATRIUM_TEST_RESTRICTED") != "" {
+		return restricted(t, pool)
+	}
+	return pool
+}
+
+// restricted applies scripts/db-roles.sql to the test database and returns a pool that connects as
+// the server account of the hardened setup, to check that the code needs no more than that account
+// has. Tests that tamper with the schema on purpose (switching triggers off) fail in this mode.
+func restricted(t *testing.T, super *pgxpool.Pool) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+	_, file, _, _ := runtime.Caller(0)
+	script, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "scripts", "db-roles.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := strings.NewReplacer(":'app_password'", "'app-pw'", ":'migrate_password'", "'migrate-pw'").Replace(string(script))
+	if _, err := super.Exec(ctx, sql); err != nil {
+		t.Fatalf("db-roles.sql: %v", err)
+	}
+	u, err := url.Parse(os.Getenv("ATRIUM_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.User = url.UserPassword("atrium_app", "app-pw")
+	u.Path = "/" + super.Config().ConnConfig.Database
+	pool, err := pgxpool.New(ctx, u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
 	return pool
 }

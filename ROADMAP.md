@@ -15,7 +15,6 @@ The guiding question for all knowledge features: does an assistant find the righ
 - **Validity and review dates:** optional owner, last review, next review, valid from/until. A periodic job (the job runner exists) flags entries whose review is due and informs owners and curators. An overdue entry only produces a warning, it is never hidden or deleted automatically.
 - **Systematic permission tests:** a test matrix of roles (reader, author, curator, admin, instance admin) across personal and team spaces and across every tool: drafts, archive, versions, search excerpts, direct ids, counts and error texts must not leak anything. Many negative tests exist in the packages; the matrix makes the gaps visible.
 - **Summarising with `replaces`:** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported.
-- **Deleting archived entries:** `delete_knowledge` cannot reach an archived entry (it has to be restored first), which makes removing personal data from the archive a two-step action. Let space admins delete archived entries directly.
 
 ### Security, remainder of the audit of 2026-11-03
 
@@ -30,12 +29,8 @@ The guiding question for all knowledge features: does an assistant find the righ
 The findings of the second audit (external attack surface, authorisation and integrity) that are fixed are listed in the changelog. Still open:
 
 - **Package cleanup token:** `PACKAGES_PAT` is a classic token with `delete:packages`; replace it with a narrower credential as soon as GitHub offers one for container packages.
-- **Authors archiving approved entries** in spaces with approval: apply the same rule as for moving (curators only).
-- **Skill names:** `store_skill` on a name held by someone else's unseen draft attaches a version to it and reveals that it exists; answer like a fresh name or refuse generically, and tie tag rights to the author of the newest published version.
-- **Listings with many versions:** `list_skills`, `skills/list` and the instruction text read versions, not skills, so one skill with many versions can push others out of the first 200 or 500 rows. Select the newest published version per skill in the query.
-- **Denied attempts** (permission errors, rate limits) in the audit log, as the base for abuse detection.
-- **Database roles:** separate migration and runtime accounts, and `INSERT`-only rights on the audit log for the runtime account.
-- **`skills/list`** marks a truncated listing as partial. The front matter parser should require the closing `---` on a line of its own, like common clients do. A client whose `client_name` is shown in `my_sessions` should be marked as data.
+- **Database roles by default:** the separate accounts are opt-in (`scripts/db-roles.sql`); make them part of the compose setup and the install steps, so that new installations start hardened.
+- A client whose `client_name` is shown in `my_sessions` should be marked as data.
 
 ### Documentation and operations
 

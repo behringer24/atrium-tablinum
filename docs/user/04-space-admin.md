@@ -90,7 +90,7 @@ A reason is required and goes to the audit log.
 
 ### Deleting entries for good
 
-`delete_knowledge` removes an entry with its version history. It cannot be undone and is meant for cases like personal data that must not be kept, or content filed in the wrong place by mistake. In all other cases **archive** instead (`archive_knowledge`): nothing is lost and it can be restored. Deletion needs your confirmation. Curators cannot do it. An archived entry cannot be deleted before it is restored (`unarchive_knowledge`), so delete it directly or restore it first.
+`delete_knowledge` removes an entry with its version history. It cannot be undone and is meant for cases like personal data that must not be kept, or content filed in the wrong place by mistake. In all other cases **archive** instead (`archive_knowledge`): nothing is lost and it can be restored. Deletion needs your confirmation. Curators cannot do it. It also works on archived entries, so archiving an entry first (to stop it being served at once) does not stand in the way of deleting it for good.
 
 Deleting skills for good is for instance admins, because skills are instructions that assistants followed. Ask an instance admin if one must go; block or archive in the meantime.
 

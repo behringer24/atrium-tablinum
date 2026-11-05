@@ -53,6 +53,11 @@ auth:
   allow_loopback_redirects: true   # local clients such as Claude Code (http://localhost:<port>/...)
 
 database:
+  # Out of the box one account does everything (and is a superuser in the compose setup). For
+  # production, create two accounts with scripts/db-roles.sql: url is the server's account, which
+  # cannot change the schema or alter the audit log, and migration_url the account that runs the
+  # migrations at start. docs/deployment.md, "Separate database accounts".
+  # migration_url: "postgres://atrium_migrate:<password>@postgres:5432/knowledge"
   url: "${DATABASE_URL}"
 
 embedding:
