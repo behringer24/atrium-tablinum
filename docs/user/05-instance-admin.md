@@ -227,7 +227,11 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 
 ### Health
 
-*"Show the Atrium health."* (`admin_health`) reports the database, the embedding service, background jobs and tasks. The TLS certificate is managed by the proxy and not checked by Atrium, so monitor its expiry there. `/healthz` and `/readyz` are for monitoring tools; `/readyz` answers only `ok` or `not ready`, and the reason is in the log and in `admin_health`.
+*"Show the Atrium health."* (`admin_health`) reports the database, the embedding service, background jobs and tasks, and the licence with its notice. The TLS certificate is managed by the proxy and not checked by Atrium, so monitor its expiry there. `/healthz` and `/readyz` are for monitoring tools; `/readyz` answers only `ok` or `not ready`, and the reason is in the log and in `admin_health`.
+
+### Support information
+
+*"Collect the Atrium support information."* (`admin_support_bundle`) gathers what support needs in one answer: version, release line and build, licence state and notice, health, the versions of Go, Postgres and pgvector, the migration, the database size, counts of users, spaces, entries, skills and audit entries, and the settings of `config.yaml`. It contains **no content, no names of people or spaces and no secrets**: settings appear by a fixed list, without passwords, keys, client IDs, addresses of other systems, allowed domains or the organisation's texts. Read it before you pass it on. Each call is audited as `support_bundle`.
 
 ### Backups
 
@@ -244,6 +248,7 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 Without a licence the instance is the free **Community** edition. A licence is a signed line of text that switches limits and features on, is bound to the host of `instance.base_url`, and is checked **offline**: nothing calls anybody. Ask *"Show the Atrium licence."* (`admin_license action=get`) to see the state (`none`, `valid`, `not covered`, `expired`, `wrong domain`, `invalid`), what the licence covers (features, limits, the maintenance date), the release line of the running build and how many accounts are active against the user limit in force, with a warning when the limit is reached; *"Install this licence: atrium-license-v1.…"* installs one without a restart (after your confirmation), *"Remove the installed licence."* deletes it after telling you how many accounts are active and what the Community limit means for them. Every change is audited (`license_install`, `license_remove`), the licence text itself is not.
 
 - **Maintenance, not an expiry.** A licence carries a date, `maintenance_until`. A build is covered, for ever, when the release line it comes from was released on or before that date. You can run the version you have indefinitely; patch releases of your line are always covered; a **newer line** needs a licence with a later date, which you install once, in the running instance, usually once a year. After an update that says `not covered`, either go back to the covered version or renew the maintenance.
+- **Notice ahead of time.** From 60 days before the end of maintenance, and before the `expires` date of a trial or subscription licence, the licence report, `admin_health` and the server log at start carry a notice with the date. After the end of maintenance the notice stays as a reminder that newer lines need a renewed licence; the running build is not affected.
 - **Nothing is ever blocked.** In every state other than `valid` the instance runs as Community, and the content stays readable and exportable. The one hard limit built so far is the **number of users**: a new account beyond the limit is refused with a message, existing accounts and the administrators in `bootstrap_admins` are never affected. Without a licence that sets it, the Community limit is **8 active accounts** (`license.community_max_users` in `config.yaml`, 0 = unlimited). It counts registered accounts that are active at the same time, not connected assistants; locked accounts (after `admin_offboard_user`) do not count, so offboarding frees the seat, and reactivating needs room again. Administrators from `bootstrap_admins` count but are never refused.
 - **Removing a licence by mistake locks nobody out.** If more accounts are active than the limit then in force (after a removal, an expiry, or an update beyond the maintenance), everybody keeps working; the licence report shows `over_limit` and a warning, and only new accounts and reactivations wait until there is room or a covering licence is installed again.
 - A licence from `license.file` works too; one you install at run time takes precedence.
@@ -361,3 +366,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 **Is there a notification when drafts wait for review?** Not yet. Agree turnaround times with curators.
 
 **I removed the licence and have more users than Community allows. Are they locked out?** No. Every active account keeps working; only new accounts and reactivations are refused until there is room. *"Show the Atrium licence."* shows the active accounts against the limit; installing the licence again lifts it at once.
+
+**What do I send when I ask for support?** The answer of *"Collect the Atrium support information."* (`admin_support_bundle`), the time of the problem and what you asked. It holds no content, names or secrets; read it before you send it.
+
+**How do I know that maintenance is about to end?** The licence report and `admin_health` show a notice from 60 days before, and the server log warns at start. Renew in time if you want the next release line.

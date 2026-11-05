@@ -30,6 +30,8 @@ type licenseView struct {
 	Issued      string           `json:"issued,omitempty"`
 	Maintenance string           `json:"maintenance_until,omitempty"`
 	Expires     string           `json:"expires,omitempty"`
+	// Notice warns ahead of the expiry and the end of maintenance of a valid licence.
+	Notice string `json:"notice,omitempty"`
 }
 
 type licenseOut struct {
@@ -59,7 +61,7 @@ type licenseOut struct {
 func (s *Server) licenseOut(ctx context.Context, msg string) (licenseOut, error) {
 	st := s.License.State()
 	out := licenseOut{Message: msg, CommunityMaxUsers: s.License.CommunityMaxUsers()}
-	out.License = licenseView{Status: string(st.Status), Edition: st.Edition, Detail: st.Detail, Source: s.License.Source()}
+	out.License = licenseView{Status: string(st.Status), Edition: st.Edition, Detail: st.Detail, Source: s.License.Source(), Notice: st.Notice}
 	if c := st.Claims; c != nil {
 		out.License.Licensee, out.License.LicenseID, out.License.Domain = c.Licensee, c.ID, c.Domain
 		out.License.Features, out.License.Limits = c.Features, c.Limits

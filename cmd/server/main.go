@@ -114,6 +114,9 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	}
 	st := licenseMgr.State()
 	log.Info("Edition", "edition", st.Edition, "licence", string(st.Status), "line", product.CurrentLine().Name, "line_date", product.CurrentLine().Coverage().Format("2006-01-02"))
+	if st.Notice != "" {
+		log.Warn("Licence notice", "notice", st.Notice)
+	}
 
 	userStore := users.New(pool, users.Options{BootstrapAdmins: cfg.Auth.BootstrapAdmins, PersonalEnabled: cfg.Spaces.Personal.Enabled, LinkByEmail: cfg.Auth.LinkAccountsByEmail,
 		MaxUsers: licenseMgr.MaxUsers})
@@ -178,13 +181,14 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		mcpserver.Deps{
 			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Quota: quotaStore, License: licenseMgr, Search: searchSvc, Checker: checker,
 			Pool: pool, Jobs: runner, EmbeddingModel: cfg.Embedding.Model, EmbeddingDimensions: cfg.Embedding.Dimensions,
+			SupportConfig: cfg.SupportSummary(),
 			Health: []mcpserver.HealthCheck{
 				{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }},
 				{Name: "embedder", Check: func(ctx context.Context) (string, error) { return cfg.Embedding.Backend, emb.Ping(ctx) }},
 				// Informational: a licence problem never makes the instance unhealthy.
 				{Name: "license", Check: func(context.Context) (string, error) {
 					s := licenseMgr.State()
-					return fmt.Sprintf("%s edition, licence %s. %s", s.Edition, s.Status, s.Detail), nil
+					return strings.TrimSpace(fmt.Sprintf("%s edition, licence %s. %s %s", s.Edition, s.Status, s.Detail, s.Notice)), nil
 				}},
 			},
 		},

@@ -47,6 +47,7 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	}
 	addTool(s, ms, "admin_audit_log", "Query audit log", tierInstanceAdmin, false, s.adminAuditLog)
 	addTool(s, ms, "admin_health", "System health", tierInstanceAdmin, false, s.adminHealth)
+	addTool(s, ms, "admin_support_bundle", "Support information", tierInstanceAdmin, false, s.adminSupportBundle)
 }
 
 // record writes an admin audit event. The action has already happened, so a failure is

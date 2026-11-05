@@ -55,7 +55,8 @@ func TestToolListFollowsRole(t *testing.T) {
 		t.Errorf("space admin: %v", sadmin)
 	}
 	for _, name := range []string{"admin_create_space", "admin_update_space", "admin_archive_space", "admin_restore_space", "admin_list_users",
-		"admin_offboard_user", "admin_transfer_personal_space", "admin_reactivate_user", "admin_groups", "admin_audit_log", "admin_health", "space_members"} {
+		"admin_offboard_user", "admin_transfer_personal_space", "admin_reactivate_user", "admin_groups", "admin_audit_log", "admin_health",
+		"admin_support_bundle", "space_members"} {
 		if !boss[name] {
 			t.Errorf("instance admin without %s", name)
 		}
@@ -793,6 +794,44 @@ func TestAdminHealth(t *testing.T) {
 	}
 	if !names["database"] || !names["tls_certificate"] {
 		t.Errorf("checks: %v", names)
+	}
+}
+
+// The support bundle tells support what runs and how it is set up, without content, names or secrets.
+func TestAdminSupportBundle(t *testing.T) {
+	e := setup(t, 0)
+	e.srv.SupportConfig = map[string]any{"embedding": map[string]any{"backend": "fake"}}
+	e.team(t, "hr-secret", "Layoffs 2027", false, map[string]authz.Role{"anna@x.de": authz.Author})
+	boss, anna := e.session(t, "boss@x.de"), e.session(t, "anna@x.de")
+	e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "Severance terms for Anna", "content": "Confidential plan.", "space": "hr-secret"})
+
+	if res, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_support_bundle"}); err == nil && !res.IsError {
+		t.Fatal("a user got the support bundle")
+	}
+	out := e.mustCall(t, boss, "admin_support_bundle", nil)
+	db := out["database"].(map[string]any)
+	if db["postgres"] == "" || db["pgvector"] == "" || db["migration"].(float64) < 10 {
+		t.Errorf("database: %v", db)
+	}
+	counts := out["counts"].(map[string]any)
+	if counts["users_active"].(float64) < 2 || counts["team_spaces"].(float64) < 1 || counts["entries_approved"].(float64) < 1 {
+		t.Errorf("counts: %v", counts)
+	}
+	if out["product"].(map[string]any)["line"] == "" || out["runtime"].(map[string]any)["go"] == "" {
+		t.Errorf("product/runtime: %v %v", out["product"], out["runtime"])
+	}
+	if out["health"].(map[string]any)["status"] != "ok" || out["configuration"] == nil {
+		t.Errorf("health/configuration: %v %v", out["health"], out["configuration"])
+	}
+	b, _ := json.Marshal(out)
+	for _, private := range []string{"anna@x.de", "boss@x.de", "Layoffs", "hr-secret", "Severance", "Confidential"} {
+		if strings.Contains(string(b), private) {
+			t.Errorf("the support bundle shows %q", private)
+		}
+	}
+	var n int
+	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE action = 'support_bundle'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("audit entries: %d %v", n, err)
 	}
 }
 

@@ -20,6 +20,7 @@ How an instance runs with a licence, and how the owner issues one. The reasons a
 | `status` | `none` (Community), `valid`, `not covered` (this build is newer than the maintenance: the text names the dates), `expired` (the optional `expires` date passed), `wrong domain`, `invalid` (unreadable, unknown signing key, bad signature) |
 | `edition`, `licensee`, `features`, `limits`, `maintenance_until`, `expires` | what the licence says; a limit of 0 is unlimited |
 | `source` | `installed` (by an admin, stored in the database) or `file` (`license.file`) |
+| `notice` | only for a valid licence: from 60 days before the optional `expires` date ("after that the instance runs as Community") and before the end of maintenance ("this build stays covered, newer release lines need a renewed licence"); after the end of maintenance it says so for good. Also in `admin_health` and as a warning in the server log at start |
 | `build` | the version, the **release line** and its date (the date compared with `maintenance_until`), and the commit date for support |
 | `users` | `active` accounts now, the user `limit` in force (the licensed one, else the Community limit; 0 = unlimited) and `over_limit` |
 | `warning` | only when the active accounts have reached the limit: existing accounts keep working, new accounts and reactivations are refused until there is room |
@@ -30,7 +31,7 @@ How an instance runs with a licence, and how the owner issues one. The reasons a
 
 `server_info` shows every user only the edition and the release line. `admin_health` has an informational `license` check that never makes the instance unhealthy.
 
-**Renewal** is installing a new file once the maintenance is extended: at most once a year, in the running instance. Someone who does not want new versions never touches the file again.
+**Renewal** is installing a new file once the maintenance is extended: at most once a year, in the running instance. The `notice` reminds you 60 days ahead. Someone who does not want new versions never touches the file again.
 
 **After an update the licence says `not covered`?** The build is of a line newer than the maintenance. Pro features are off and the limits are the Community ones, all data stays accessible. Go back to the covered version, or renew the maintenance.
 
