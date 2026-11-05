@@ -41,7 +41,7 @@ type Claims struct {
 	ID       string           `json:"id"`
 	Licensee string           `json:"licensee"`
 	Domain   string           `json:"domain"`             // the instance: host of instance.base_url
-	Edition  string           `json:"edition"`            // pro; an unknown edition behaves like Community
+	Edition  string           `json:"edition"`            // a name such as pro or education; it switches nothing, Features and Limits do
 	Features []string         `json:"features,omitempty"` // named switches
 	Limits   map[string]int64 `json:"limits,omitempty"`   // named ceilings, 0 = unlimited; a missing key = the Community default
 	Issued   string           `json:"issued"`             // YYYY-MM-DD
