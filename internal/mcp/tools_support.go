@@ -44,14 +44,21 @@ func (s *Server) adminSupportBundle(ctx context.Context, c *call, _ supportIn) (
 		"goroutines": runtime.NumGoroutine(), "memory_mb": mem.Sys >> 20, "uptime": time.Since(started).Round(time.Second).String()}
 
 	var pgVersion, vectorVersion string
-	var migration, sizeMB int64
+	var sizeMB int64
 	if err := s.Pool.QueryRow(ctx, `SELECT current_setting('server_version'),
        COALESCE((SELECT extversion FROM pg_extension WHERE extname = 'vector'), ''),
-       COALESCE((SELECT max(version_id) FROM goose_db_version WHERE is_applied), 0),
-       pg_database_size(current_database()) / 1048576`).Scan(&pgVersion, &vectorVersion, &migration, &sizeMB); err != nil {
+       pg_database_size(current_database()) / 1048576`).Scan(&pgVersion, &vectorVersion, &sizeMB); err != nil {
 		return supportOut{}, err
 	}
-	out.Database = map[string]any{"postgres": pgVersion, "pgvector": vectorVersion, "migration": migration, "size_mb": sizeMB}
+	out.Database = map[string]any{"postgres": pgVersion, "pgvector": vectorVersion, "size_mb": sizeMB}
+	// With separate database accounts (scripts/db-roles.sql) the application may not read the
+	// migration table; the rest of the bundle is still worth having.
+	var migration int64
+	if err := s.Pool.QueryRow(ctx, `SELECT COALESCE(max(version_id), 0) FROM goose_db_version WHERE is_applied`).Scan(&migration); err != nil {
+		out.Database["migration"] = "not readable by the application account"
+	} else {
+		out.Database["migration"] = migration
+	}
 
 	var usersActive, usersLocked, teamSpaces, teamArchived, personalSpaces, groups int64
 	var entries, drafts, rejected, archived, handoffs, chunks, skills, skillsReleased, auditRows int64

@@ -23,6 +23,7 @@ func (s *Server) registerSpaceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "space_members", "Show members", tierSpaceAdmin, false, s.spaceMembers)
 	addTool(s, ms, "space_add_member", "Add member", tierSpaceAdmin, true, s.spaceAddMember)
 	addTool(s, ms, "space_remove_member", "Remove member", tierSpaceAdmin, true, s.spaceRemoveMember)
+	addTool(s, ms, "reassign_owner", "Reassign responsible person", tierSpaceAdmin, true, s.reassignOwner)
 	s.registerSpaceAdminSkillTools(ms)
 }
 
@@ -118,6 +119,8 @@ type memberInfo struct {
 	Type string `json:"type"` // user | group
 	Name string `json:"name"`
 	Role string `json:"role"`
+	// Former marks a locked account: it keeps its membership but has no rights.
+	Former bool `json:"former,omitempty"`
 }
 
 type spaceMembersOut struct {
@@ -144,7 +147,7 @@ func (s *Server) spaceMembers(ctx context.Context, c *call, in spaceRef) (spaceM
 	out := spaceMembersOut{Space: sp.Name, Slug: sp.Slug, RequiresApproval: sp.RequireApproval,
 		DefaultRole: sp.DefaultRole.String(), Archived: sp.Archived, Members: make([]memberInfo, 0, len(ms))}
 	for _, m := range ms {
-		out.Members = append(out.Members, memberInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String()})
+		out.Members = append(out.Members, memberInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former})
 	}
 	if s.Quota != nil {
 		if qt, err := s.quotaTargetFor(ctx, quota.Space, sp.Name, sp, quota.Overrides{}); err == nil {
@@ -461,7 +464,10 @@ type offboardOut struct {
 	RevokedTokens   int64         `json:"revoked_tokens"`
 	HandoffsDeleted int64         `json:"handoffs_deleted"`
 	Personal        *personalMeta `json:"personal_space,omitempty"`
-	Next            string        `json:"next,omitempty"`
+	// ResponsibleFor counts the entries in team spaces that name the user as responsible person;
+	// they keep the name, marked former, until reassign_owner moves them.
+	ResponsibleFor int    `json:"responsible_for,omitempty"`
+	Next           string `json:"next,omitempty"`
 }
 
 func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) (offboardOut, error) {
@@ -508,6 +514,18 @@ func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) 
 				out.Next += " Without a transfer it is deleted when the period (purge_after) expires."
 			}
 		}
+	}
+	owned, err := s.Docs.OwnedCounts(ctx, u.ID)
+	if err != nil {
+		return offboardOut{}, err
+	}
+	for _, n := range owned {
+		out.ResponsibleFor += n
+	}
+	if out.ResponsibleFor > 0 {
+		hint := fmt.Sprintf("%s is named as responsible person for %d entries; they stay named as former until you reassign them with reassign_owner (from=%s).",
+			u.Email, out.ResponsibleFor, u.Email)
+		out.Next = strings.TrimSpace(out.Next + " " + hint)
 	}
 	s.record(ctx, c.Actor, "admin_offboard_user", nil, map[string]any{"user": u.Email,
 		"revoked_tokens": out.RevokedTokens, "handoffs_deleted": out.HandoffsDeleted})

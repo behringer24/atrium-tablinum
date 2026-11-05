@@ -45,6 +45,9 @@ The role you have can differ from space to space. Your assistant can show your r
 | **Draft** | An entry or skill version waiting for review. Visible only to its author and the curators of the space |
 | **Approved / released** | Reviewed and visible to all readers of the space |
 | **Handoff** | A short summary stored in your personal space so you can continue in another assistant |
+| **Type** | What an entry is: `rule` (binding, set by curators only), `documentation`, `recommendation`, `experience` |
+| **Responsible person** | Who answers for an entry, if somebody named one; marked `former` after they left |
+| **Review date** | The day by which an entry should be checked; an overdue review is shown, nothing is hidden |
 | **Digest** | A SHA-256 fingerprint of a skill version. Reviewers approve a specific digest |
 | **Instance** | One running Atrium for one organisation |
 

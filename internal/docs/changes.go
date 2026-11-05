@@ -26,12 +26,10 @@ func (s *Store) ChangedSince(ctx context.Context, a Actor, spaceIDs []uuid.UUID,
 		limit = 20
 	}
 	sc := a.Scope()
-	rows, err := s.pool.Query(ctx, `
-SELECT d.id, d.space_id, d.kind, d.title, '', d.tags, d.status, COALESCE(d.review_note, ''),
-       d.author_id, au.email::text, d.source, d.version, d.expires_at, d.created_at, d.updated_at,
+	rows, err := s.pool.Query(ctx, `SELECT `+docListColumns+`,
        COALESCE((SELECT min(v.changed_at) FROM document_versions v
                  WHERE v.document_id = d.id AND v.status = 'approved'), d.created_at) >= $5
-FROM documents d JOIN users au ON au.id = d.author_id
+`+docFrom+`
 WHERE `+visibility.Clause("d", 1, 2, 3)+`
   AND d.status = 'approved' AND d.kind = 'knowledge' AND d.space_id = ANY($4::uuid[]) AND d.updated_at >= $5
 ORDER BY d.updated_at DESC LIMIT $6`,
@@ -43,9 +41,7 @@ ORDER BY d.updated_at DESC LIMIT $6`,
 	var out []Change
 	for rows.Next() {
 		var c Change
-		d := &c.Document
-		if err := rows.Scan(&d.ID, &d.SpaceID, &d.Kind, &d.Title, &d.Content, &d.Tags, &d.Status, &d.ReviewNote,
-			&d.AuthorID, &d.AuthorEmail, &d.Source, &d.Version, &d.ExpiresAt, &d.CreatedAt, &d.UpdatedAt, &c.New); err != nil {
+		if err := rows.Scan(append(docTargets(&c.Document), &c.New)...); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

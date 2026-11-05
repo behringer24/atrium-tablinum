@@ -82,6 +82,8 @@ To read a whole entry, the assistant uses `get_knowledge` with the entry's ID fr
 
 To catch up, ask *"What is new in Atrium?"* or *"What changed in Support since Monday?"* (`whats_new`). You get the entries of your team spaces that were published (`new`) or changed (`updated`) since then, by default in the last 7 days, and the skills released in that time. Only what you may read appears; drafts, archived entries and personal spaces never do.
 
+**What kind of entry is it?** Every entry has a **type**: `rule` is binding (a policy, a regulation, a decision that applies; only curators set it), `documentation` describes how things are, `recommendation` is good practice and `experience` is a report of what worked once. Neither of the last two binds you. The assistant names the type when it answers, and you can ask for rules only: *"What are the binding rules on travel in Atrium?"* An entry can also name a **responsible person** to ask (marked `former` when they have left; ask the curators then) and a **review date**; the assistant tells you when the review is overdue.
+
 Good habits:
 
 - Ask the assistant to **name the entry and its date**. Knowledge can be outdated or contradict other entries; the assistant is told to point that out.

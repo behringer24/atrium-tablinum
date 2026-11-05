@@ -74,6 +74,8 @@ Curators change what authors cannot:
 - **Archive outdated entries** (`archive_knowledge`, after confirmation). Archive instead of deleting: nothing is lost, and you or the author can restore it (`unarchive_knowledge`). Find archived entries with `list_knowledge` `status=archived` or `search_knowledge` with `archive=true` (only on request; it searches only the archive).
 - **Move entries** to the right space (`move_knowledge`, after confirmation). In a space with approval, entries moved by non-curators become drafts; an approved entry that you move into a space with approval stays approved if you are a curator there.
 - **Merge duplicates.** Update the better entry, archive the other.
+- **Declare binding rules.** *"Make the entry 'Travel policy' a rule."* (`update_knowledge` with `type=rule`). Only curators and admins of the space set or remove the type `rule`, and from then on only they change the entry, also in spaces without approval, and move it (with curator rights in both spaces). Use it for what really binds; a recommendation is not a rule. Readers' assistants name the type in their answers.
+- **Responsible people and review dates.** Name who answers for an entry (`owner`) and when it is to be checked (`review_due`). *"Which reviews are overdue in Support?"* (`list_knowledge` with `review=due`); `whats_new` shows the count per space you curate. A responsible person who left stays named as `former` until a space admin reassigns the entries.
 - **Restoring**: when an author restores an approved entry in a space with approval, it goes back to review as a draft, so the archive is no way around approval. When a curator restores it, it stays approved.
 
 Permanent deletion of entries is for space admins, for example for personal data that must go.

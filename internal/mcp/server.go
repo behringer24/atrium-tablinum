@@ -324,7 +324,7 @@ func translate(tool string, err error) error {
 	case errors.Is(err, docs.ErrNotFound), errors.Is(err, spaces.ErrNotFound), errors.Is(err, users.ErrNotFound), errors.Is(err, skills.ErrNotFound):
 		return errors.New("not found")
 	case errors.Is(err, docs.ErrForbidden), errors.Is(err, docs.ErrQuota), errors.Is(err, docs.ErrConflict),
-		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, docs.ErrOwnDraft), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
+		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, docs.ErrOwnDraft), errors.Is(err, docs.ErrRule), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
 		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap),
@@ -442,6 +442,8 @@ func denialReason(err error) string {
 		return "role does not allow this"
 	case errors.Is(err, docs.ErrNeedsApproval):
 		return "approval required"
+	case errors.Is(err, docs.ErrRule):
+		return "binding rules are for curators"
 	case errors.Is(err, docs.ErrOwnDraft), errors.Is(err, skills.ErrOwnVersion):
 		return "own version cannot be approved"
 	case errors.Is(err, errNoPermission):

@@ -48,6 +48,10 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 	if dst.ID == src.ID {
 		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("the entry is already in this space"))
 	}
+	// A binding rule moves only with curators on both sides.
+	if cur.Type == TypeRule && (src.Type == "team" && srcRole < authz.Curator || dst.Type == "team" && dstRole < authz.Curator) {
+		return Document{}, ErrRule
+	}
 	if err := s.checkQuota(ctx, dst, 1, int64(len(cur.Content))); err != nil {
 		return Document{}, err
 	}
@@ -66,10 +70,11 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 		return Document{}, ErrConflict
 	}
 	version := locked.Version + 1
-	// Chunks carry no space; search and visibility follow documents.space_id.
+	// Chunks carry no space; search and visibility follow documents.space_id. A personal space has
+	// no responsible person: its owner answers for everything in it.
 	if _, err := tx.Exec(ctx, `UPDATE documents SET space_id = $2, status = $3, review_note = NULL,
-		version = $4, updated_at = now(), updated_by = $5 WHERE id = $1`,
-		p.ID, dst.ID, status, version, a.User.ID); err != nil {
+		version = $4, updated_at = now(), updated_by = $5, owner_id = CASE WHEN $6 THEN NULL ELSE owner_id END WHERE id = $1`,
+		p.ID, dst.ID, status, version, a.User.ID, dst.Type == "personal"); err != nil {
 		return Document{}, err
 	}
 	if err := writeVersion(ctx, tx, p.ID, version, dst.ID, locked.Title, locked.Content, locked.Tags, status, a.User.ID); err != nil {
