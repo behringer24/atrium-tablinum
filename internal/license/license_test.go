@@ -159,3 +159,39 @@ func TestEvaluate(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// A valid licence warns ahead of its expiry and the end of maintenance; the build stays covered.
+func TestNotice(t *testing.T) {
+	line := product.Line{Name: "3.4", Date: day("2022-05-10")}
+	now := day("2026-11-05").Add(15 * time.Hour)
+	base := "https://atrium.example.com"
+	cases := []struct {
+		name, maintenance, expires, want string
+	}{
+		{"far away", "2099-12-31", "", ""},
+		{"maintenance ends in the window", "2026-12-01", "", "Maintenance ends on 2026-12-01 (in 26 days)"},
+		{"maintenance ends at the edge of the window", "2027-01-04", "", "(in 60 days)"},
+		{"maintenance ends after the window", "2027-01-05", "", ""},
+		{"maintenance ends tomorrow", "2026-11-06", "", "(tomorrow)"},
+		{"maintenance ends today", "2026-11-05", "", "(today)"},
+		{"maintenance ended, the build stays covered", "2026-01-01", "", "Maintenance ended on 2026-01-01: this build stays covered"},
+		{"expiry in the window", "2099-12-31", "2026-11-20", "The licence expires on 2026-11-20 (in 15 days)"},
+		{"expiry after the window", "2099-12-31", "2027-06-01", ""},
+	}
+	for _, tc := range cases {
+		c := claims(tc.maintenance)
+		c.Expires = tc.expires
+		st := Evaluate(&c, line, base, now)
+		if st.Status != Valid {
+			t.Fatalf("%s: %s", tc.name, st.Status)
+		}
+		if (tc.want == "") != (st.Notice == "") || !strings.Contains(st.Notice, tc.want) {
+			t.Errorf("%s: notice %q, want %q", tc.name, st.Notice, tc.want)
+		}
+	}
+	// a licence that does not apply has nothing to announce: its detail says why
+	c := claims("2020-01-01")
+	if st := Evaluate(&c, line, base, now); st.Status != NotCovered || st.Notice != "" {
+		t.Errorf("not covered: %s %q", st.Status, st.Notice)
+	}
+}

@@ -93,6 +93,9 @@ type Deps struct {
 	// Embedding describes the configured embedding model for admin_health.
 	EmbeddingModel      string
 	EmbeddingDimensions int
+	// SupportConfig is the part of the configuration admin_support_bundle shows
+	// (config.SupportSummary: settings only, no secrets).
+	SupportConfig map[string]any
 }
 
 // tier is the least role needed to see and call a tool.

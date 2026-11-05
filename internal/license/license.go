@@ -27,6 +27,9 @@ const (
 
 	// Community is the edition without a (covering) licence.
 	Community = "community"
+
+	// NoticeDays is how far ahead a valid licence warns about its expiry and the end of maintenance.
+	NoticeDays = 60
 )
 
 var (
@@ -178,6 +181,9 @@ type State struct {
 	Edition string
 	// Coverage is the date of the build's release line that was compared with MaintenanceUntil.
 	Coverage time.Time
+	// Notice is a sentence for the admin about a date ahead of a valid licence (see notice); empty
+	// when nothing is near.
+	Notice string
 }
 
 // Has reports whether a feature is on: only a valid licence switches features on.
@@ -205,7 +211,7 @@ func (s State) Limit(name string) (int64, bool) {
 
 // Evaluate compares a licence with the release line of this build, the host of the instance and the
 // clock. The coverage rule compares two fixed dates and needs no clock: the build's line date must
-// not be after maintenance_until. Only the optional expires date uses now.
+// not be after maintenance_until. Only the optional expires date and the notice use now.
 func Evaluate(c *Claims, line product.Line, baseURL string, now time.Time) State {
 	st := State{Status: None, Edition: Community, Coverage: line.Coverage()}
 	if c == nil {
@@ -237,7 +243,41 @@ func Evaluate(c *Claims, line product.Line, baseURL string, now time.Time) State
 	}
 	st.Status, st.Edition = Valid, c.Edition
 	st.Detail = fmt.Sprintf("Licensed to %s, edition %s, maintenance until %s.", c.Licensee, c.Edition, c.MaintenanceUntil)
+	st.Notice = notice(maintenance, expires, now)
 	return st
+}
+
+// notice warns ahead of the two dates of a valid licence that matter to an admin: the expiry, after
+// which the instance runs as Community, and the end of maintenance, after which newer release lines
+// are not covered. The running build is never affected by the end of maintenance.
+func notice(maintenance, expires, now time.Time) string {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	days := func(d time.Time) int { return int(d.Sub(today).Hours() / 24) }
+	when := func(n int) string {
+		switch n {
+		case 0:
+			return "today"
+		case 1:
+			return "tomorrow"
+		}
+		return fmt.Sprintf("in %d days", n)
+	}
+	var parts []string
+	if !expires.IsZero() {
+		if n := days(expires); n <= NoticeDays {
+			parts = append(parts, fmt.Sprintf("The licence expires on %s (%s); after that the instance runs as Community.",
+				expires.Format(dateLayout), when(n)))
+		}
+	}
+	switch n := days(maintenance); {
+	case n < 0:
+		parts = append(parts, fmt.Sprintf("Maintenance ended on %s: this build stays covered, release lines dated after that day need a renewed licence.",
+			maintenance.Format(dateLayout)))
+	case n <= NoticeDays:
+		parts = append(parts, fmt.Sprintf("Maintenance ends on %s (%s): this build stays covered, release lines dated after that day need a renewed licence.",
+			maintenance.Format(dateLayout), when(n)))
+	}
+	return strings.Join(parts, " ")
 }
 
 func hostOf(baseURL string) string {
