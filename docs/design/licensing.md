@@ -47,14 +47,14 @@ Limits are protected by the contract (and the friction of patching), Pro feature
 | Area | Community | Pro (candidates) |
 |---|---|---|
 | Knowledge, skills, search, spaces, roles, review, audit log, handoffs, personal spaces | yes | yes |
-| Users | up to a limit (**Open**) | higher or unlimited by licence |
+| Users | up to **8 active accounts** (decided) | higher or unlimited by licence |
 | Spaces, quotas | the built-in defaults, runtime quotas for the instance admin | higher ceilings by licence |
 | Login providers | as today | group synchronisation, SCIM provisioning |
 | Audit | the log in the database | export to a SIEM, hash chain, retention rules |
 | Operations | health, backups | alerts and notifications, multi-instance administration |
 | Support | community | support and SLA (a service, not a feature) |
 
-The list is a menu, not a promise. **Open:** the free limit, which Pro features go first, the price model. **Recommendation:** one hard limit in Community (the number of users), group sync and SCIM first in Pro, support sold alongside as a subscription.
+The list is a menu, not a promise. **Open:** which Pro features go first and the price model (the free limit is decided: 8 active accounts). **Recommendation:** group sync and SCIM first in Pro, support sold alongside as a subscription.
 
 ## The maintenance model
 
@@ -214,7 +214,7 @@ Not engineering tasks; the design depends on them.
 
 | Decision | Recommendation |
 |---|---|
-| The free limit | A user limit as the only hard Community limit; the number set from what a small real team needs (the owner chooses) |
+| The free limit | **Decided: 8 active user accounts**, the only hard Community limit. It counts registered accounts that are active at the same time, not connected assistants; locked accounts do not count; reactivating needs room |
 | First Pro features | Group synchronisation and SCIM, then audit export |
 | Price model | Per instance with a user band, support included; decide after the first customer talks |
 | Maintenance term | One year as the standard, three years and lifetime as options; renewal extends from the old end date |

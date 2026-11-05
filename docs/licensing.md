@@ -4,10 +4,12 @@ How an instance runs with a licence, and how the owner issues one. The reasons a
 
 ## In short
 
-- Without a licence an instance is **Community**: everything works, with the Community limits (`license.community_max_users`, 0 = unlimited by default).
+- Without a licence an instance is **Community**: everything works, with the Community limit: **8 active user accounts** (`license.community_max_users`, default 8, 0 = unlimited).
 - A **licence file** is a signed line of text. An instance admin installs it with `admin_license`, no restart, or it is named in `license.file`. It is checked **offline** against public keys compiled into the binary and never calls anybody.
 - A licence is bound to the **host of `instance.base_url`**, lists **features** and **limits**, and carries **`maintenance_until`**: a build is covered when the release line it was built from is dated on or before that day, **for ever**. New versions released later need a licence with a later date. Patch releases of a covered line are always covered.
 - No licence state ever blocks content: in every state other than `valid` the instance runs as Community, and what is stored stays readable and exportable. A user limit only refuses **new accounts**, never existing ones, and never the administrators in `bootstrap_admins`.
+
+**What counts as a user:** the registered accounts that are **active at the same time**. It is not the number of assistants connected (one user with Claude, ChatGPT and Claude Code is one user). **Locked accounts** (after `admin_offboard_user`) do not count, and accounts are never deleted, so offboarding frees the seat. Reactivating a locked account needs room again, so the limit cannot be passed by offboarding and reactivating. The administrators in `bootstrap_admins` count as active accounts but are never refused, so the limit cannot lock them out.
 
 ## For the instance admin
 

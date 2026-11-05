@@ -31,7 +31,7 @@ func TestParseMinimalAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Instance.ProductName != "Atrium Tablinum" || cfg.Instance.ShortName != "Atrium" || cfg.Instance.Listen != ":8080" {
+	if cfg.Instance.ProductName != "Atrium Tablinum" || cfg.Instance.ShortName != "Atrium" || cfg.Instance.Listen != ":8080" || cfg.License.CommunityMaxUsers != 8 {
 		t.Errorf("defaults missing: %+v", cfg.Instance)
 	}
 	if cfg.Auth.Providers[0].ClientSecret != "s" || cfg.Database.URL != "postgres://x" {

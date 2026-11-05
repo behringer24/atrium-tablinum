@@ -3,6 +3,7 @@ package users_test
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"testing"
 
 	"github.com/behringer24/atrium-tablinum/internal/dbtest"
@@ -252,5 +253,50 @@ func TestUserLimitRefusesNewAccountsOnly(t *testing.T) {
 	limit = 1
 	if err := prov("b", "b@x.de"); err != nil {
 		t.Errorf("an existing account after lowering the limit: %v", err)
+	}
+}
+
+// Reactivating a locked account takes a seat again, so offboarding and reactivating cannot be used to
+// pass the limit; locked accounts do not count while they are locked.
+func TestUserLimitAppliesToReactivation(t *testing.T) {
+	ctx := context.Background()
+	s := users.New(dbtest.NewPool(t), users.Options{BootstrapAdmins: []string{"boss@x.de"}, PersonalEnabled: true, MaxUsers: func() int { return 3 }})
+	prov := func(sub, mail string) users.User {
+		t.Helper()
+		u, err := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: sub, Email: mail})
+		if err != nil {
+			t.Fatalf("%s: %v", mail, err)
+		}
+		return u
+	}
+	a, b := prov("a", "a@x.de"), prov("b", "b@x.de")
+	boss := prov("boss", "boss@x.de") // counts as an active account, but is never refused
+	if err := s.SetActive(ctx, a.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	// the locked account does not count: one seat is free again (b and boss are active)
+	c := prov("c", "c@x.de")
+	// no room for a: b, boss and c are active
+	if err := s.SetActive(ctx, a.ID, true); !errors.Is(err, users.ErrUserLimit) {
+		t.Fatalf("reactivation without room: %v", err)
+	}
+	if err := s.SetActive(ctx, c.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetActive(ctx, a.ID, true); err != nil {
+		t.Fatalf("reactivation with room: %v", err)
+	}
+	// an account that is active already can always be set active again; a bootstrap admin is exempt
+	if err := s.SetActive(ctx, b.ID, true); err != nil {
+		t.Errorf("an active account: %v", err)
+	}
+	if err := s.SetActive(ctx, boss.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetActive(ctx, boss.ID, true); err != nil {
+		t.Errorf("a bootstrap admin is exempt: %v", err)
+	}
+	if err := s.SetActive(ctx, uuid.New(), true); !errors.Is(err, users.ErrNotFound) {
+		t.Errorf("unknown account: %v", err)
 	}
 }
