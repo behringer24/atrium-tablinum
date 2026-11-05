@@ -20,6 +20,10 @@ git push origin v0.1.0
 
 The progress is visible under "Actions" in the repo. The finished package appears under "Packages" and is linked to the repo through the label `org.opencontainers.image.source`.
 
+## Release lines and the licence
+
+Every build knows the release line it belongs to from `internal/product/line.txt` (embedded; the line, the day it was released, optionally an epoch). A licence covers builds whose line is dated on or before its `maintenance_until`, so patch releases of a line carry the date of `X.Y.0`. **When a new line starts, set `line` and `date` in the commit that gets the tag `vX.Y.0`; a patch branch keeps the file and a backport never takes it along.** Forgetting it would give the new line away to every customer of the previous one. The image build also passes the commit date (`BUILD_DATE`), shown by `server_info` for support and never used for licensing. Details: [licensing](licensing.md).
+
 ## Canary builds
 
 Every push to the `dev` branch builds a canary image: the same tests and the same image as a release, but published only as
