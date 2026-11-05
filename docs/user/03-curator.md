@@ -174,7 +174,7 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 - Re-check skills that changed hands or got new versions.
 
 **Quarterly.**
-- Review the content: archive outdated entries, merge duplicates, fix tags.
+- Review the content: archive outdated entries, merge duplicates, fix tags. If the skill `knowledge-lint` is released, *"/knowledge-lint the space Support."* produces a report of outdated entries, duplicates, contradictions, broken references, sensitive content and aged drafts, and fixes what you confirm, one change at a time. It never deletes or approves. In spaces with more than 100 entries it works tag by tag and says what it did not check.
 - Review skills: *"List all skills in Support."* Archive unused ones, ask authors to update old ones. Ask an instance admin for usage figures from the audit log if you want to know which skills are really used.
 - Check that every space with approval has **at least two curators**, so that the four-eyes rule works when someone is away.
 
@@ -212,6 +212,8 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 **Can I publish something I approved earlier?** Yes, as long as it stays approved. The files are re-checked at publication.
 
 **Who can see my review notes?** A note on a returned draft is seen by the author and the curators. A note you add when approving stays on the approved entry or released skill and is visible to all readers, so write nothing there you would not show everybody. The audit log keeps only the decision.
+
+**How do I review the skills shipped with Atrium?** Like any skill: read every file, approve as risk class B (they use tools and write entries only after the user's confirmation), then publish. The one who stored them cannot approve them.
 
 **Does the space need a second curator?** Yes, whenever possible. A single curator can neither approve their own drafts nor their own skill versions.
 

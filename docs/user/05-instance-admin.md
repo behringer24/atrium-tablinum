@@ -188,6 +188,7 @@ Skills are the highest-trust content in Atrium: assistants follow them. Your rol
 - **Configuration** in `config.yaml` (`skills:`): `allow_self_approval` (default off, only for tiny installations). The storage limits for skills are quotas, see [Quotas](#quotas).
 - **Moving** a skill to another space copies only the newest released version as a draft for the target's curators; nothing carries its release along. `move_skill` is for curators; you can do it too.
 - **Personal skills** are private and released by the owner alone. Leavers' personal skills are blocked when a space is converted.
+- **Skills shipped with Atrium:** the repository folder `skills/` holds `knowledge-ingest` (file a source as entries) and `knowledge-lint` (check a space). Atrium never installs them by itself. To offer them, store each folder with `store_skill` in a space everybody reads, have a curator review it as class B and release it; after an update of Atrium store the new files as a new version. Details in [skills/README.md](../../skills/README.md).
 - **Distribution:** assistants load skills through the tools in every client. A client that supports the MCP skills extension (SEP-2640) can load them natively; a ZIP export of a released version is available at `/skills/export/<space>/<skill>`. Which clients use the extension has to be tested per client; the audit log shows which route a client takes (`via`).
 
 Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `skill_block`, `skill_move_*` and `skill_delete` (see below).
