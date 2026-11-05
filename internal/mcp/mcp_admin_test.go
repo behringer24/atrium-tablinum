@@ -16,6 +16,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/license"
 	"github.com/behringer24/atrium-tablinum/internal/product"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
+	"github.com/behringer24/atrium-tablinum/internal/users"
 )
 
 func toolNames(t *testing.T, e *env, cs *mcp.ClientSession) map[string]bool {
@@ -1017,6 +1018,21 @@ func TestAdminLicense(t *testing.T) {
 		l := m["license"].(map[string]any)
 		return l["status"].(string), l
 	}
+	// seats checks the active accounts and the user limit in force shown by the tool
+	seats := func(m map[string]any, limit int, over bool) {
+		t.Helper()
+		var n int
+		if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		u := m["users"].(map[string]any)
+		if u["active"] != float64(n) || u["limit"] != float64(limit) || u["over_limit"] != over {
+			t.Errorf("users: %v, want %d active, limit %d, over %v", u, n, limit, over)
+		}
+		if w, _ := m["warning"].(string); (w != "") != (n >= limit) {
+			t.Errorf("warning with %d active and limit %d: %q", n, limit, w)
+		}
+	}
 
 	// users do not even see the tool; server_info shows only the edition
 	if res, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_license", Arguments: map[string]any{"action": "get"}}); err == nil && !res.IsError {
@@ -1026,9 +1042,11 @@ func TestAdminLicense(t *testing.T) {
 		t.Errorf("server_info: %v", got)
 	}
 
-	if st, _ := view(e.mustCall(t, boss, "admin_license", map[string]any{"action": "get"})); st != "none" {
+	out := e.mustCall(t, boss, "admin_license", map[string]any{"action": "get"})
+	if st, _ := view(out); st != "none" {
 		t.Fatalf("fresh instance: %s", st)
 	}
+	seats(out, 3, false)
 	for name, tc := range map[string]struct {
 		args map[string]any
 		want string
@@ -1044,7 +1062,7 @@ func TestAdminLicense(t *testing.T) {
 		}
 	}
 
-	out := e.mustCall(t, boss, "admin_license", map[string]any{"action": "install", "license": mint("Atrium.Example.com", "2099-12-31"), "confirm": true})
+	out = e.mustCall(t, boss, "admin_license", map[string]any{"action": "install", "license": mint("Atrium.Example.com", "2099-12-31"), "confirm": true})
 	st, l := view(out)
 	if st != "valid" || l["edition"] != "pro" || l["licensee"] != "Example GmbH" || l["source"] != "installed" || l["maintenance_until"] != "2099-12-31" {
 		t.Fatalf("install: %v", out)
@@ -1052,6 +1070,13 @@ func TestAdminLicense(t *testing.T) {
 	if lim := l["limits"].(map[string]any); lim["users"] != float64(50) {
 		t.Errorf("limits: %v", l["limits"])
 	}
+	// accounts created under the licence go beyond the Community limit
+	for _, email := range []string{"carl@x.de", "dora@x.de", "emil@x.de"} {
+		if _, err := e.users.Provision(e.ctx, users.Identity{EmailVerified: true, IDP: "t", Subject: email, Email: email}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seats(e.mustCall(t, boss, "admin_license", map[string]any{"action": "get"}), 50, false)
 	if got := e.mustCall(t, anna, "server_info", map[string]any{}); got["edition"] != "pro" {
 		t.Errorf("server_info after install: %v", got)
 	}
@@ -1060,14 +1085,20 @@ func TestAdminLicense(t *testing.T) {
 	if st, l := view(out); st != "not covered" || !strings.Contains(l["detail"].(string), "2020-01-01") {
 		t.Fatalf("not covering: %v", out)
 	}
-	// the audit log has the changes, the licence text itself is not in it
-	if _, msg := e.call(t, boss, "admin_license", map[string]any{"action": "remove"}); !strings.Contains(msg, "confirm") {
+	seats(out, 3, true)
+	// the question before a removal names what it means for the accounts
+	if _, msg := e.call(t, boss, "admin_license", map[string]any{"action": "remove"}); !strings.Contains(msg, "confirm") || !strings.Contains(msg, "Community allows 3") {
 		t.Errorf("remove without confirmation: %q", msg)
 	}
-	e.mustCall(t, boss, "admin_license", map[string]any{"action": "remove", "confirm": true})
+	out = e.mustCall(t, boss, "admin_license", map[string]any{"action": "remove", "confirm": true})
+	seats(out, 3, true)
+	if w, _ := out["warning"].(string); !strings.Contains(w, "the Community edition allows 3") || !strings.Contains(w, "keep working") {
+		t.Errorf("warning after remove: %q", w)
+	}
 	if st, _ := view(e.mustCall(t, boss, "admin_license", map[string]any{"action": "get"})); st != "none" {
 		t.Errorf("after remove: %s", st)
 	}
+	// the audit log has the changes, the licence text itself is not in it
 	var n int
 	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE action IN ('license_install', 'license_remove')`).Scan(&n); err != nil || n != 3 {
 		t.Errorf("audit entries: %d %v", n, err)

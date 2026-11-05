@@ -277,14 +277,21 @@ func (s *Store) checkRoom(ctx context.Context, id uuid.UUID) error {
 	if wasActive || s.bootstrap[strings.ToLower(email)] {
 		return nil
 	}
-	var n int
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n); err != nil {
+	n, err := s.CountActive(ctx)
+	if err != nil {
 		return err
 	}
 	if n >= max {
 		return ErrUserLimit
 	}
 	return nil
+}
+
+// CountActive returns the number of active accounts, the number the user limit is compared with.
+func (s *Store) CountActive(ctx context.Context) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n)
+	return n, err
 }
 
 // SetActive disables (offboarding) or re-enables an account. Revoking tokens is the
