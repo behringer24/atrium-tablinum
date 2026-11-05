@@ -114,3 +114,27 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # After a successful canary build only the newest three canary versions stay. Whoever runs a canary
+  # takes the risk anyway; a rollback needs one of the last builds, not an archive. Release tags are
+  # never selected. Needs the secret PACKAGES_PAT (see cleanup.yml and docs/release.md).
+  prune:
+    needs: image
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    permissions: {}
+    concurrency:
+      group: prune-canary
+      cancel-in-progress: false
+    steps:
+      - uses: snok/container-retention-policy@d3bdcf5ce9b05f685154e4a16c39233b245e3d53 # v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.PACKAGES_PAT }}
+          image-names: atrium-tablinum
+          image-tags: "canary-*"
+          tag-selection: both
+          # The three newest stay whatever their age; the cut-off only keeps a build that is still being
+          # pushed out of reach.
+          cut-off: 1h
+          keep-n-most-recent: 3
