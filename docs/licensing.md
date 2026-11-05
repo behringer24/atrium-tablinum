@@ -67,7 +67,7 @@ It prints the licence (one line, `atrium-license-v1.…`) to stdout and a summar
 | `-months N`, `-until DATE`, `-lifetime` | `maintenance_until`: N months from today, a date, or 2099-12-31 |
 | `-features`, `-limit name=number` | what it switches on and the ceilings (0 = unlimited); a limit that is not set falls back to the Community default |
 | `-expires DATE` | optional: no effect after this day (trials, subscriptions); leave it out for a normal licence |
-| `-edition` | `pro` by default |
+| `-edition` | the name of the offer, `pro` by default, any other such as `education` (lower case, one word); shown by `server_info` and `admin_license`, it switches nothing by itself: what a licence grants are `-features` and `-limit` |
 
 For a renewal issue a new licence and extend `maintenance_until` from the **previous end date** when the customer renews in time, so that no gap arises. For a kulanz, issue a new file with a later date, free of charge. A whole line can be covered more widely with an **epoch** in `line.txt` (see below).
 

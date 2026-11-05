@@ -200,7 +200,7 @@ func issue(args []string) error {
 	keyPath := fs.String("key", "", "private key file made by genesis")
 	licensee := fs.String("licensee", "", "name of the customer")
 	domain := fs.String("domain", "", "host of the customer's instance.base_url")
-	edition := fs.String("edition", "pro", "edition")
+	edition := fs.String("edition", "pro", "name of the offer, e.g. pro or education (switches nothing; -features and -limit do)")
 	features := fs.String("features", "", "comma separated feature names")
 	months := fs.Int("months", 0, "maintenance for this many months from today")
 	until := fs.String("until", "", "maintenance until this date (YYYY-MM-DD)")

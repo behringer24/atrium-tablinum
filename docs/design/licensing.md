@@ -56,6 +56,8 @@ Limits are protected by the contract (and the friction of patching), Pro feature
 
 The list is a menu, not a promise. **Open:** which Pro features go first and the price model (the free limit is decided: 8 active accounts). **Recommendation:** group sync and SCIM first in Pro, support sold alongside as a subscription.
 
+**Further editions need no code.** An edition is the name of an offer, not a switch: the code only ever asks for a feature (`license.Has("scim")`) or a limit (`users`). An **Education** or non-profit offer is a licence issued with `-edition education` and its own features and limits; who qualifies is settled by the contract, not by the software. Keep edition names lower case and one word, so that the register and the reports stay consistent.
+
 ## The maintenance model
 
 A customer buys **the right to use what they have, forever, and to receive new versions for a period**. This is the usual shape of software that is bought and kept, and it needs no renewal for running software, no revocation and no call home.
@@ -110,7 +112,7 @@ A small signed statement, verified **offline**, much like a JWS: the issuer sign
 | `id` | licence id, for the register and for support |
 | `licensee` | display name of the customer |
 | `domain` | the instance, matched against the host of `instance.base_url` (a stolen file is useless under another domain; a restore onto new hardware keeps working) |
-| `edition` | `pro` (an open string: an unknown edition degrades to Community) |
+| `edition` | the name of the offer, e.g. `pro` or `education`: an open string, shown by `server_info` and `admin_license`, that switches nothing by itself; what a licence grants are its `features` and `limits` |
 | `features` | named switches, e.g. `group_sync`, `scim`, `audit_export` |
 | `limits` | named ceilings, e.g. `users`; a missing key means "the Community default" |
 | `issued`, `maintenance_until` | dates; `maintenance_until` as above |
