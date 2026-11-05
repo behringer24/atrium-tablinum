@@ -88,7 +88,7 @@ func setup(t *testing.T) env {
 
 func (e env) actor(t *testing.T, email string) docs.Actor {
 	t.Helper()
-	u, err := e.users.Provision(e.ctx, users.Identity{IDP: "g", Subject: email, Email: email})
+	u, err := e.users.Provision(e.ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: email, Email: email})
 	if err != nil {
 		t.Fatal(err)
 	}

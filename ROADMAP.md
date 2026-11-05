@@ -22,7 +22,6 @@ The guiding question for all knowledge features: does an assistant find the righ
 - consent page before a new client is connected
 - audit log leaving the database (JSON line on stdout, Postgres role with `INSERT` only, optionally a hash chain) and a retention period
 - `SECURITY.md` with a reporting route, an incident runbook (`docs/incident.md`) and a tool that revokes all tokens of the instance
-- supply chain: pin dependencies and images, `govulncheck` and Dependabot in the build
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
 - confirmation when storing into spaces of others
 
@@ -30,8 +29,7 @@ The guiding question for all knowledge features: does an assistant find the righ
 
 The findings of the second audit (external attack surface, authorisation and integrity) that are fixed are listed in the changelog. Still open:
 
-- **E-mail verification flag for logins:** the identity carries no "verified" information, so `link_accounts_by_email` and `allow_unverified_email` rely on the operator's judgement. Add the flag, refuse linking and the bootstrap-admin grant without it, document Entra as tenant-trusted.
-- **Toolchain and supply chain:** pin the Go toolchain and the build image to a current patch release, add `govulncheck` to the test job, pin GitHub Actions to commit SHAs and scope the `PACKAGES_PAT` token to the package.
+- **Package cleanup token:** `PACKAGES_PAT` is a classic token with `delete:packages`; replace it with a narrower credential as soon as GitHub offers one for container packages.
 - **Authors archiving approved entries** in spaces with approval: apply the same rule as for moving (curators only).
 - **Skill names:** `store_skill` on a name held by someone else's unseen draft attaches a version to it and reveals that it exists; answer like a fresh name or refuse generically, and tie tag rights to the author of the newest published version.
 - **Team space quotas** for skills and knowledge (byte and count limits like the personal ones) and rows per skill in listings, so that one author cannot crowd out a curator's queue.

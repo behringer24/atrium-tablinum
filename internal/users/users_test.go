@@ -17,7 +17,7 @@ func newStore(t *testing.T, personal bool) *users.Store {
 func TestProvisionCreatesUserAndPersonalSpaceOnce(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t, true)
-	id := users.Identity{IDP: "google", Subject: "1", Email: "Anna@x.de", DisplayName: "Anna"}
+	id := users.Identity{EmailVerified: true, IDP: "google", Subject: "1", Email: "Anna@x.de", DisplayName: "Anna"}
 	u1, err := s.Provision(ctx, id)
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestProvisionCreatesUserAndPersonalSpaceOnce(t *testing.T) {
 		t.Fatalf("second login: %+v %v", u2, err)
 	}
 	// A second IdP with the same e-mail does NOT take over the account by default
-	if _, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "anna@X.de"}); !errors.Is(err, users.ErrEmailTaken) {
+	if _, err := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "entra", Subject: "zzz", Email: "anna@X.de"}); !errors.Is(err, users.ErrEmailTaken) {
 		t.Fatalf("second IdP without linking: %v", err)
 	}
 	if all, _ := s.List(ctx); len(all) != 1 {
@@ -42,12 +42,12 @@ func TestLinkByEmailIsOptInAndAudited(t *testing.T) {
 	ctx := context.Background()
 	pool := dbtest.NewPool(t)
 	s := users.New(pool, users.Options{BootstrapAdmins: []string{"boss@x.de"}, PersonalEnabled: true, LinkByEmail: true})
-	first, err := s.Provision(ctx, users.Identity{IDP: "google", Subject: "1", Email: "boss@x.de"})
+	first, err := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "google", Subject: "1", Email: "boss@x.de"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// E-mail matching is case-insensitive and then applies across IdPs
-	linked, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "BOSS@x.de"})
+	linked, err := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "entra", Subject: "zzz", Email: "BOSS@x.de"})
 	if err != nil || linked.ID != first.ID {
 		t.Fatalf("second IdP: %+v %v", linked, err)
 	}
@@ -57,14 +57,14 @@ func TestLinkByEmailIsOptInAndAudited(t *testing.T) {
 	}
 	// A login with a new subject but a known e-mail goes through the e-mail path again;
 	// what matters is that every case appears in the audit log.
-	if _, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "zzz", Email: "boss@x.de"}); err != nil {
+	if _, err := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "entra", Subject: "zzz", Email: "boss@x.de"}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestProvisionWithoutPersonalSpaces(t *testing.T) {
 	s := newStore(t, false)
-	u, err := s.Provision(context.Background(), users.Identity{IDP: "g", Subject: "1", Email: "a@x.de"})
+	u, err := s.Provision(context.Background(), users.Identity{EmailVerified: true, IDP: "g", Subject: "1", Email: "a@x.de"})
 	if err != nil || u.PersonalSpaceID != nil {
 		t.Fatalf("%+v %v", u, err)
 	}
@@ -72,7 +72,7 @@ func TestProvisionWithoutPersonalSpaces(t *testing.T) {
 
 func TestProvisionRejectsIncompleteIdentity(t *testing.T) {
 	s := newStore(t, true)
-	if _, err := s.Provision(context.Background(), users.Identity{IDP: "g", Subject: "1"}); err == nil {
+	if _, err := s.Provision(context.Background(), users.Identity{EmailVerified: true, IDP: "g", Subject: "1"}); err == nil {
 		t.Fatal("without e-mail must be rejected")
 	}
 }
@@ -80,8 +80,8 @@ func TestProvisionRejectsIncompleteIdentity(t *testing.T) {
 func TestBootstrapAndInstanceAdmin(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t, true)
-	boss, _ := s.Provision(ctx, users.Identity{IDP: "g", Subject: "b", Email: "boss@x.de"})
-	anna, _ := s.Provision(ctx, users.Identity{IDP: "g", Subject: "a", Email: "anna@x.de"})
+	boss, _ := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "b", Email: "boss@x.de"})
+	anna, _ := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "anna@x.de"})
 	if !boss.InstanceAdmin || anna.InstanceAdmin {
 		t.Fatal("bootstrap admin wrongly detected")
 	}
@@ -105,7 +105,7 @@ func TestBootstrapAndInstanceAdmin(t *testing.T) {
 func TestDisableAndEnable(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t, true)
-	id := users.Identity{IDP: "g", Subject: "a", Email: "a@x.de"}
+	id := users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "a@x.de"}
 	u, _ := s.Provision(ctx, id)
 	if err := s.SetActive(ctx, u.ID, false); err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestDisableAndEnable(t *testing.T) {
 func TestGroups(t *testing.T) {
 	ctx := context.Background()
 	s := newStore(t, true)
-	u, _ := s.Provision(ctx, users.Identity{IDP: "g", Subject: "a", Email: "a@x.de"})
+	u, _ := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "a@x.de"})
 	g, err := s.CreateGroup(ctx, " Support ")
 	if err != nil || g.Name != "Support" {
 		t.Fatalf("%+v %v", g, err)
@@ -163,7 +163,7 @@ func TestIdPGroupsAreReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, _ := s.Provision(ctx, users.Identity{IDP: "g", Subject: "a", Email: "a@x.de"})
+	u, _ := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "a@x.de"})
 	for name, err := range map[string]error{
 		"add":    s.AddGroupMember(ctx, g.ID, u.ID),
 		"remove": s.RemoveGroupMember(ctx, g.ID, u.ID),
@@ -173,5 +173,44 @@ func TestIdPGroupsAreReadOnly(t *testing.T) {
 		if !errors.Is(err, users.ErrGroupReadOnly) {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// An address nobody vouches for must neither take over an existing account nor claim the
+// account of a bootstrap admin.
+func TestUnverifiedEmailCannotLinkOrBecomeAdmin(t *testing.T) {
+	ctx := context.Background()
+	pool := dbtest.NewPool(t)
+	s := users.New(pool, users.Options{BootstrapAdmins: []string{"boss@x.de"}, PersonalEnabled: true, LinkByEmail: true})
+
+	// The bootstrap admin's address cannot be claimed without verification ...
+	if _, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "attacker", Email: "BOSS@x.de"}); !errors.Is(err, users.ErrEmailUnverified) {
+		t.Fatalf("unverified admin address: %v", err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE email = 'boss@x.de'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("an account was created: %d %v", n, err)
+	}
+	// ... with verification it works.
+	boss, err := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "google", Subject: "1", Email: "boss@x.de"})
+	if err != nil || !boss.InstanceAdmin {
+		t.Fatalf("verified admin: %+v %v", boss, err)
+	}
+
+	// An ordinary account is created unverified, but cannot be taken over by linking.
+	anna, err := s.Provision(ctx, users.Identity{IDP: "oidc", Subject: "a", Email: "anna@x.de"})
+	if err != nil || anna.InstanceAdmin {
+		t.Fatalf("unverified user: %+v %v", anna, err)
+	}
+	if _, err := s.Provision(ctx, users.Identity{IDP: "entra", Subject: "evil", Email: "anna@x.de"}); !errors.Is(err, users.ErrEmailUnverified) {
+		t.Fatalf("unverified link: %v", err)
+	}
+	if _, err := s.Provision(ctx, users.Identity{EmailVerified: true, IDP: "entra", Subject: "annas-entra", Email: "anna@x.de"}); err != nil {
+		t.Fatalf("verified link: %v", err)
+	}
+	// Without the linking option the error stays "taken", verified or not.
+	plain := users.New(pool, users.Options{PersonalEnabled: true})
+	if _, err := plain.Provision(ctx, users.Identity{EmailVerified: true, IDP: "x", Subject: "other", Email: "anna@x.de"}); !errors.Is(err, users.ErrEmailTaken) {
+		t.Fatalf("linking off: %v", err)
 	}
 }

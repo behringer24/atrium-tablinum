@@ -16,3 +16,8 @@ func mapNoRows(err error) error {
 // ErrEmailTaken means the e-mail belongs to an account that was created through another
 // login (provider or subject) and linking by e-mail is not enabled.
 var ErrEmailTaken = errors.New("e-mail belongs to a different login")
+
+// ErrEmailUnverified means the identity provider does not vouch for the e-mail address, and the
+// address is one that carries privileges or belongs to an existing account: linking it to
+// that account, or creating the account of a bootstrap admin, needs a verified address.
+var ErrEmailUnverified = errors.New("e-mail address not verified by the identity provider")

@@ -1,0 +1,16 @@
+# Weekly pull requests for new versions of what the build depends on: GitHub Actions (pinned by
+# commit), Go modules and the base images of the Dockerfile (pinned by digest).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

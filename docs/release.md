@@ -69,6 +69,17 @@ echo "$TOKEN" | docker login ghcr.io -u <benutzer> --password-stdin
 
 Making a package public cannot be undone. This should only happen once license and name are settled.
 
+## Supply chain
+
+What the build depends on is pinned and checked:
+
+- **Go toolchain:** `go.mod` names the patch release (`toolchain go1.26.10`), so a local `go` and the CI use the same one, and the Dockerfile builds with `golang:1.26.10-alpine`. The standard library is part of what you ship: update the patch release when `govulncheck` reports a fix.
+- **Base images** are pinned by tag and digest (`golang:1.26.10-alpine@sha256:...`, `alpine:3.22@sha256:...`). To update one, take the new digest with `docker buildx imagetools inspect <image>`.
+- **GitHub Actions** are pinned to commit SHAs, with the tag in a comment. A moved tag in an action repository cannot run other code in the build. Get a SHA with `git ls-remote --tags https://github.com/<owner>/<repo> refs/tags/<tag>`.
+- **`govulncheck`** runs in the test job of `release.yml` and fails the build when a known vulnerability is reachable from the code. Run it locally with `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`.
+- **Dependabot** (`.github/dependabot.yml`) opens weekly pull requests for Actions, Go modules and base images. Review them like any change; the tests and `govulncheck` run on them.
+- **`PACKAGES_PAT`** (used by `cleanup.yml`) is a classic personal access token with `read:packages` and `delete:packages` only, as GitHub's fine-grained tokens did not cover container packages when this was written. Give it an expiry, rotate it, and keep it only as a repository secret.
+
 ## Notes
 
 - Only the server image is published. Postgres and TEI still come from their vendors.

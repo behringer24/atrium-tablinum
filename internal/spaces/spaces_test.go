@@ -69,7 +69,7 @@ func TestPersonalSpacesAreNotManageable(t *testing.T) {
 	ctx := context.Background()
 	pool := dbtest.NewPool(t)
 	us, ss := users.New(pool, users.Options{PersonalEnabled: true}), spaces.New(pool)
-	u, _ := us.Provision(ctx, users.Identity{IDP: "g", Subject: "a", Email: "a@x.de"})
+	u, _ := us.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "a@x.de"})
 	pid := *u.PersonalSpaceID
 	n := "x"
 	if _, err := ss.Update(ctx, pid, spaces.UpdateParams{Name: &n}); !errors.Is(err, spaces.ErrNotTeam) {
@@ -87,7 +87,7 @@ func TestMembers(t *testing.T) {
 	ctx := context.Background()
 	pool := dbtest.NewPool(t)
 	us, ss := users.New(pool, users.Options{PersonalEnabled: true}), spaces.New(pool)
-	u, _ := us.Provision(ctx, users.Identity{IDP: "g", Subject: "a", Email: "a@x.de"})
+	u, _ := us.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "a@x.de"})
 	g, _ := us.CreateGroup(ctx, "Support")
 	sp, _ := ss.CreateTeam(ctx, spaces.CreateParams{Slug: "support", Name: "Support"})
 

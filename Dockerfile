@@ -1,6 +1,6 @@
 # The build runs on the builder's platform and cross-compiles for the target platform, so that
 # arm64 images are produced without emulating the Go compiler (docker buildx --platform ...).
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS build
 ARG TARGETOS TARGETARCH
 # Release version for server_info; without a value the binary reports "dev".
 ARG VERSION=dev
@@ -11,7 +11,7 @@ COPY . .
 # Migrations are in the binary via go:embed, the image needs no further files.
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X github.com/behringer24/atrium-tablinum/internal/product.Version=${VERSION}" -o /out/atrium-tablinum ./cmd/server
 
-FROM alpine:3.22
+FROM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
 RUN apk add --no-cache ca-certificates tzdata \
     && adduser -D -u 10001 atrium
 USER atrium
