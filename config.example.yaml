@@ -136,9 +136,11 @@ license:
   # A licence file (docs/licensing.md); a licence an instance admin installs at run time with
   # admin_license takes precedence and needs no restart. Without any licence the instance is Community.
   # file: "/etc/atrium/licence.txt"
-  # New accounts beyond this number of active users are refused without a licence that sets a user
-  # limit (existing accounts and bootstrap_admins are never affected). 0 = unlimited.
-  community_max_users: 0
+  # Without a licence that sets a user limit: the number of registered accounts that are active at the
+  # same time (not the assistants that are connected; locked accounts do not count). New accounts
+  # beyond it are refused, and a locked account is reactivated only while there is room; existing
+  # active accounts and bootstrap_admins are never affected. 0 = unlimited.
+  community_max_users: 8
 
 tools:
   descriptions: {}

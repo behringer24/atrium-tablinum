@@ -8,4 +8,8 @@
 #
 # and the lines of the anchors.txt that command writes are pasted below. Public keys are not secret.
 #
-# Until real keys are entered here, no licence verifies and every instance is Community.
+k7700f01e AMiLTONOnNombHsIcVM0HTynmq8Yu3nw6HYRGNrdq+U=
+k4c1fa5a9 71Cyqlw02O0mA+vLzC8GhZeep0oZq7ByO9TpX+IRWiE=
+ke8478501 kthP3KfTlISCrZ0NaIXeCfQ3zvZSTxY49nV5LAXP1SQ=
+kb4c01656 iRnNJR7M+qVI6I6PNzr3eV30i3v4oClP6ZGqiNY4798=
+k5db2c6f9 9VeP4RKhtRD5CM8W1yK5rmLKQtKQlqG5J5vBpTQL98Y=

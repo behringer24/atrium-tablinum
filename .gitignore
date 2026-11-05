@@ -12,3 +12,6 @@ CLAUDE.md
 *.license
 license.txt
 licence.txt
+
+# Built binaries
+*.exe

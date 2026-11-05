@@ -256,12 +256,51 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 	return uid, tx.Commit(ctx)
 }
 
+// checkRoom refuses to reactivate an account when the number of other active accounts has reached the
+// user limit.
+func (s *Store) checkRoom(ctx context.Context, id uuid.UUID) error {
+	if s.maxUsers == nil {
+		return nil
+	}
+	max := s.maxUsers()
+	if max <= 0 {
+		return nil
+	}
+	var email string
+	var wasActive bool
+	if err := s.pool.QueryRow(ctx, `SELECT email, status = 'active' FROM users WHERE id = $1`, id).Scan(&email, &wasActive); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if wasActive || s.bootstrap[strings.ToLower(email)] {
+		return nil
+	}
+	var n int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n); err != nil {
+		return err
+	}
+	if n >= max {
+		return ErrUserLimit
+	}
+	return nil
+}
+
 // SetActive disables (offboarding) or re-enables an account. Revoking tokens is the
 // caller's job (oauth package).
 func (s *Store) SetActive(ctx context.Context, id uuid.UUID, active bool) error {
 	status := "active"
 	if !active {
 		status = "disabled"
+	}
+	if active {
+		// A reactivated account is an active account again: it needs room under the user limit, so
+		// that offboarding and reactivating cannot be used to go beyond it. Administrators from
+		// bootstrap_admins are exempt, as when an account is created.
+		if err := s.checkRoom(ctx, id); err != nil {
+			return err
+		}
 	}
 	tag, err := s.pool.Exec(ctx, `UPDATE users SET status = $2,
 		disabled_at = CASE WHEN $2 = 'disabled' THEN now() ELSE NULL END WHERE id = $1`, id, status)

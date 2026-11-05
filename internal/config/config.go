@@ -210,8 +210,11 @@ type License struct {
 	// File is a licence file; a licence installed by an instance admin at run time (admin_license)
 	// takes precedence. Empty = none.
 	File string `yaml:"file"`
-	// CommunityMaxUsers is the number of active users allowed without a licence that sets a limit;
-	// new accounts beyond it are refused, existing accounts are never affected. 0 = unlimited.
+	// CommunityMaxUsers is the number of active user accounts allowed without a licence that sets a
+	// limit (default 8). It counts registered accounts that are active at the same time, not the
+	// assistants that are connected; locked (offboarded) accounts do not count. New accounts beyond it
+	// are refused and a locked account is reactivated only while there is room; existing active accounts
+	// and the administrators in bootstrap_admins are never affected. 0 = unlimited.
 	CommunityMaxUsers int `yaml:"community_max_users"`
 }
 
@@ -254,7 +257,9 @@ func Defaults() Config {
 			Team:           TeamSpaces{MaxDocuments: 5000, MaxBytes: 200 << 20},
 			HandoffTTLDays: 14,
 		},
-		Skills: Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
+		// The Community edition allows 8 active accounts; a licence lifts it (docs/licensing.md).
+		License: License{CommunityMaxUsers: 8},
+		Skills:  Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
 		Policy: Policy{
 			DuplicateThreshold:       0.90,
 			MaxDocumentBytes:         200000,
