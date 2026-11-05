@@ -12,6 +12,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 - [Users, groups and logins](#users-groups-and-logins)
 - [Leavers: offboarding](#leavers-offboarding)
 - [The context for assistants](#the-context-for-assistants)
+- [Quotas](#quotas)
 - [Governing skills](#governing-skills)
 - [Audit log and monitoring](#audit-log-and-monitoring)
 - [Operating the system](#operating-the-system)
@@ -25,7 +26,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock, reactivate and transfer; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context; query the audit log; check health.
+- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock, reactivate and transfer; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context; query the audit log; set storage limits (quotas); check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -117,7 +118,7 @@ The full procedure and the data protection notes are in [Offboarding](../offboar
 2. **Lock:** *"Offboard anna@example.com."* (`admin_offboard_user`, after confirmation). The account is locked at once, all tokens are revoked, handoffs are deleted. The personal space stays private; you see counts and the deletion date.
 3. **Decide:** `admin_transfer_personal_space` works only for locked accounts.
    - `mode=space` turns the personal space into a **team space** (slug, name, members, for example supervisor as admin, successor as curator). Entries keep IDs and history. **Skills the owner had released alone are blocked** at this point because nobody reviewed them; a space admin lifts a block and a curator releases it again.
-   - `mode=merge` moves the entries into the successor's personal space (their quota applies). You cannot merge into your own space (four-eyes). **Skills are not carried over**: they stay in the old personal space and are deleted with it. Use `mode=space` if skills must survive; they come back blocked and need a new release.
+   - `mode=merge` moves the entries into the successor's personal space (their quota applies, see [Quotas](#quotas)). You cannot merge into your own space (four-eyes). **Skills are not carried over**: they stay in the old personal space and are deleted with it. Use `mode=space` if skills must survive; they come back blocked and need a new release.
 4. **Deadline:** unconverted personal spaces of locked accounts are deleted after `spaces.personal.retention_days_after_offboarding` days (default 30). `admin_reactivate_user` lifts the lock again and ends the deadline.
 
 Document the decision for each leaver and prefer to involve a second person. A transfer makes private content readable for others.
@@ -135,6 +136,44 @@ When an assistant connects, Atrium sends it a text (the MCP instructions): the b
 
 Descriptions of spaces carry the subject scoping; the context carries the general rule.
 
+## Quotas
+
+Every space has storage limits, so that one user or one team cannot fill the database, and a flood of drafts cannot bury a curator's queue. There are five, and `0` always means unlimited:
+
+| Limit | Counts | Default personal space | Default team space |
+|---|---|---|---|
+| `documents` | knowledge entries (drafts included, archived not) | 500 | 5000 |
+| `bytes` | bytes of entries and handoffs | 10 MB | 200 MB |
+| `skills` | skills (archived ones included) | 50 | 300 |
+| `skill_bytes` | bytes of skill files over all versions | 5 MB | 50 MB |
+| `skill_versions` | versions of one skill | 100 | 100 |
+
+The defaults come from `config.yaml` (`spaces.personal`, `spaces.team`, `skills`) and apply to a fresh instance. You change them **at runtime, without a restart**, with `admin_quotas`; a change applies to the next write and survives a restart.
+
+**Four levels, the most specific wins**, each field on its own:
+
+1. **`user`**: one user's personal space, for example a power user who needs more room.
+2. **`space`**: one team space.
+3. **`personal_default`** and **`team_default`**: all personal spaces, all team spaces.
+4. **`config.yaml`**: the built-in default.
+
+What you do:
+
+- *"Show the Atrium quotas."* (`admin_quotas action=get`): the two defaults with where each value comes from (`config` or `runtime default`).
+- *"Show the quota of anna@example.com."* / *"Show the quota of the Support space."* (`scope=user` / `scope=space`): the effective limits, the source of each (`user`, `space`, `runtime default`, `config`) and the current **usage**.
+- *"Raise the limit for anna@example.com to 2000 entries."* (`action=set scope=user documents=2000`, after your confirmation).
+- *"Allow the Support space 20000 entries."*, *"Set the default for all team spaces to 10000 entries."*, *"Make the Engineering space unlimited for skill files."* (`0` = unlimited).
+- *"Remove the override for anna."* (`-1` on a field inherits the next level again).
+
+Every change is recorded as `admin_quota_set` with scope, target and the old and new values. Space admins see the limits and usage of their space with `space_members` and ask you for more room.
+
+Things to know:
+
+- A limit blocks **new** content: lowering it below the current usage does not delete anything, it only refuses further writes.
+- A user's limit applies to their **personal space** only. Team content is limited per space, not per author.
+- A user who hits a limit gets a message with the limit and the hint to ask an instance admin. A good routine is to check `admin_quotas` for the spaces that fill up, before people notice.
+- Moving an entry or merging a leaver's space into a successor's checks the **target's** limits.
+
 ## Governing skills
 
 Skills are the highest-trust content in Atrium: assistants follow them. Your role in governing them is set by these rules (details in [Skills](../skills.md)):
@@ -143,7 +182,7 @@ Skills are the highest-trust content in Atrium: assistants follow them. Your rol
 - **Delete** a skill for good only when nothing else suffices (`delete_skill`); archive or block first. The audit log keeps name, versions and digests.
 - **Self-approval:** you may release your own skills; the audit marks it. Avoid doing so for anything others use. Prefer a second reviewer.
 - **Who may be curator** decides how careful the review is. Appoint people who understand the subject and the risk, and brief them with the [curator guide](03-curator.md).
-- **Configuration** in `config.yaml` (`skills:`): `allow_self_approval` (default off, only for tiny installations), `personal_max_skills` (50), `personal_max_bytes` (5 MB), `max_versions_per_skill` (100); `0` is unlimited.
+- **Configuration** in `config.yaml` (`skills:`): `allow_self_approval` (default off, only for tiny installations). The storage limits for skills are quotas, see [Quotas](#quotas).
 - **Moving** a skill to another space copies only the newest released version as a draft for the target's curators; nothing carries its release along. `move_skill` is for curators; you can do it too.
 - **Personal skills** are private and released by the owner alone. Leavers' personal skills are blocked when a space is converted.
 - **Distribution:** assistants load skills through the tools in every client. A client that supports the MCP skills extension (SEP-2640) can load them natively; a ZIP export of a released version is available at `/skills/export/<space>/<skill>`. Which clients use the extension has to be tested per client; the audit log shows which route a client takes (`via`).
@@ -162,7 +201,7 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `admin_transfer_personal_space`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
-| Instance | `admin_context_set`, `admin_context_clear` |
+| Instance | `admin_context_set`, `admin_context_clear`, `admin_quota_set` (scope, target, old and new values) |
 
 Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
 
@@ -201,7 +240,7 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 
 ### Limits that protect the system
 
-Per user: 120 reads and 20 writes a minute. Per address: 20 client registrations, 60 login steps and 300 token requests a minute. Personal spaces: 500 entries and 10 MB (knowledge), 50 skills and 5 MB (skills), settable in `config.yaml`. The limits per address rely on `trusted_proxies` being right.
+Per user: 120 reads and 20 writes a minute. Per address: 20 client registrations, 60 login steps and 300 token requests a minute. These rates are set in `config.yaml`. The storage limits are [quotas](#quotas) and change at runtime. The limits per address rely on `trusted_proxies` being right.
 
 ### Embedding and search
 
@@ -252,6 +291,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 - Skill review: which skills exist, which are used (audit reads), which are stale; archive what is unused.
 - Test a **restore** of the backup into an empty database.
 - Review the context and space descriptions for accuracy.
+- Look at the usage of spaces that fill up (`admin_quotas`) and adjust the limits before people hit them.
 
 **New space.** Request from a team lead, check purpose and audience, decide approval and default role, name two curators and an admin, create it, announce it.
 

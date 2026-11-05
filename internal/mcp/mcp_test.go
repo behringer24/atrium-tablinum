@@ -20,6 +20,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/dbtest"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -141,6 +142,7 @@ type env struct {
 	srv    *Server
 	users  *users.Store
 	spaces *spaces.Store
+	quota  *quota.Store
 	http   *httptest.Server
 	export *httptest.Server  // the skill export route
 	tokens map[string]string // token -> email
@@ -160,12 +162,13 @@ func setup(t *testing.T, writesPerMinute int) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ds := docs.New(pool, e.spaces, ing, docs.Options{PersonalMaxDocuments: 100, PersonalMaxBytes: 1 << 20, HandoffTTLDays: 14, DuplicateThreshold: 0.9})
+	e.quota = quota.New(pool, quota.Defaults{Personal: quota.Limits{Documents: 100, Bytes: 1 << 20}})
+	ds := docs.New(pool, e.spaces, ing, docs.Options{Quota: e.quota, HandoffTTLDays: 14, DuplicateThreshold: 0.9})
 	sr, err := search.New(pool, fakeEmbedder{}, search.Config{FTSLanguages: langs, CandidatesPerMethod: 50, RRFK: 60, DefaultLimit: 5, MaxLimit: 20, HNSWEfSearch: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{}), Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
+	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{Quota: e.quota}), Quota: e.quota, Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
 		Health: []HealthCheck{{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }}}},
 		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute})
 

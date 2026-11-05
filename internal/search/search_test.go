@@ -74,7 +74,7 @@ func setup(t *testing.T, fail bool) env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.docs = docs.New(pool, e.spaces, ing, docs.Options{PersonalMaxDocuments: 1000, PersonalMaxBytes: 1 << 30, DuplicateThreshold: 0.9})
+	e.docs = docs.New(pool, e.spaces, ing, docs.Options{DuplicateThreshold: 0.9})
 	e.search, err = search.New(pool, fakeEmbedder{fail: fail}, search.Config{
 		FTSLanguages: langs, CandidatesPerMethod: 50, RRFK: 60, DefaultLimit: 5, MaxLimit: 20, HNSWEfSearch: 100,
 	})

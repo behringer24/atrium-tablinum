@@ -136,6 +136,7 @@ func TestValidate(t *testing.T) {
 		{"dev mode needs an explicit token", func(c *Config) { devLocal(c); c.Instance.DevToken = "" }, "dev_token"},
 		{"no providers", func(c *Config) { c.Auth.Providers = nil }, "Identity Provider"},
 		{"no providers dev", func(c *Config) { devLocal(c); c.Auth.Providers = nil }, ""},
+		{"negative team quota", func(c *Config) { c.Spaces.Team.MaxDocuments = -1 }, "quotas"},
 		{"email_trusted on google", func(c *Config) { c.Auth.Providers[0].EmailTrusted = true }, "email_trusted"},
 		{"entra needs tenant", func(c *Config) { c.Auth.Providers[0].Type = "entra" }, "allowed_tenants"},
 		{"google without domains or emails", func(c *Config) { c.Auth.Providers[0].AllowedDomains = nil }, "allowed_emails"},

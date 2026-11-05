@@ -32,7 +32,7 @@ The findings of the second audit (external attack surface, authorisation and int
 - **Package cleanup token:** `PACKAGES_PAT` is a classic token with `delete:packages`; replace it with a narrower credential as soon as GitHub offers one for container packages.
 - **Authors archiving approved entries** in spaces with approval: apply the same rule as for moving (curators only).
 - **Skill names:** `store_skill` on a name held by someone else's unseen draft attaches a version to it and reveals that it exists; answer like a fresh name or refuse generically, and tie tag rights to the author of the newest published version.
-- **Team space quotas** for skills and knowledge (byte and count limits like the personal ones) and rows per skill in listings, so that one author cannot crowd out a curator's queue.
+- **Listings with many versions:** `list_skills`, `skills/list` and the instruction text read versions, not skills, so one skill with many versions can push others out of the first 200 or 500 rows. Select the newest published version per skill in the query.
 - **Denied attempts** (permission errors, rate limits) in the audit log, as the base for abuse detection.
 - **Database roles:** separate migration and runtime accounts, and `INSERT`-only rights on the audit log for the runtime account.
 - **`skills/list`** marks a truncated listing as partial. The front matter parser should require the closing `---` on a line of its own, like common clients do. A client whose `client_name` is shown in `my_sessions` should be marked as data.

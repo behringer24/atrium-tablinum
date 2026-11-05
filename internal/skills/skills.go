@@ -34,6 +34,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/guard"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 )
 
@@ -89,12 +90,9 @@ type Options struct {
 	// AllowSelfApproval lets the author of a version also approve it. Off by default: it is
 	// meant for small installations that have only one curator.
 	AllowSelfApproval bool
-	// PersonalMaxSkills and PersonalMaxBytes limit the skills and the stored file bytes of one
-	// personal space (all versions); 0 = unlimited. MaxVersionsPerSkill limits the versions of
-	// one skill in any space, drafts and blocked ones included; 0 = unlimited.
-	PersonalMaxSkills   int
-	PersonalMaxBytes    int64
-	MaxVersionsPerSkill int
+	// Quota resolves the storage limits of a space (skills, skill bytes, versions per skill);
+	// nil = no limits.
+	Quota *quota.Store
 }
 
 type Store struct {
@@ -1006,11 +1004,25 @@ func (s *Store) SetTags(ctx context.Context, a docs.Actor, skillID uuid.UUID, ta
 
 // ---- quota --------------------------------------------------------------------------
 
-// checkQuota enforces the limits of Options inside the saving transaction, after the skill row
-// is locked. A draft the author revises does not add a version, so it is not counted twice.
+// checkQuota enforces the limits of the space (see package quota: those of the owner in a personal
+// space, the space's own in a team space, each falling back to the runtime and configured
+// defaults) inside the saving transaction, after the skill row is locked. A draft the author
+// revises does not add a version, so it is not counted twice. The limits are read on every call,
+// so a change by an instance admin applies to the next save.
 func (s *Store) checkQuota(ctx context.Context, tx pgx.Tx, sp spaces.Space, skillID, by uuid.UUID, created bool, p prepared) error {
-	quota := func(msg string) error { return fmt.Errorf("%w: %s", ErrQuota, msg) }
-	if max := s.opt.MaxVersionsPerSkill; max > 0 {
+	if s.opt.Quota == nil {
+		return nil
+	}
+	lim, err := s.opt.Quota.Resolve(ctx, sp)
+	if err != nil {
+		return err
+	}
+	where, raise := "this space", " (an instance admin can raise it)"
+	if sp.Type == "personal" {
+		where = "your personal space"
+	}
+	refuse := func(msg string) error { return fmt.Errorf("%w: %s%s", ErrQuota, msg, raise) }
+	if max := lim.SkillVersions; max > 0 {
 		var n int
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM skill_versions WHERE skill_id = $1`, skillID).Scan(&n); err != nil {
 			return err
@@ -1022,23 +1034,20 @@ func (s *Store) checkQuota(ctx context.Context, tx pgx.Tx, sp spaces.Space, skil
 				return err
 			}
 			if !ownDraft {
-				return quota(fmt.Sprintf("this skill has reached the limit of %d versions", max))
+				return refuse(fmt.Sprintf("this skill has reached the limit of %d versions", max))
 			}
 		}
 	}
-	if sp.Type != "personal" {
-		return nil
-	}
-	if max := s.opt.PersonalMaxSkills; max > 0 && created {
+	if max := lim.Skills; max > 0 && created {
 		var n int
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM skills WHERE space_id = $1`, sp.ID).Scan(&n); err != nil {
 			return err
 		}
 		if n > max {
-			return quota(fmt.Sprintf("your personal space is limited to %d skills", max))
+			return refuse(fmt.Sprintf("%s is limited to %d skills", where, max))
 		}
 	}
-	if max := s.opt.PersonalMaxBytes; max > 0 {
+	if max := lim.SkillBytes; max > 0 {
 		var used int64
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(r.size), 0) FROM skill_resources r
 			JOIN skill_versions v ON v.id = r.version_id JOIN skills k ON k.id = v.skill_id WHERE k.space_id = $1`, sp.ID).Scan(&used); err != nil {
@@ -1049,7 +1058,7 @@ func (s *Store) checkQuota(ctx context.Context, tx pgx.Tx, sp spaces.Space, skil
 			add += int64(r.Size)
 		}
 		if used+add > max {
-			return quota(fmt.Sprintf("your personal space is limited to %s of skill files", humanBytes(max)))
+			return refuse(fmt.Sprintf("%s is limited to %s of skill files", where, humanBytes(max)))
 		}
 	}
 	return nil

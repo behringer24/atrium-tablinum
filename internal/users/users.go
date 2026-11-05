@@ -35,8 +35,6 @@ type User struct {
 	InstanceAdmin   bool
 	DefaultSpaceID  *uuid.UUID
 	PersonalSpaceID *uuid.UUID // nil when personal spaces are disabled
-	QuotaDocuments  *int
-	QuotaBytes      *int64
 	LastLoginAt     *time.Time
 	DisabledAt      *time.Time // set while the account is disabled (offboarding)
 	CreatedAt       time.Time
@@ -90,14 +88,14 @@ func (s *Store) changed() {
 
 const userSelect = `
 SELECT u.id, u.email, u.display_name, u.idp, u.idp_subject, u.status = 'active', u.instance_admin,
-       u.default_space_id, u.quota_documents, u.quota_bytes, u.last_login_at, u.disabled_at, u.created_at,
+       u.default_space_id, u.last_login_at, u.disabled_at, u.created_at,
        (SELECT sp.id FROM spaces sp WHERE sp.owner_user_id = u.id AND sp.type = 'personal')
 FROM users u `
 
 func (s *Store) scan(row pgx.Row) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.DisplayName, &u.IDP, &u.Subject, &u.Active, &u.InstanceAdmin,
-		&u.DefaultSpaceID, &u.QuotaDocuments, &u.QuotaBytes, &u.LastLoginAt, &u.DisabledAt, &u.CreatedAt, &u.PersonalSpaceID)
+		&u.DefaultSpaceID, &u.LastLoginAt, &u.DisabledAt, &u.CreatedAt, &u.PersonalSpaceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -282,19 +280,6 @@ func (s *Store) SetInstanceAdmin(ctx context.Context, id uuid.UUID, admin bool) 
 // must have verified that the user may write to that space.
 func (s *Store) SetDefaultSpace(ctx context.Context, userID uuid.UUID, spaceID *uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE users SET default_space_id = $2 WHERE id = $1`, userID, spaceID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// SetQuota overrides the personal-space limits; nil falls back to the config default.
-func (s *Store) SetQuota(ctx context.Context, userID uuid.UUID, documents *int, bytes *int64) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE users SET quota_documents = $2, quota_bytes = $3 WHERE id = $1`,
-		userID, documents, bytes)
 	if err != nil {
 		return err
 	}

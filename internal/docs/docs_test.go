@@ -16,6 +16,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/guard"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
@@ -48,6 +49,7 @@ type env struct {
 	spaces  *spaces.Store
 	checker *authz.Checker
 	docs    *docs.Store
+	quota   *quota.Store
 	pool    *pgxpool.Pool
 }
 
@@ -80,9 +82,9 @@ func setup(t *testing.T) env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.docs = docs.New(pool, e.spaces, ing, docs.Options{
-		PersonalMaxDocuments: 3, PersonalMaxBytes: 5000, HandoffTTLDays: 14, DuplicateThreshold: 0.9,
-	})
+	// 3 entries and 5000 bytes in a personal space, 100 entries in a team space (changeable at runtime).
+	e.quota = quota.New(pool, quota.Defaults{Personal: quota.Limits{Documents: 3, Bytes: 5000}, Team: quota.Limits{Documents: 100}})
+	e.docs = docs.New(pool, e.spaces, ing, docs.Options{Quota: e.quota, HandoffTTLDays: 14, DuplicateThreshold: 0.9})
 	return e
 }
 
@@ -469,18 +471,96 @@ func TestPersonalQuota(t *testing.T) {
 	if !errors.Is(err, docs.ErrQuota) {
 		t.Fatalf("entry limit: %v", err)
 	}
-	// per-user quota overrides the default
-	more := 10
-	if err := e.users.SetQuota(e.ctx, anna.User.ID, &more, nil); err != nil {
+	// a per-user override wins over the default and applies at once, without a restart
+	more := int64(10)
+	if _, _, err := e.quota.Set(e.ctx, quota.User, anna.User.ID, quota.Patch{Documents: &more}, uuid.Nil); err != nil {
 		t.Fatal(err)
 	}
-	anna = e.refresh(t, anna)
 	mustStore(t, e, anna, personal(anna), "T", "vierter")
 	big := strings.Repeat("y", 2000)
 	mustStore(t, e, anna, personal(anna), "T", big)
 	mustStore(t, e, anna, personal(anna), "T", big)
 	if _, err := e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: personal(anna), Title: "T", Content: big, Force: true}); !errors.Is(err, docs.ErrQuota) {
 		t.Fatalf("byte limit: %v", err)
+	}
+}
+
+// Team spaces have limits too, set per space or for all of them, and every change applies to the
+// next write.
+func TestTeamQuotaAndRuntimeChanges(t *testing.T) {
+	e := setup(t)
+	anna := e.actor(t, "anna@x.de")
+	two := int64(2)
+	if _, _, err := e.quota.Set(e.ctx, quota.TeamDefault, uuid.Nil, quota.Patch{Documents: &two}, uuid.Nil); err != nil {
+		t.Fatal(err)
+	}
+	sp := e.team(t, "support", false, authz.None)
+	e.member(t, sp, anna, authz.Author)
+	anna = e.refresh(t, anna)
+	other := e.team(t, "other", false, authz.None)
+	e.member(t, other, anna, authz.Author)
+	anna = e.refresh(t, anna)
+
+	mustStore(t, e, anna, sp.ID, "T", "eins")
+	mustStore(t, e, anna, sp.ID, "T", "zwei")
+	store := func(space uuid.UUID) error {
+		_, err := e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: space, Title: "T", Content: "noch eins", Force: true})
+		return err
+	}
+	err := store(sp.ID)
+	if !errors.Is(err, docs.ErrQuota) || !strings.Contains(err.Error(), "limit of this space is 2") {
+		t.Fatalf("team default: %v", err)
+	}
+	// raising the limit of this space only
+	five := int64(5)
+	if _, _, err := e.quota.Set(e.ctx, quota.Space, sp.ID, quota.Patch{Documents: &five}, uuid.Nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := store(sp.ID); err != nil {
+		t.Fatalf("after raising the space: %v", err)
+	}
+	mustStore(t, e, anna, other.ID, "T", "a")
+	mustStore(t, e, anna, other.ID, "T", "b")
+	if err := store(other.ID); !errors.Is(err, docs.ErrQuota) {
+		t.Fatalf("other space keeps the default: %v", err)
+	}
+	// raising the default of all team spaces, then inheriting it again
+	ten := int64(10)
+	if _, _, err := e.quota.Set(e.ctx, quota.TeamDefault, uuid.Nil, quota.Patch{Documents: &ten}, uuid.Nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := store(other.ID); err != nil {
+		t.Fatalf("after raising all team spaces: %v", err)
+	}
+	// 0 is unlimited, -1 removes the override of the space
+	zero, inherit := int64(0), int64(-1)
+	if _, _, err := e.quota.Set(e.ctx, quota.Space, other.ID, quota.Patch{Documents: &zero}, uuid.Nil); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 15; i++ {
+		if err := store(other.ID); err != nil {
+			t.Fatalf("unlimited: %v", err)
+		}
+	}
+	if _, after, err := e.quota.Set(e.ctx, quota.Space, other.ID, quota.Patch{Documents: &inherit}, uuid.Nil); err != nil || after.Documents != nil {
+		t.Fatalf("inherit again: %+v %v", after, err)
+	}
+	if err := store(other.ID); !errors.Is(err, docs.ErrQuota) {
+		t.Fatalf("back at the default of 10 (the space holds 19): %v", err)
+	}
+	// invalid values are refused
+	bad := int64(-5)
+	if _, _, err := e.quota.Set(e.ctx, quota.Space, sp.ID, quota.Patch{Bytes: &bad}, uuid.Nil); err == nil {
+		t.Error("a value below -1 was accepted")
+	}
+	// resolution reports where a value comes from
+	r, err := e.quota.Resolve(e.ctx, sp)
+	if err != nil || r.Documents != 5 || r.Source["documents"] != "space" || r.Source["bytes"] != "config" {
+		t.Errorf("resolve: %+v %v", r, err)
+	}
+	u, err := e.quota.Usage(e.ctx, sp.ID)
+	if err != nil || u.Documents != 3 {
+		t.Errorf("usage: %+v %v", u, err)
 	}
 }
 
