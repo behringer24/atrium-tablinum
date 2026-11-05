@@ -120,6 +120,9 @@ The full procedure and the data protection notes are in [Offboarding](../offboar
    - `mode=space` turns the personal space into a **team space** (slug, name, members, for example supervisor as admin, successor as curator). Entries keep IDs and history. **Skills the owner had released alone are blocked** at this point because nobody reviewed them; a space admin lifts a block and a curator releases it again.
    - `mode=merge` moves the entries into the successor's personal space (their quota applies, see [Quotas](#quotas)). You cannot merge into your own space (four-eyes). **Skills are not carried over**: they stay in the old personal space and are deleted with it. Use `mode=space` if skills must survive; they come back blocked and need a new release.
 4. **Deadline:** unconverted personal spaces of locked accounts are deleted after `spaces.personal.retention_days_after_offboarding` days (default 30). `admin_reactivate_user` lifts the lock again and ends the deadline.
+5. **Responsibilities:** the answer of `admin_offboard_user` counts the entries that name the person as responsible (`responsible_for`). They keep the name, marked `former`, until somebody takes over: *"Make tom@example.com responsible for everything anna@example.com was responsible for."* (`reassign_owner`; as instance admin it covers all team spaces, space admins do it for their spaces). Spaces the successor cannot read are skipped and reported.
+
+**What stays after a lock.** Nothing is deleted: the account stays, entries keep their author, versions keep who changed them, and memberships stay so that a reactivation restores them. The locked person has no rights at all, and `space_members` and `space_contacts` mark them `former` so that nobody is sent to ask them.
 
 Document the decision for each leaver and prefer to involve a second person. A transfer makes private content readable for others.
 

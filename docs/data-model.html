@@ -233,7 +233,7 @@ code{font-family:var(--f-mono); font-size:11.5px; background:var(--surface-2); b
 /*DATA-START*/
 // Highest migration version this page describes. tools/docs/check-data-model.mjs compares it,
 // and the tables, columns, types, foreign keys and indexes below, with the migrations.
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 const AREAS = [
   {id:"users", name:"Users & groups", h:214},
@@ -355,7 +355,7 @@ const TABLES = [
   "<code>internal/authz</code> takes the highest role from direct membership, group memberships and the space's <code>default_role</code>. The owner of a personal space is its admin.",
   "<code>principal_id</code> points to <code>users</code> or <code>groups</code> depending on <code>principal_type</code> and therefore has no foreign key; the triggers on both tables clean up on delete."]},
 
-{name:"documents", area:"knowledge", mig:[1],
+{name:"documents", area:"knowledge", mig:[1,11],
  purpose:"Knowledge entries (kind = knowledge) and personal handoffs (kind = handoff) with content, tags, approval status and a running version number.",
  code:["internal/docs/write.go","internal/docs/review.go","internal/docs/manage.go","internal/docs/handoff.go","internal/search/search.go","internal/ingest/ingest.go","internal/quota/quota.go"],
  cols:[
@@ -374,22 +374,26 @@ const TABLES = [
   {n:"expires_at", t:"timestamptz"},
   {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
   {n:"updated_at", t:"timestamptz", nn:1, d:"now()"},
-  {n:"updated_by", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"NO ACTION", actor:1}}],
+  {n:"updated_by", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"NO ACTION", actor:1}},
+  {n:"knowledge_type", t:"text", nn:1, d:"'documentation'", m:11, chk:"knowledge_type IN ('rule', 'documentation', 'recommendation', 'experience')"},
+  {n:"owner_id", t:"uuid", m:11, fk:{t:"users", c:"id", del:"NO ACTION"}}],
  pk:"PRIMARY KEY (id)",
  chk:["CHECK (kind = 'knowledge' OR expires_at IS NOT NULL)"],
  idx:[{impl:1, d:"PRIMARY KEY (id)"},
       {n:"documents_space_status_idx", m:"btree", d:"(space_id, status)", mig:1},
       {n:"documents_author_idx", m:"btree", d:"(author_id)", mig:1},
       {n:"documents_tags_idx", m:"GIN", d:"(tags)", mig:1},
-      {n:"documents_expires_idx", m:"btree", d:"(expires_at) WHERE expires_at IS NOT NULL", partial:1, mig:1}],
+      {n:"documents_expires_idx", m:"btree", d:"(expires_at) WHERE expires_at IS NOT NULL", partial:1, mig:1},
+      {n:"documents_owner_idx", m:"btree", d:"(owner_id) WHERE owner_id IS NOT NULL", partial:1, mig:11}],
  notes:[
   "<code>status</code> carries the approval workflow: <code>draft</code> → <code>approved</code> or <code>rejected</code>, plus <code>archived</code>. Curators review with <code>review_knowledge</code>.",
   "Handoffs need an <code>expires_at</code> (CHECK); the hourly task <code>expire_handoffs</code> deletes expired ones (<code>internal/docs/handoff.go</code>).",
   "<code>source</code> is the name of the writing client, <code>'api'</code> without one.",
   "<code>author_id</code> and <code>updated_by</code> have no ON DELETE; an account with entries cannot be hard-deleted, which the code never does anyway.",
-  "Every change also writes a row to <code>document_versions</code>; the search index is in <code>chunks</code>."]},
+  "Every change also writes a row to <code>document_versions</code>; the search index is in <code>chunks</code>.",
+  "Migration 11: <code>knowledge_type</code> says whether an entry is binding (<code>rule</code>, set and changed by curators only), describes (<code>documentation</code>), advises (<code>recommendation</code>) or reports (<code>experience</code>). <code>owner_id</code> names the responsible person (team spaces, explicit, never derived; a locked owner stays named as former until <code>reassign_owner</code> moves the entries). <code>review_due_at</code> is the review date set with <code>review_due</code>. See <code>docs/design/knowledge-metadata.md</code>."]},
 
-{name:"document_versions", area:"knowledge", mig:[1],
+{name:"document_versions", area:"knowledge", mig:[1,11],
  purpose:"Immutable copy of every state of an entry, written on create, update, review, archive and move.",
  code:["internal/docs/write.go","internal/docs/review.go","internal/docs/manage.go","internal/docs/handoff.go","internal/docs/offboard.go"],
  cols:[
@@ -401,7 +405,8 @@ const TABLES = [
   {n:"tags", t:"text[]", nn:1},
   {n:"status", t:"text", nn:1},
   {n:"changed_by", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"NO ACTION", actor:1}},
-  {n:"changed_at", t:"timestamptz", nn:1, d:"now()"}],
+  {n:"changed_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"knowledge_type", t:"text", nn:1, d:"'documentation'", m:11}],
  pk:"PRIMARY KEY (document_id, version)",
  idx:[{impl:1, d:"PRIMARY KEY (document_id, version)"}],
  notes:[

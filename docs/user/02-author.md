@@ -66,6 +66,13 @@ Assistants will quote your entries to colleagues who never saw the chat that pro
 
 A good prompt to your assistant: *"Summarise this chat as a self-contained Atrium entry with a searchable title, date, owner and tags, then show it to me before filing."*
 
+### Type, responsible person and review date
+
+- **Type** (`type`): say what the entry is. *"File this as a recommendation"*, *"… as an experience report"*; without it the entry is `documentation`. **Binding rules (`rule`) are set only by curators and admins of the space**, and once an entry is a rule only they change it, in every space. If you write something that should be binding, file it as documentation and ask a curator to make it a rule.
+- **Responsible person** (`owner`): *"… and make maria@example.com responsible for it."* Only in team spaces, only somebody who has logged in, is not locked and can read the space. Nobody is made responsible implicitly: the author is not the responsible person unless named.
+- **Review date** (`review_due`): *"… review by 2027-06-30."* Readers see when the review is overdue, and curators see how many are. Nothing is hidden or deleted when the date passes.
+- Changing only the responsible person or the review date creates no new version and does not show up as a change in `whats_new`.
+
 ## Drafts and approval
 
 Spaces can require approval. Then everything an author files is a **draft** until a curator approves it. Readers see only approved entries.

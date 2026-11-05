@@ -63,9 +63,9 @@ FROM documents WHERE space_id = $1 AND kind = 'knowledge' AND status <> 'archive
 WITH moved AS (
   UPDATE documents SET space_id = $2, version = version + 1, review_note = NULL, updated_at = now(), updated_by = $3
   WHERE space_id = $1 AND kind = 'knowledge'
-  RETURNING id, version, title, content, tags, status)
-INSERT INTO document_versions (document_id, version, space_id, title, content, tags, status, changed_by)
-SELECT id, version, $2, title, content, tags, status, $3 FROM moved`, from, *to.PersonalSpaceID, by)
+  RETURNING id, version, title, content, tags, status, knowledge_type)
+INSERT INTO document_versions (document_id, version, space_id, title, content, tags, status, changed_by, knowledge_type)
+SELECT id, version, $2, title, content, tags, status, $3, knowledge_type FROM moved`, from, *to.PersonalSpaceID, by)
 	if err != nil {
 		return 0, err
 	}

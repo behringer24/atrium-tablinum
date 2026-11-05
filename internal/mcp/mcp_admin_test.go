@@ -51,7 +51,7 @@ func TestToolListFollowsRole(t *testing.T) {
 		t.Error("space admin and instance admin without review_knowledge")
 	}
 	// Admin of one's own personal space is not enough for space admin tools (see 'plain')
-	if !sadmin["space_members"] || !sadmin["space_add_member"] || !sadmin["space_remove_member"] || sadmin["admin_create_space"] || sadmin["admin_update_space"] || sadmin["admin_audit_log"] {
+	if !sadmin["space_members"] || !sadmin["space_add_member"] || !sadmin["space_remove_member"] || !sadmin["reassign_owner"] || sadmin["admin_create_space"] || sadmin["admin_update_space"] || sadmin["admin_audit_log"] {
 		t.Errorf("space admin: %v", sadmin)
 	}
 	for _, name := range []string{"admin_create_space", "admin_update_space", "admin_archive_space", "admin_restore_space", "admin_list_users",

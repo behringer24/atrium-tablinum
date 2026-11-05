@@ -19,6 +19,9 @@ type Member struct {
 	PrincipalID   uuid.UUID
 	Name          string // user e-mail or group name
 	Role          authz.Role
+	// Former is true for a locked user account (offboarding): it keeps its membership, so that a
+	// reactivation restores it, but has no rights.
+	Former bool
 }
 
 // SetMember adds a user or group to a team space or changes its role. Because
@@ -76,12 +79,12 @@ func (s *Store) RemoveMember(ctx context.Context, space uuid.UUID, principalType
 // Members lists the explicit memberships of a space (not default_role access).
 func (s *Store) Members(ctx context.Context, space uuid.UUID) ([]Member, error) {
 	rows, err := s.pool.Query(ctx, `
-SELECT m.principal_type, m.principal_id, COALESCE(u.email::text, g.name, ''), m.role
+SELECT m.principal_type, m.principal_id, COALESCE(u.email::text, g.name, ''), m.role, COALESCE(u.status <> 'active', false)
 FROM space_members m
 LEFT JOIN users  u ON m.principal_type = 'user'  AND u.id = m.principal_id
 LEFT JOIN groups g ON m.principal_type = 'group' AND g.id = m.principal_id
 WHERE m.space_id = $1
-ORDER BY m.principal_type DESC, 3`, space)
+ORDER BY m.principal_type DESC, 5, 3`, space)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +95,7 @@ ORDER BY m.principal_type DESC, 3`, space)
 			m    Member
 			role string
 		)
-		if err := rows.Scan(&m.PrincipalType, &m.PrincipalID, &m.Name, &role); err != nil {
+		if err := rows.Scan(&m.PrincipalType, &m.PrincipalID, &m.Name, &role, &m.Former); err != nil {
 			return nil, err
 		}
 		m.Role, _ = authz.ParseRole(role)

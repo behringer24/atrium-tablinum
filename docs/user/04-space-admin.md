@@ -119,9 +119,10 @@ Ask an instance admin when you need to:
 **Changing someone's role.** Add them again with the new role. For promotion to curator, check that they know the review rules ([curator guide](03-curator.md)).
 
 **When someone leaves the team.**
-1. Remove them from the space.
-2. If they leave the organisation, an instance admin locks the account and decides about their personal space ([Offboarding](../offboarding.md)). Ask them to move team knowledge out of their personal space first.
-3. Check that the space still has two curators and an admin.
+1. Hand over what they answer for: *"Which entries in Support is maria@example.com responsible for?"* (`list_knowledge` with `owner`), then *"Make tom@example.com responsible for everything maria@example.com was responsible for."* (`reassign_owner`, after your confirmation; the first answer tells you how many entries are concerned). Without a space it covers all spaces you administer. The new person must be active and able to read the space; entries in spaces they cannot read are left as they are and reported. No new versions are written; the audit log records `owner_reassign`.
+2. Remove them from the space.
+3. If they leave the organisation, an instance admin locks the account and decides about their personal space ([Offboarding](../offboarding.md)). Ask them to move team knowledge out of their personal space first. Locked people stay members (so that a reactivation restores everything) but have no rights; `space_members` and `space_contacts` mark them `former`. Entries that name them as responsible keep the name, marked `former`, until you reassign them.
+4. Check that the space still has two **active** curators and an admin.
 
 **Quarterly access review.**
 1. *"Who is in each of my spaces?"* Compare with the current team.

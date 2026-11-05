@@ -10,7 +10,7 @@ An entry in a team space has one of four states: `draft`, `approved`, `rejected`
 
 ## Reviewing
 
-Curators and admins of a space (instance admins in any team space) see the tool `review_knowledge`. Pending drafts are found with `list_knowledge` and `status=draft`; `whats_new` shows how many wait in each space the caller curates.
+Curators and admins of a space (instance admins in any team space) see the tool `review_knowledge`. Binding rules (`type=rule`) are set, changed and moved only by curators and admins of the space, in spaces with and without approval (see [knowledge types](design/knowledge-metadata.md)). Pending drafts are found with `list_knowledge` and `status=draft`; `whats_new` shows how many wait in each space the caller curates.
 
 1. Load and read the draft with `get_knowledge`.
 2. `review_knowledge` with `decision=approve` approves it. This makes it visible to all readers of the space and therefore needs `confirm=true` after asking the user.

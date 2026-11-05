@@ -29,6 +29,27 @@ type StoreParams struct {
 	// others see it (for example an admin writing for a field outside their own). Only team
 	// spaces have drafts. Authors of approval spaces get drafts anyway.
 	Draft bool
+	// Type is the knowledge type (empty: documentation); rule needs a curator in a team space.
+	Type string
+	// OwnerID names the responsible person (team spaces only); the caller checked that they are
+	// active and can read the space. ReviewDue is the review date.
+	OwnerID   *uuid.UUID
+	ReviewDue *time.Time
+}
+
+// checkMeta applies the rules for type, responsible person and review date of an entry in sp,
+// written by an actor with role.
+func checkMeta(sp spaces.Space, role authz.Role, typ string, owner *uuid.UUID) error {
+	if !ValidType(typ) {
+		return errors.Join(ingest.ErrInvalid, errors.New("type must be rule, documentation, recommendation or experience"))
+	}
+	if typ == TypeRule && sp.Type == "team" && role < authz.Curator {
+		return ErrRule
+	}
+	if owner != nil && sp.Type != "team" {
+		return errors.Join(ingest.ErrInvalid, errors.New("a responsible person can be named in team spaces only"))
+	}
+	return nil
 }
 
 // StoreResult holds either the stored document or, when similar entries exist and Force
@@ -86,6 +107,12 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 	if p.Draft && sp.Type == "personal" {
 		return StoreResult{}, errors.Join(ingest.ErrInvalid, errors.New("drafts exist only in team spaces"))
 	}
+	if p.Type == "" {
+		p.Type = TypeDocumentation
+	}
+	if err := checkMeta(sp, role, p.Type, p.OwnerID); err != nil {
+		return StoreResult{}, err
+	}
 	n, err := s.ing.Validate(p.Title, p.Content, p.Tags)
 	if err != nil {
 		return StoreResult{}, err
@@ -116,9 +143,9 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 
 	var id uuid.UUID
 	err = tx.QueryRow(ctx, `
-INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by)
-VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6) RETURNING id`,
-		sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID, source(a)).Scan(&id)
+INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type, owner_id, review_due_at)
+VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10) RETURNING id`,
+		sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID, source(a), p.Type, p.OwnerID, p.ReviewDue).Scan(&id)
 	if err != nil {
 		return StoreResult{}, err
 	}
@@ -128,7 +155,7 @@ VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6) RETURNING id`,
 	if err := s.ing.ReplaceChunks(ctx, tx, id, prep); err != nil {
 		return StoreResult{}, err
 	}
-	if err := record(ctx, tx, a, "store", sp, id, map[string]any{"status": status}); err != nil {
+	if err := record(ctx, tx, a, "store", sp, id, map[string]any{"status": status, "type": p.Type}); err != nil {
 		return StoreResult{}, err
 	}
 	doc, err := fetch(ctx, tx, a, id, false)
@@ -143,6 +170,19 @@ type UpdateParams struct {
 	Title   *string
 	Content *string
 	Tags    *[]string
+	Type    *string
+	// OwnerID names a new responsible person, ClearOwner removes the one named; the caller checked
+	// that a new person is active and can read the space. ReviewDue and ClearReviewDue likewise.
+	OwnerID        *uuid.UUID
+	ClearOwner     bool
+	ReviewDue      *time.Time
+	ClearReviewDue bool
+}
+
+// metaOnly reports whether p changes only the responsible person or the review date: neither
+// says anything new about the content, so no version is written and the entry is not re-indexed.
+func (p UpdateParams) metaOnly() bool {
+	return p.Title == nil && p.Content == nil && p.Tags == nil && p.Type == nil
 }
 
 // canEdit: own entries need author, foreign entries need curator.
@@ -157,7 +197,9 @@ func canEdit(a Actor, d Document) error {
 	return ErrForbidden
 }
 
-// Update replaces title, content and/or tags and re-indexes the entry.
+// Update replaces title, content, tags and/or type, re-indexes the entry if its text changed, and
+// sets or clears the responsible person and the review date. A change of only the latter two
+// writes no version.
 func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, error) {
 	cur, err := fetch(ctx, s.pool, a, p.ID, false)
 	if err != nil {
@@ -173,8 +215,12 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	if err != nil {
 		return Document{}, err
 	}
+	// A binding rule is the curators' business, whatever is changed about it.
+	if cur.Type == TypeRule && sp.Type == "team" && role < authz.Curator {
+		return Document{}, ErrRule
+	}
 
-	title, content, tags := cur.Title, cur.Content, cur.Tags
+	title, content, tags, typ := cur.Title, cur.Content, cur.Tags, cur.Type
 	if p.Title != nil {
 		title = *p.Title
 	}
@@ -183,6 +229,19 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	}
 	if p.Tags != nil {
 		tags = *p.Tags
+	}
+	if p.Type != nil {
+		typ = *p.Type
+	}
+	owner, reviewDue := cur.OwnerID, cur.ReviewDue
+	if p.OwnerID != nil || p.ClearOwner {
+		owner = p.OwnerID
+	}
+	if p.ReviewDue != nil || p.ClearReviewDue {
+		reviewDue = p.ReviewDue
+	}
+	if err := checkMeta(sp, role, typ, p.OwnerID); err != nil {
+		return Document{}, err
 	}
 	n, err := s.ing.Validate(title, content, tags)
 	if err != nil {
@@ -199,14 +258,21 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 		}
 		status = "draft" // an author revising their own draft or rejected entry
 	}
+	if p.metaOnly() {
+		return s.updateMeta(ctx, a, sp, cur, owner, reviewDue)
+	}
 	if delta := int64(len(n.Content) - len(cur.Content)); delta > 0 {
 		if err := s.checkQuota(ctx, sp, 0, delta); err != nil {
 			return Document{}, err
 		}
 	}
-	prep, err := s.ing.Prepare(ctx, n.Title, n.Content)
-	if err != nil {
-		return Document{}, err
+	// The index depends on title and content only; tags and type need no new embeddings.
+	reindex := n.Title != cur.Title || n.Content != cur.Content
+	var prep ingest.Prepared
+	if reindex {
+		if prep, err = s.ing.Prepare(ctx, n.Title, n.Content); err != nil {
+			return Document{}, err
+		}
 	}
 
 	tx, err := s.pool.Begin(ctx)
@@ -224,17 +290,23 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	version := locked.Version + 1
 	if _, err := tx.Exec(ctx, `UPDATE documents SET title = $2, content = $3, tags = $4, status = $5,
 		review_note = CASE WHEN $5 = 'draft' THEN NULL ELSE review_note END,
-		version = $6, updated_at = now(), updated_by = $7 WHERE id = $1`,
-		p.ID, n.Title, n.Content, n.Tags, status, version, a.User.ID); err != nil {
+		version = $6, updated_at = now(), updated_by = $7, knowledge_type = $8, owner_id = $9, review_due_at = $10 WHERE id = $1`,
+		p.ID, n.Title, n.Content, n.Tags, status, version, a.User.ID, typ, owner, reviewDue); err != nil {
 		return Document{}, err
 	}
 	if err := writeVersion(ctx, tx, p.ID, version, sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID); err != nil {
 		return Document{}, err
 	}
-	if err := s.ing.ReplaceChunks(ctx, tx, p.ID, prep); err != nil {
-		return Document{}, err
+	if reindex {
+		if err := s.ing.ReplaceChunks(ctx, tx, p.ID, prep); err != nil {
+			return Document{}, err
+		}
 	}
-	if err := record(ctx, tx, a, "update", sp, p.ID, map[string]any{"version": version}); err != nil {
+	details := map[string]any{"version": version}
+	if typ != cur.Type {
+		details["type"] = typ
+	}
+	if err := record(ctx, tx, a, "update", sp, p.ID, details); err != nil {
 		return Document{}, err
 	}
 	doc, err := fetch(ctx, tx, a, p.ID, false)
@@ -347,9 +419,11 @@ func (s *Store) Unarchive(ctx context.Context, a Actor, id uuid.UUID) (Document,
 	return doc, tx.Commit(ctx)
 }
 
+// writeVersion records a state of an entry. The knowledge type is taken from the entry as it is in
+// this transaction, so every caller writes the version after changing the entry.
 func writeVersion(ctx context.Context, tx pgx.Tx, id uuid.UUID, version int, space uuid.UUID, title, content string, tags []string, status string, by uuid.UUID) error {
-	_, err := tx.Exec(ctx, `INSERT INTO document_versions (document_id, version, space_id, title, content, tags, status, changed_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, id, version, space, title, content, tags, status, by)
+	_, err := tx.Exec(ctx, `INSERT INTO document_versions (document_id, version, space_id, title, content, tags, status, changed_by, knowledge_type)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8, knowledge_type FROM documents WHERE id = $1`, id, version, space, title, content, tags, status, by)
 	return err
 }
 

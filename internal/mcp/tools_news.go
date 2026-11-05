@@ -26,6 +26,7 @@ type newsEntry struct {
 	Title   string   `json:"title"`
 	Space   string   `json:"space"`
 	Change  string   `json:"change"` // new | updated
+	Type    string   `json:"type"`
 	Author  string   `json:"author"`
 	Version int      `json:"version"`
 	Updated string   `json:"updated"`
@@ -44,6 +45,8 @@ type reviewWait struct {
 	Space   string `json:"space"`
 	Entries int    `json:"entries"`
 	Skills  int    `json:"skills"`
+	// ReviewsDue counts the approved entries whose review date has passed.
+	ReviewsDue int `json:"reviews_due"`
 }
 
 type newsOut struct {
@@ -122,7 +125,7 @@ func (s *Server) whatsNew(ctx context.Context, c *call, in newsIn) (newsOut, err
 		if tags == nil {
 			tags = []string{}
 		}
-		out.Entries = append(out.Entries, newsEntry{ID: ch.ID.String(), Title: ch.Title, Space: names[ch.SpaceID], Change: kind,
+		out.Entries = append(out.Entries, newsEntry{ID: ch.ID.String(), Title: ch.Title, Space: names[ch.SpaceID], Change: kind, Type: ch.Type,
 			Author: ch.AuthorEmail, Version: ch.Version, Updated: ch.UpdatedAt.Format(time.RFC3339), Tags: tags})
 	}
 	waiting := map[uuid.UUID]*reviewWait{}
@@ -138,6 +141,13 @@ func (s *Server) whatsNew(ctx context.Context, c *call, in newsIn) (newsOut, err
 	}
 	for id, n := range drafts {
 		wait(id).Entries = n
+	}
+	due, err := s.Docs.ReviewsDueCounts(ctx, a, ids)
+	if err != nil {
+		return newsOut{}, err
+	}
+	for id, n := range due {
+		wait(id).ReviewsDue = n
 	}
 	if s.Skills != nil {
 		releases, err := s.Skills.ReleasedSince(ctx, a, ids, since, in.Limit)
