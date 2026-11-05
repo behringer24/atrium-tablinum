@@ -1,14 +1,13 @@
-# Retention for the container package: every push to dev leaves a canary-<short sha> version
-# (plus untagged per-platform images) behind. This keeps the newest ones and removes the
-# rest. Release tags (1.2.3, 1.2, 1, latest) are never selected. Description: docs/release.md
+# Manual retention for the container package. Every successful canary build already prunes itself
+# (job "prune" in release.yml, keeping the newest three canary-<short sha> versions); this workflow
+# is for a dry run to see what would go, or for cleaning up by hand. Release tags (1.2.3, 1.2, 1,
+# latest) are never selected. Description: docs/release.md
 #
 # Needs the secret PACKAGES_PAT: a classic personal access token with the scopes
 # read:packages and delete:packages (wildcards in image-tags do not work with GITHUB_TOKEN).
 name: cleanup
 
 on:
-  schedule:
-    - cron: "17 3 * * 1" # Mondays
   workflow_dispatch:
     inputs:
       dry-run:
@@ -17,6 +16,10 @@ on:
         default: true
 
 permissions: {}
+
+concurrency:
+  group: prune-canary
+  cancel-in-progress: false
 
 jobs:
   canary:
@@ -29,9 +32,6 @@ jobs:
           image-names: atrium-tablinum
           image-tags: "canary-*"
           tag-selection: both
-          cut-off: 1w
-          keep-n-most-recent: 10
-          # Scheduled runs only list what they would delete. After a manual dry run has been
-          # checked, replace 'true' below with 'false' so the weekly run really deletes
-          # (see docs/release.md).
-          dry-run: ${{ github.event_name != 'workflow_dispatch' && 'false' || inputs.dry-run }}
+          cut-off: 1h
+          keep-n-most-recent: 3
+          dry-run: ${{ inputs.dry-run }}
