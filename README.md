@@ -24,6 +24,8 @@ Releases and the prebuilt image from the GitHub Container Registry: [docs/releas
 
 The embedding backend is selectable: your own TEI server, OpenAI and compatible services, or Amazon Bedrock. Settings, memory requirements and data protection: [docs/embedding.md](docs/embedding.md).
 
+**User guides** for every group of users (everyday use, authors, curators, space admins, instance admins), with FAQs and as PDF: [docs/user/README.md](docs/user/README.md).
+
 Drafts, mandatory approval and review by curators: [docs/approval.md](docs/approval.md).
 
 Company-wide skills (approved working instructions for assistants) with their own review and immutable versions: [docs/skills.md](docs/skills.md).
