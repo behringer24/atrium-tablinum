@@ -670,10 +670,14 @@ func TestArchiveListAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	asDraft := mustStore(t, e, author, sp.ID, "Noch Entwurf", "inhalt")
+	// An author cannot take an approved entry of a space with approval away from the readers.
+	if err := e.docs.Archive(e.ctx, author, byAuthor.ID); !errors.Is(err, docs.ErrNeedsApproval) {
+		t.Fatalf("author archives an approved entry: %v", err)
+	}
 	for _, c := range []struct {
 		a  docs.Actor
 		id uuid.UUID
-	}{{curator, byCurator.ID}, {author, byAuthor.ID}, {author, asDraft.ID}} {
+	}{{curator, byCurator.ID}, {curator, byAuthor.ID}, {author, asDraft.ID}} {
 		if err := e.docs.Archive(e.ctx, c.a, c.id); err != nil {
 			t.Fatal(err)
 		}

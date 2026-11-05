@@ -19,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/behringer24/atrium-tablinum/internal/allowlist"
+	"github.com/behringer24/atrium-tablinum/internal/audit"
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/guard"
@@ -106,7 +107,11 @@ type Server struct {
 	set     Settings
 	limiter *limiter
 	reads   *limiter
-	desc    map[string]string // rendered descriptions
+
+	// deniedAt remembers when a refusal was last audited (see denied).
+	deniedMu sync.Mutex
+	deniedAt map[string]time.Time
+	desc     map[string]string // rendered descriptions
 }
 
 func New(d Deps, set Settings) *Server {
@@ -241,17 +246,24 @@ func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tie
 				slog.Error("Roles could not be determined", "tool", name, "error", err)
 				return nil, zero, errors.New("internal error")
 			}
+			client := clientName(req)
 			if !s.allowed(ctx, min, docs.Actor{User: u, Roles: roles}) {
+				s.denied(ctx, u, client, name, "no permission for this tool")
 				return nil, zero, errNoPermission
 			}
 			if write && !s.limiter.allow(u.ID) {
+				s.denied(ctx, u, client, name, "write rate limit")
 				return nil, zero, errors.New("too many write operations in a short time, please try again in a minute")
 			}
 			if !write && !s.reads.allow(u.ID) {
+				s.denied(ctx, u, client, name, "read rate limit")
 				return nil, zero, errors.New("too many requests in a short time, please try again in a minute")
 			}
-			out, err := fn(ctx, &call{Actor: docs.Actor{User: u, Roles: roles, Client: clientName(req)}}, in)
+			out, err := fn(ctx, &call{Actor: docs.Actor{User: u, Roles: roles, Client: client}}, in)
 			if err != nil {
+				if reason := denialReason(err); reason != "" {
+					s.denied(ctx, u, client, name, reason)
+				}
 				return nil, zero, translate(name, err)
 			}
 			return nil, out, nil
@@ -310,7 +322,7 @@ func translate(tool string, err error) error {
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
 		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap),
-		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived), errors.Is(err, skills.ErrQuota), errors.Is(err, skills.ErrChanged):
+		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived), errors.Is(err, skills.ErrQuota), errors.Is(err, skills.ErrChanged), errors.Is(err, skills.ErrNameTaken):
 		return err
 	}
 	slog.Error("Tool error", "tool", tool, "error", err)
@@ -414,4 +426,45 @@ func renderTemplate(name, text string, data any) (string, error) {
 		return "", err
 	}
 	return b.String(), nil
+}
+
+// denialReason names the refusals that belong in the audit log: a caller who tried something their
+// role does not allow. A missing item is not one (it may simply not exist), nor is a wrong input.
+func denialReason(err error) string {
+	switch {
+	case errors.Is(err, docs.ErrForbidden), errors.Is(err, skills.ErrForbidden):
+		return "role does not allow this"
+	case errors.Is(err, docs.ErrNeedsApproval):
+		return "approval required"
+	case errors.Is(err, docs.ErrOwnDraft), errors.Is(err, skills.ErrOwnVersion):
+		return "own version cannot be approved"
+	case errors.Is(err, errNoPermission):
+		return "no permission for this tool"
+	}
+	return ""
+}
+
+// denied records a refused attempt in the audit log (action denied, with the tool and the reason, no
+// arguments), at most once a minute per user, tool and reason so that hammering a tool cannot flood
+// the log. This is what makes probing visible.
+func (s *Server) denied(ctx context.Context, u users.User, client, tool, reason string) {
+	if s.Pool == nil {
+		return
+	}
+	key := u.ID.String() + "|" + tool + "|" + reason
+	s.deniedMu.Lock()
+	if last, ok := s.deniedAt[key]; ok && time.Since(last) < time.Minute {
+		s.deniedMu.Unlock()
+		return
+	}
+	if s.deniedAt == nil || len(s.deniedAt) > 10000 {
+		s.deniedAt = map[string]time.Time{}
+	}
+	s.deniedAt[key] = time.Now()
+	s.deniedMu.Unlock()
+	uid := u.ID
+	if err := audit.Insert(ctx, s.Pool, audit.Event{UserID: &uid, Client: client, Action: "denied",
+		Details: map[string]any{"tool": tool, "reason": reason}}); err != nil {
+		slog.Error("Audit entry for a denied attempt failed", "tool", tool, "error", err)
+	}
 }

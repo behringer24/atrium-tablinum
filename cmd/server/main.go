@@ -63,13 +63,34 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	migrationURL := cfg.Database.MigrationURL
+	if migrationURL == "" {
+		migrationURL = cfg.Database.URL
+	}
+	if migrationURL != cfg.Database.URL {
+		// The schema is changed by its owner; the server then runs with the account that cannot.
+		mpool, err := db.Open(ctx, migrationURL)
+		if err != nil {
+			return fmt.Errorf("migration account: %w", err)
+		}
+		err = db.Migrate(ctx, mpool, db.Embedding{Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions})
+		mpool.Close()
+		if err != nil {
+			return err
+		}
+	}
 	pool, err := db.Open(ctx, cfg.Database.URL)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
-	if err := db.Migrate(ctx, pool, db.Embedding{Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions}); err != nil {
-		return err
+	if migrationURL == cfg.Database.URL {
+		if err := db.Migrate(ctx, pool, db.Embedding{Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions}); err != nil {
+			return err
+		}
+	}
+	if super, err := db.IsSuperuser(ctx, pool); err == nil && super {
+		log.Warn("The server connects to the database as a superuser: a flaw in it could switch off the triggers that freeze released skills or alter the audit log. See docs/deployment.md, \"Separate database accounts\"")
 	}
 
 	emb, err := embed.New(cfg.Embedding.Settings())

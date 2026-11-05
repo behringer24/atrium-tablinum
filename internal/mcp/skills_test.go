@@ -596,7 +596,7 @@ func TestMoveSkillAndAuditFilters(t *testing.T) {
 	if got := fmt.Sprint(skillNames(e.mustCall(t, bob, "list_skills", map[string]any{"space": "dev"}))); got != "[lint]" {
 		t.Errorf("source not kept: %s", got)
 	}
-	if _, msg := e.call(t, cora, "move_skill", map[string]any{"skill": "lint", "space": "dev", "target_space": "ops", "confirm": true}); !strings.Contains(msg, "already has a skill") {
+	if _, msg := e.call(t, cora, "move_skill", map[string]any{"skill": "lint", "space": "dev", "target_space": "ops", "confirm": true}); !strings.Contains(msg, "not available") {
 		t.Errorf("name taken: %q", msg)
 	}
 	e.mustCall(t, anna, "store_skill", map[string]any{"name": "draft-only", "space": "dev", "files": skillPackage("draft-only", "Never released", nil)})
@@ -726,5 +726,110 @@ func TestTransferBlocksPersonalSkills(t *testing.T) {
 	e.mustCall(t, chef, "publish_skill", map[string]any{"skill": "mine", "version": 1, "confirm": true})
 	if got := fmt.Sprint(skillNames(e.mustCall(t, chef, "list_skills", map[string]any{}))); got != "[mine]" {
 		t.Errorf("after release: %s", got)
+	}
+}
+
+// A name held by a skill the caller cannot see is just taken: nothing is attached to somebody
+// else's unreleased draft, and the tag rights follow whoever released the newest version.
+func TestSkillNamesOfOthers(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{
+		"anna@x.de": authz.Author, "bob@x.de": authz.Author, "cora@x.de": authz.Curator})
+	anna, bob, cora := e.session(t, "anna@x.de"), e.session(t, "bob@x.de"), e.session(t, "cora@x.de")
+	store := func(cs *mcp.ClientSession, desc string) (map[string]any, string) {
+		return e.call(t, cs, "store_skill", map[string]any{"name": "foo", "space": "dev", "files": skillPackage("foo", desc, nil)})
+	}
+	versions := func() int {
+		var n int
+		if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM skill_versions v JOIN skills s ON s.id = v.skill_id WHERE s.name = 'foo'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	// Anna's unreleased draft: Bob gets "taken" and no version is attached to it.
+	if _, msg := store(anna, "Annas draft"); msg != "" {
+		t.Fatal(msg)
+	}
+	if _, msg := store(bob, "Bobs attempt"); !strings.Contains(msg, "not available") {
+		t.Fatalf("bob on annas draft: %q", msg)
+	}
+	if n := versions(); n != 1 {
+		t.Fatalf("a version was attached to a hidden draft: %d", n)
+	}
+	// A curator sees every skill of the space and may add a version.
+	if m, msg := store(cora, "Coras version"); msg != "" || versionNumber(m) != 2 {
+		t.Fatalf("curator: %v %q", m, msg)
+	}
+	// Once something is released, everybody who can read it may propose a new version.
+	e.mustCall(t, cora, "review_skill", map[string]any{"skill": "foo", "version": 1, "decision": "approve", "risk_class": "A", "confirm": true})
+	e.mustCall(t, cora, "publish_skill", map[string]any{"skill": "foo", "version": 1, "confirm": true})
+	if m, msg := store(bob, "Bobs version"); msg != "" || versionNumber(m) != 3 {
+		t.Fatalf("bob on a released skill: %v %q", m, msg)
+	}
+
+	// Tags: the author of the newest released version owns them.
+	tag := func(cs *mcp.ClientSession) string {
+		_, msg := e.call(t, cs, "tag_skill", map[string]any{"skill": "foo", "tags": []string{"x"}})
+		return msg
+	}
+	if msg := tag(anna); msg != "" {
+		t.Fatalf("anna released version 1: %q", msg)
+	}
+	if msg := tag(bob); !strings.Contains(msg, "permission") {
+		t.Fatalf("bob has released nothing yet: %q", msg)
+	}
+	e.mustCall(t, cora, "review_skill", map[string]any{"skill": "foo", "version": 3, "decision": "approve", "risk_class": "A", "confirm": true})
+	e.mustCall(t, cora, "publish_skill", map[string]any{"skill": "foo", "version": 3, "confirm": true})
+	if msg := tag(anna); !strings.Contains(msg, "permission") {
+		t.Fatalf("anna after bob released the newest version: %q", msg)
+	}
+	if msg := tag(bob); msg != "" {
+		t.Fatalf("bob released the newest version: %q", msg)
+	}
+	if msg := tag(cora); msg != "" {
+		t.Fatalf("a curator retags: %q", msg)
+	}
+}
+
+// Refused attempts are in the audit log, once a minute per user, tool and reason, without arguments.
+func TestDeniedAttemptsAreAudited(t *testing.T) {
+	e := setup(t, 2) // two writes a minute
+	e.team(t, "dev", "Development", false, map[string]authz.Role{"anna@x.de": authz.Author, "cora@x.de": authz.Curator, "dan@x.de": authz.Reader})
+	boss, anna, cora, dan := e.session(t, "boss@x.de"), e.session(t, "anna@x.de"), e.session(t, "cora@x.de"), e.session(t, "dan@x.de")
+	e.releaseSkill(t, anna, cora, "foo", nil)
+
+	// A reader tries what their role does not allow, twice: one entry.
+	for i := 0; i < 2; i++ {
+		if _, msg := e.call(t, dan, "archive_skill", map[string]any{"skill": "foo", "confirm": true}); !strings.Contains(msg, "permission") {
+			t.Fatalf("reader archived: %q", msg)
+		}
+	}
+	// ... and runs into the write limit (two a minute) with the next one.
+	if _, msg := e.call(t, dan, "tag_skill", map[string]any{"skill": "foo", "tags": []string{"x"}}); !strings.Contains(msg, "too many") {
+		t.Fatalf("reader tagged: %q", msg)
+	}
+	// An author hits the write limit.
+	for i := 0; i < 4; i++ {
+		e.call(t, anna, "store_knowledge", map[string]any{"title": "T" + fmt.Sprint(i), "content": "Eintrag " + fmt.Sprint(i), "space": "dev", "force": true})
+	}
+
+	out := e.mustCall(t, boss, "admin_audit_log", map[string]any{"action": "denied"})["entries"].([]any)
+	got := map[string]int{}
+	for _, x := range out {
+		en := x.(map[string]any)
+		d := en["details"].(map[string]any)
+		got[en["user"].(string)+"|"+d["tool"].(string)+"|"+d["reason"].(string)]++
+		if len(d) != 2 {
+			t.Errorf("a denied entry carries more than tool and reason: %v", d)
+		}
+	}
+	want := map[string]int{
+		"dan@x.de|archive_skill|role does not allow this": 1,
+		"dan@x.de|tag_skill|write rate limit":             1,
+		"anna@x.de|store_knowledge|write rate limit":      1,
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("denied entries: %v, want %v", got, want)
 	}
 }

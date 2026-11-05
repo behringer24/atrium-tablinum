@@ -52,6 +52,9 @@ var (
 	ErrArchived = errors.New("the skill is archived: restore it first (unarchive_skill)")
 	// ErrQuota is returned when a save would exceed a storage limit (see Options).
 	ErrQuota = errors.New("skill quota exceeded")
+	// ErrNameTaken is returned when a name is held by a skill the caller cannot see (an
+	// unreleased draft of somebody else, or an archived skill): it says nothing about which.
+	ErrNameTaken = errors.New("that name is not available in this space, please choose another")
 	// ErrChanged is returned when a draft is not the one the reviewer read.
 	ErrChanged = errors.New("the draft changed since you read it: read it again (get_skill) and review that version")
 )
@@ -156,12 +159,18 @@ func frontmatterBlock(text string) (string, error) {
 	if !strings.HasPrefix(text, "---\n") {
 		return "", invalid("SKILL.md must start with a front matter block (--- name and description ---)")
 	}
+	// The block ends at the first line that is exactly "---", as common clients read it. A line
+	// like "----" or "--- x" inside the block is no end here and must not be one anywhere else,
+	// or Atrium and a client would show different names and descriptions for the same file.
 	rest := text[4:]
-	end := strings.Index(rest, "\n---")
-	if end < 0 {
-		return "", invalid("the front matter of SKILL.md is not closed with ---")
+	offset := 0
+	for _, line := range strings.SplitAfter(rest, "\n") {
+		if strings.TrimSuffix(line, "\n") == "---" {
+			return strings.TrimSuffix(rest[:offset], "\n"), nil
+		}
+		offset += len(line)
 	}
-	return rest[:end], nil
+	return "", invalid("the front matter of SKILL.md is not closed with a line that is exactly ---")
 }
 
 // Frontmatter returns the front matter of a SKILL.md with every field the author wrote, as
@@ -390,6 +399,19 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 	var archived bool
 	if err := tx.QueryRow(ctx, `SELECT archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).Scan(&archived); err != nil {
 		return Version{}, err
+	}
+	if !created {
+		// A new version may only be added to a skill the caller can see: a released one, one with a
+		// version of their own, or any skill of a space they curate. Whatever else holds the name
+		// (somebody's unreleased draft, an archived skill) is reported as a taken name, and
+		// nothing is attached to it.
+		visible, err := s.nameVisible(ctx, tx, a, sp.ID, skillID, archived)
+		if err != nil {
+			return Version{}, err
+		}
+		if !visible {
+			return Version{}, ErrNameTaken
+		}
 	}
 	if archived {
 		return Version{}, ErrArchived
@@ -834,6 +856,10 @@ type ListFilter struct {
 	Tag    string
 	Status string
 	Query  string
+	// After continues behind the skill a previous page ended with; NewestOnly returns one version
+	// per skill, the newest that matches.
+	After      *Cursor
+	NewestOnly bool
 	// Archive selects by archive state: "" only active skills, ArchiveOnly only archived
 	// ones, ArchiveAny both. Archived skills are visible to curators of the space only.
 	Archive string
@@ -846,35 +872,89 @@ const (
 	ArchiveAny  = "any"
 )
 
-// List returns the versions the caller may see, newest version of each skill first.
+// Cursor marks the last skill of a page; the next page continues after it (name, then space).
+type Cursor struct {
+	Name    string
+	SpaceID uuid.UUID
+}
+
+// List returns the versions the caller may see, for at most Limit skills (default and maximum 500),
+// ordered by skill name and space, the newest version of each skill first. The limit counts skills,
+// not versions, so a skill with many versions cannot push others out. With NewestOnly each skill
+// appears once, with its newest matching version. After continues behind a Cursor; Next, if not nil,
+// is set to the cursor of the last skill returned when more skills match.
 func (s *Store) List(ctx context.Context, a docs.Actor, f ListFilter) ([]Version, error) {
+	vs, _, err := s.list(ctx, a, f)
+	return vs, err
+}
+
+// ListPage is List that also reports whether more skills match behind the returned page.
+func (s *Store) ListPage(ctx context.Context, a docs.Actor, f ListFilter) ([]Version, *Cursor, error) {
+	return s.list(ctx, a, f)
+}
+
+func (s *Store) list(ctx context.Context, a docs.Actor, f ListFilter) ([]Version, *Cursor, error) {
 	vis, cur := scope(a)
 	tag := strings.ToLower(strings.TrimSpace(f.Tag))
 	limit := f.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 500
 	}
-	rows, err := s.pool.Query(ctx, versionSelect+`WHERE `+visibleSQL+`
-		AND ($4 = '' OR s.name = $4) AND ($5::uuid = '00000000-0000-0000-0000-000000000000'::uuid OR s.space_id = $5)
-		AND (NOT $6 OR v.status = 'published')
-		AND ($8 = 'any' OR ($8 = 'only') = (s.archived_at IS NOT NULL))
-		AND ($9 = '' OR $9 = ANY(s.tags)) AND ($10 = '' OR v.status = $10)
-		AND ($11 = '' OR strpos(lower(s.name || ' ' || v.description || ' ' || array_to_string(s.tags, ' ')), lower($11)) > 0)
-		ORDER BY s.name, s.space_id, v.version DESC LIMIT $7`,
-		vis, a.User.ID, cur, f.Name, f.SpaceID, f.PublishedOnly, limit, f.Archive, tag, f.Status, strings.TrimSpace(f.Query))
+	afterName, afterSpace := "", uuid.Nil
+	if f.After != nil {
+		afterName, afterSpace = f.After.Name, f.After.SpaceID
+	}
+	// One more skill than asked for tells whether there is a next page.
+	rows, err := s.pool.Query(ctx, `WITH hits AS (
+  SELECT s.id AS skill_id, s.name, s.space_id, v.id AS version_id
+  FROM skill_versions v JOIN skills s ON s.id = v.skill_id
+  WHERE `+visibleSQL+`
+    AND ($4 = '' OR s.name = $4) AND ($5::uuid = '00000000-0000-0000-0000-000000000000'::uuid OR s.space_id = $5)
+    AND (NOT $6 OR v.status = 'published')
+    AND ($8 = 'any' OR ($8 = 'only') = (s.archived_at IS NOT NULL))
+    AND ($9 = '' OR $9 = ANY(s.tags)) AND ($10 = '' OR v.status = $10)
+    AND ($11 = '' OR strpos(lower(s.name || ' ' || v.description || ' ' || array_to_string(s.tags, ' ')), lower($11)) > 0)
+    AND ($12 = '' OR (s.name, s.space_id) > ($12, $13::uuid))
+), picked AS (
+  SELECT DISTINCT skill_id, name, space_id FROM hits ORDER BY name, space_id LIMIT $7
+)
+`+versionSelect+`WHERE v.id IN (SELECT version_id FROM hits WHERE skill_id IN (SELECT skill_id FROM picked))
+ORDER BY s.name, s.space_id, v.version DESC`,
+		vis, a.User.ID, cur, f.Name, f.SpaceID, f.PublishedOnly, limit+1, f.Archive, tag, f.Status, strings.TrimSpace(f.Query), afterName, afterSpace)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
-	var out []Version
+	var all []Version
 	for rows.Next() {
 		v, err := scanVersion(rows)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		all = append(all, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	// Group by skill in the order of the query, keep the first `limit` skills.
+	var out []Version
+	var next *Cursor
+	seen := map[uuid.UUID]bool{}
+	skillsKept := 0
+	for _, v := range all {
+		if !seen[v.SkillID] {
+			if skillsKept == limit {
+				next = &Cursor{Name: out[len(out)-1].Name, SpaceID: out[len(out)-1].SpaceID}
+				break
+			}
+			seen[v.SkillID] = true
+			skillsKept++
+		} else if f.NewestOnly {
+			continue
 		}
 		out = append(out, v)
 	}
-	return out, rows.Err()
+	return out, next, nil
 }
 
 // Get loads one version with its file list. Version 0 means the newest published version.
@@ -978,6 +1058,17 @@ func (s *Store) SetTags(ctx context.Context, a docs.Actor, skillID uuid.UUID, ta
 	var archived bool
 	err = tx.QueryRow(ctx, `SELECT name, space_id, created_by, archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).
 		Scan(&name, &spaceID, &createdBy, &archived)
+	// The tags speak for the skill as it is released: the author of the newest released version
+	// owns them, as long as nothing is released the creator does.
+	if err == nil {
+		var releasedBy *uuid.UUID
+		if rerr := tx.QueryRow(ctx, `SELECT created_by FROM skill_versions WHERE skill_id = $1 AND status = 'published'
+			ORDER BY version DESC LIMIT 1`, skillID).Scan(&releasedBy); rerr == nil {
+			createdBy = releasedBy
+		} else if !errors.Is(rerr, pgx.ErrNoRows) {
+			err = rerr
+		}
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	} else if err != nil {
@@ -1135,7 +1226,7 @@ func (s *Store) Move(ctx context.Context, a docs.Actor, skillID, targetID uuid.U
 	err = tx.QueryRow(ctx, `INSERT INTO skills (space_id, name, created_by, tags) VALUES ($1, $2, $3, $4)
 		ON CONFLICT (space_id, name) DO NOTHING RETURNING id`, dst.ID, name, a.User.ID, tags).Scan(&newSkill)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Version{}, invalid("the target space already has a skill with this name")
+		return Version{}, ErrNameTaken
 	} else if err != nil {
 		return Version{}, err
 	}
@@ -1224,4 +1315,20 @@ func (s *Store) AuditBlocked(ctx context.Context, a docs.Actor, sp spaces.Space,
 		_ = audit.Insert(ctx, s.pool, audit.Event{UserID: &uid, Client: a.Client, Action: "skill_block", SpaceID: &sid,
 			Details: map[string]any{"skill": b.Skill, "version": b.Version, "reason": reason}})
 	}
+}
+
+// nameVisible reports whether the caller may see the skill that already holds a name: curators
+// (and the owner of a personal space) see every skill of the space, everybody else a skill that
+// is not archived and has a released version or a version of their own.
+func (s *Store) nameVisible(ctx context.Context, tx pgx.Tx, a docs.Actor, spaceID, skillID uuid.UUID, archived bool) (bool, error) {
+	if a.Roles.Role(spaceID) >= authz.Curator {
+		return true, nil
+	}
+	if archived {
+		return false, nil
+	}
+	var ok bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM skill_versions WHERE skill_id = $1 AND (status = 'published' OR created_by = $2))`,
+		skillID, a.User.ID).Scan(&ok)
+	return ok, err
 }

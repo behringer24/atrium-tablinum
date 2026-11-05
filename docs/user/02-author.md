@@ -20,7 +20,7 @@ You are an **author** when a space gave you the role *author* (or when everybody
 |---|---|
 | Read approved entries, search, use released skills | yes |
 | File new entries in the space (`store_knowledge`) | yes |
-| Change, archive and restore **your own** entries | yes (see below for spaces with approval) |
+| Change, archive and restore **your own** entries | yes; in a space with approval not your approved entries (a curator does that) |
 | Move your own approved entries to another space | yes, but not out of a space that requires approval: a curator does that |
 | Save skills (`store_skill`), set tags on skills you created (`tag_skill`) | yes, as drafts |
 | See your own drafts, returned entries and skill versions | yes |
@@ -93,7 +93,8 @@ Rules to remember:
 
 - You can change **your own** entries only. For entries of others, ask a curator.
 - **In a space with approval, authors cannot change approved entries.** The assistant tells you so. Ask a curator to change it, or file the corrected text as a new draft and ask the curator to archive the old entry. A draft next to an approved version is planned, not built yet.
-- **Deleting for good** (`delete_knowledge`) is for space admins. Authors archive instead. In a space with approval you can still archive your own approved entries; agree it with a curator first, because it removes the entry for all readers. An archived entry cannot be deleted before it is restored.
+- **Deleting for good** (`delete_knowledge`) is for space admins. Authors archive instead.
+- **In a space with approval, an approved entry is a curator's to archive.** It is no longer yours to take away from the readers; ask a curator. Your own drafts and returned entries you can still archive yourself. In spaces without approval you archive your own entries freely.
 - Every change creates a version, and your name stays on the entry.
 
 ## Writing skills
@@ -145,8 +146,8 @@ The author of a version cannot approve it; another curator must. That is on purp
 
 ### Tags and housekeeping
 
-- Tags on a skill help people find it (*"skills about support"*). Set them when you file a **new** skill (`tags`), later change them with *"Set the tags of support-reply to support, tickets"* (`tag_skill`). You can retag skills you created; curators can retag any. Tags are not part of the reviewed content and need no new version. Do not put instructions in tags: they are only keywords.
-- **Names are unique per space.** Use a distinct, descriptive name; saving under an existing name adds a new version to that skill.
+- Tags on a skill help people find it (*"skills about support"*). Set them when you file a **new** skill (`tags`), later change them with *"Set the tags of support-reply to support, tickets"* (`tag_skill`). You can retag a skill while you are the author of its newest released version (or, as long as nothing is released, its creator); curators can retag any. Tags are not part of the reviewed content and need no new version. Do not put instructions in tags: they are only keywords.
+- **Names are unique per space.** Use a distinct, descriptive name. Saving under the name of a skill you can see (a released one, or one with a version of yours) adds a new version to it. If the name is held by something you cannot see (somebody's unreleased draft, an archived skill), Atrium only says "that name is not available": choose another name or ask a curator.
 - **Limits:** by default at most 100 versions per skill; a personal space holds 50 skills and 5 MB, a team space 300 skills and 50 MB of skill files. Knowledge in a team space is limited too (by default 5000 entries and 200 MB per space, drafts included). A save over a limit is refused with the reason, and an instance admin can raise any of these limits for a space, for you or for everybody at any time, without a restart: ask for it. A skill that has reached its version limit can only continue under a new name unless the limit is raised: archiving does not free the name or reset the count, and deleting the old skill is for instance admins (in your personal space you can).
 - Moving a skill to another space is done by curators (`move_skill`): only the newest released version moves, as a new draft that the curators of the target review.
 
@@ -185,6 +186,7 @@ Your personal skills are released at once and visible only to you. This is a goo
 | The entry does not show up in search | Other readers cannot find it while it is a draft; you see your own drafts yourself, with status `draft`. If you cannot find it either, it may still be indexed or your wording differs. Check with `list_knowledge status=draft` |
 | "Approval required" when changing an entry | The space needs approval for approved entries; ask a curator |
 | The skill is refused | The message names the reason: a script or binary file, a bad path, a missing `name` or `description`, a credential in a file, a limit |
+| "That name is not available in this space" | A skill or an unreleased draft you cannot see holds the name. Choose another name, or ask a curator |
 | A save says a limit is reached | The message names the limit (entries, bytes, skills or versions). Archive or delete something, or ask an instance admin to raise the limit; `space_members` shows the limits and usage of a space to its admins |
 | An approval-related message you do not understand | Ask a curator of the space, `space_contacts` names them |
 
@@ -198,7 +200,7 @@ Your personal skills are released at once and visible only to you. This is a goo
 
 **Can I get an older version of my entry back?** Every change is kept as a version in the database, but there is no tool yet to browse or restore old versions. Keep a copy of important text yourself, and ask your administrator if something must be recovered.
 
-**How do I delete an entry?** Authors archive. Permanent deletion is for space admins and, in personal spaces, the owner.
+**How do I delete an entry?** Authors archive. Permanent deletion is for space admins and, in personal spaces, the owner, and it also works on archived entries.
 
 **Why can an assistant not file by itself?** By design. It files only on your explicit request.
 

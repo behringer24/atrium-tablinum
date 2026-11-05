@@ -103,7 +103,13 @@ type Provider struct {
 }
 
 type Database struct {
+	// URL is the account the server runs with.
 	URL string `yaml:"url"`
+	// MigrationURL, if set, is the account that applies the schema migrations at start (it owns the
+	// schema); URL can then be an account that cannot change the schema, disable triggers or alter
+	// the audit log. Empty = the migrations run with URL, as before. scripts/db-roles.sql sets both
+	// accounts up (docs/deployment.md, "Separate database accounts").
+	MigrationURL string `yaml:"migration_url"`
 }
 
 type Embedding struct {

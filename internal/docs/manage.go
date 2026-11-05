@@ -93,7 +93,8 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 // the entry's space may do this (instance admins count as admins of every team space; the
 // owner is admin of their personal space). Everyone else can archive instead.
 func (s *Store) Delete(ctx context.Context, a Actor, id uuid.UUID) error {
-	cur, err := fetch(ctx, s.pool, a, id, false)
+	// fetchAny: an admin can delete an archived entry directly, without restoring it first.
+	cur, err := fetchAny(ctx, s.pool, a, id, false)
 	if err != nil {
 		return err
 	}
@@ -109,7 +110,7 @@ func (s *Store) Delete(ctx context.Context, a Actor, id uuid.UUID) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	locked, err := fetch(ctx, tx, a, id, true)
+	locked, err := fetchAny(ctx, tx, a, id, true)
 	if err != nil {
 		return err
 	}

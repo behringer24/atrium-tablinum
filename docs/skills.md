@@ -26,7 +26,7 @@ A package is a set of text files. Limits: at most 40 files, 64 KB per file, 256 
   ---
   ```
 
-  `name` must equal the skill name (lower case letters, digits, single hyphens, at most 64 characters). `description` is required (at most 1024 characters); it is what assistants and users see in the list.
+  The block ends at the first line that is exactly `---` (a line like `----` or `--- x` does not end it), the way common clients read it, so that Atrium and a client see the same name and description. `name` must equal the skill name (lower case letters, digits, single hyphens, at most 64 characters). `description` is required (at most 1024 characters); it is what assistants and users see in the list.
 - Other files are referenced from `SKILL.md`, for example `references/checklist.md`. Allowed types: `.md`, `.txt`, `.json`, `.yaml`, `.yml`, `.csv`.
 - Paths are relative with forward slashes. Empty, hidden (leading dot) and relative (`.`, `..`) segments, a `scripts/` directory and duplicates that differ only in case are refused.
 - The files are scanned for credentials (the same check as for knowledge entries) and rejected if they contain any.
@@ -94,9 +94,13 @@ All of them work in every MCP client. A `/name` command a user types (e.g. `/hel
 
 To stay on the version it started with, an assistant passes the exact version to `get_skill` and `get_skill_resource`. The default (newest released version) is only a lookup aid.
 
+## Names
+
+A name is unique within a space. `store_skill` under the name of a skill the caller can see (one with a released version, one with a version of their own, or any skill of a space they curate) adds a new version to it. If the name is held by something the caller cannot see, an unreleased draft of somebody else or an archived skill, the answer is only that the name is not available: nothing is attached to it, and the message does not say which of the two it is. `move_skill` answers the same way when the target holds the name.
+
 ## Tags
 
-A skill has tags like a knowledge entry: normalised (lower case, no duplicates, at most 20 tags of 50 characters), shown by `list_skills` and `get_skill`, and searchable with `list_skills tag=...`. Tags must not contain line breaks, control or invisible characters, and are checked for credentials. They are deliberately not part of the instructions an assistant receives: they are set without a review, and the instruction block only carries what a curator approved. They belong to the skill, not to a version: a version is frozen once it leaves draft, and fixing a keyword must not need a new version and a new review. Tags are no part of the digest and no instruction. `store_skill` applies them when it creates the skill; later changes go through `tag_skill`, which the creator of the skill and curators and admins of the space (in a personal space the owner) may call. Every change is audited as `skill_tag`.
+A skill has tags like a knowledge entry: normalised (lower case, no duplicates, at most 20 tags of 50 characters), shown by `list_skills` and `get_skill`, and searchable with `list_skills tag=...`. Tags must not contain line breaks, control or invisible characters, and are checked for credentials. They are deliberately not part of the instructions an assistant receives: they are set without a review, and the instruction block only carries what a curator approved. They belong to the skill, not to a version: a version is frozen once it leaves draft, and fixing a keyword must not need a new version and a new review. Tags are no part of the digest and no instruction. `store_skill` applies them when it creates the skill; later changes go through `tag_skill`, which the author of the newest released version (as long as nothing is released: the creator of the skill) and curators and admins of the space (in a personal space the owner) may call. Retagging therefore follows whoever speaks for the skill as it is released. Every change is audited as `skill_tag`.
 
 ## Moving a skill
 
@@ -107,7 +111,7 @@ A skill has tags like a knowledge entry: normalised (lower case, no duplicates, 
 Atrium declares the extension `io.modelcontextprotocol/skills` and serves released skills as resources, so a client that supports it can list and load them like its own skills without the tools. The tools stay as they are: a client that does not know the extension keeps working.
 
 - **URI:** `skill://<space-slug>/<skill>/<file>`, for example `skill://dev/code-review/SKILL.md`. The space slug is the organisational prefix the extension allows, because a skill name is unique only within one space. `list_spaces` shows the slugs; the slug of a personal space is `personal-<id>`.
-- **`skills/list`** returns the newest released version of every skill the caller may read: the front matter of `SKILL.md` verbatim, and the complete file list with `sha256:` digest and size per file. At most 200 skills are listed; the extension allows a partial list, and every skill stays readable by its URI. **`skills/get`** returns the same entry for one `SKILL.md` URI. Anything unknown, not released, archived, blocked or outside the caller's spaces is the same error (`-32602`).
+- **`skills/list`** returns the newest released version of every skill the caller may read: the front matter of `SKILL.md` verbatim, and the complete file list with `sha256:` digest and size per file. A page holds at most 200 skills, one entry each (the newest released version), in the order of name and space; the result carries `nextCursor` while more follow, and the request takes it back as `cursor`, so every skill can be reached by listing (a cursor the server did not issue is `-32602`). Every skill also stays readable by its URI. **`skills/get`** returns the same entry for one `SKILL.md` URI. Anything unknown, not released, archived, blocked or outside the caller's spaces is the same error (`-32602`).
 - **`resources/read`** returns one file (`text/markdown` for `.md`) with version and digest in `_meta`. Directory reads (`resources/directory/read`) are not offered.
 - **Same rules as the tools:** space rights, released status, archive and block, hash check of every file and rate limit apply to every call, and reads are audited like `get_skill`. Only the newest released version is addressable. A new release changes the digests in the entry, which a host has to approve again; the tools remain the way to ask for an exact old version.
 - **Scripts stay out:** Atrium still stores text only and runs nothing; `resources` is always the complete list, never `"dynamic"`.
@@ -122,7 +126,7 @@ An export is a copy: blocking or archiving cannot recall it. A client that insta
 
 ## Audit
 
-`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept.
+`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept. A refusal because of the caller's role, a required approval or a rate limit is logged as `denied` with the tool and the reason, no arguments, once a minute per user, tool and reason.
 
 Every read carries `via` in its details, the route the client took: `tool` (`get_skill`, `get_skill_resource`), `resource` (`resources/read` of a `skill://` URI), `rpc` (`skills/get`) or `export` (the ZIP download). `skills/list` is written as `skill_list` with the number of skills offered. So `admin_audit_log action=skill_*` shows whether a client uses the SEP-2640 methods or the tools. Calls through `skills/*` carry the client `mcp-skills`, as that route has no MCP session to read the client name from.
 

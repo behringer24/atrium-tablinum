@@ -21,7 +21,7 @@ A **curator** keeps the quality of a space. Curators review what authors submit,
 | Everything an author can | yes |
 | See all drafts, returned entries and unreleased skill versions of the space | yes |
 | Review knowledge drafts (`review_knowledge`) | yes, not your own |
-| Change, move, archive and restore **any** entry of the space | yes |
+| Change, move, archive and restore **any** entry of the space (in a space with approval, archiving an approved entry is yours, not the author's) | yes |
 | Review skills (`review_skill`), release (`publish_skill`), withdraw (`block_skill`) | yes (you cannot review your own versions) |
 | Archive and restore skills, read the skill archive | yes |
 | Move a skill to another space (`move_skill`), retag any skill (`tag_skill`) | yes (target: author rights needed) |
@@ -177,7 +177,7 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 - Check that every space with approval has **at least two curators**, so that the four-eyes rule works when someone is away.
 
 **Urgent withdrawal.** A skill or entry is harmful or leaks something.
-1. Skills: `block_skill` the version. Entries: `archive_knowledge` stops it being served. To remove it for good, a space admin restores and deletes it, or deletes it directly instead of archiving (an archived entry cannot be deleted before it is restored).
+1. Skills: `block_skill` the version. Entries: `archive_knowledge` stops it being served. To remove it for good, a space admin deletes it, also when it is archived.
 2. Tell the space admin and an instance admin; they can check the audit log for who loaded a skill (reads of knowledge entries are not logged).
 3. Ask the author for a corrected version; review it with extra care.
 
@@ -215,4 +215,4 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 
 **A skill uses tools and I am not sure of the class.** Choose the higher class. Ask an instance admin if class C is possible; they publish those anyway.
 
-**A draft contains personal data.** Return it. If it is already visible, archive it to stop it being served, then ask a space admin to restore and delete it for good (an archived entry cannot be deleted before it is restored), or to delete it directly.
+**A draft contains personal data.** Return it. If it is already visible, archive it to stop it being served, then ask a space admin to delete it for good (that works on archived entries too).
