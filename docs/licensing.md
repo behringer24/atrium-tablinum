@@ -1,108 +1,40 @@
-# Licences: using, issuing and testing
+# Editions: Community and Pro
 
-How an instance runs with a licence, and how the owner issues one. The reasons and the model are in the [design](design/licensing.md); this is the practical side.
+Atrium Tablinum comes in two editions built from one code base. The reasons and the model are in the [design](design/licensing.md).
 
 ## In short
 
-- Without a licence an instance is **Community**: everything works, with the Community limit: **8 active user accounts** (`license.community_max_users`, default 8, 0 = unlimited).
-- A **licence file** is a signed line of text. An instance admin installs it with `admin_license`, no restart, or it is named in `license.file`. It is checked **offline** against public keys compiled into the binary and never calls anybody.
-- A licence is bound to the **host of `instance.base_url`**, lists **features** and **limits**, and carries **`maintenance_until`**: a build is covered when the release line it was built from is dated on or before that day, **for ever**. New versions released later need a licence with a later date. Patch releases of a covered line are always covered.
-- No licence state ever blocks content: in every state other than `valid` the instance runs as Community, and what is stored stays readable and exportable. A user limit only refuses **new accounts**, never existing ones, and never the administrators in `bootstrap_admins`.
+- **Community** is this repository, built as it is. It is source-available under the [Elastic License 2.0](../LICENSE), free to use, and complete for a small team: knowledge, skills, search, spaces, roles, review, the audit log, handoffs, personal spaces and offboarding basics. Its one hard limit is **8 active user accounts**, a constant of the code: there is no setting that lifts it. It has **no licence support, no licence keys and no telemetry**: it never calls anybody, and anyone can read the code to check.
+- **Pro** is the same product with extra code that is not public and without the user limit of Community, switched on by a **licence file**: a signed line of text that an instance admin installs with the tool `admin_license`, without a restart. It is checked offline against public keys compiled into the Pro build and never calls anybody. Without a licence the Pro build runs with the Community limits.
+- **The official image** is meant to be the Pro build, published publicly (the private pipeline that publishes it is not built yet; until then this repository's image is the Community build). It behaves as Community until a licence is installed, so you can try it, and upgrading changes nothing but the licence. If you want the Community build only, build it from this repository (`docker build .`).
+- **Security is never sold.** Roles, four-eyes review, risk classes, blocking, the audit log, login checks, rate limits, quotas and security updates are in both editions. Pro adds scale, integration and governance extras.
+- Nothing a licence does can lock you out of your content: whatever the licence state, stored content stays readable and exportable. A user limit only refuses **new accounts** (and reactivations), never existing ones, and never the administrators in `bootstrap_admins`.
 
-**What counts as a user:** the registered accounts that are **active at the same time**. It is not the number of assistants connected (one user with Claude, ChatGPT and Claude Code is one user). **Locked accounts** (after `admin_offboard_user`) do not count, and accounts are never deleted, so offboarding frees the seat. Reactivating a locked account needs room again, so the limit cannot be passed by offboarding and reactivating. The administrators in `bootstrap_admins` count as active accounts but are never refused, so the limit cannot lock them out.
+**What counts as a user:** the registered accounts that are **active at the same time**. It is not the number of assistants connected (one user with Claude, ChatGPT and Claude Code is one user). **Locked accounts** (after `admin_offboard_user`) do not count, and accounts are never deleted, so offboarding frees the seat. Reactivating a locked account needs room again, so the limit cannot be passed by locking and unlocking.
 
-## For the instance admin
+## What is in which edition
 
-*"Show the Atrium licence."* (`admin_license action=get`) reports:
+| Area | Community | Pro |
+|---|---|---|
+| Knowledge, knowledge types, skills, search, spaces, roles, review, audit log, handoffs, personal spaces | yes | yes |
+| Users | up to 8 active accounts | more or unlimited, by licence |
+| Licence management (`admin_license`) | not part of this build | yes |
+| Further Pro features (group synchronisation, SCIM, audit export, notifications, importers) | planned, see the [roadmap](../ROADMAP.md) | |
 
-| | |
-|---|---|
-| `status` | `none` (Community), `valid`, `not covered` (this build is newer than the maintenance: the text names the dates), `expired` (the optional `expires` date passed), `wrong domain`, `invalid` (unreadable, unknown signing key, bad signature) |
-| `edition`, `licensee`, `features`, `limits`, `maintenance_until`, `expires` | what the licence says; a limit of 0 is unlimited |
-| `source` | `installed` (by an admin, stored in the database) or `file` (`license.file`) |
-| `notice` | only for a valid licence: from 60 days before the optional `expires` date ("after that the instance runs as Community") and before the end of maintenance ("this build stays covered, newer release lines need a renewed licence"); after the end of maintenance it says so for good. Also in `admin_health` and as a warning in the server log at start |
-| `build` | the version, the **release line** and its date (the date compared with `maintenance_until`), and the commit date for support |
-| `users` | `active` accounts now, the user `limit` in force (the licensed one, else the Community limit; 0 = unlimited) and `over_limit` |
-| `warning` | only when the active accounts have reached the limit: existing accounts keep working, new accounts and reactivations are refused until there is room |
+Each feature of the guides says which edition has it.
 
-*"Install this licence: atrium-license-v1.…"* (`action=install`, after confirmation) refuses a licence that is unreadable, signed with an unknown key or bound to another domain, and accepts one that does not cover this build, so that the report can say why it has no effect. `action=remove` deletes the installed licence (one from `license.file` stays); the question before the removal names how many accounts are active and what the Community limit means for them. Both are audited (`license_install`, `license_remove`, with licence id, licensee, edition and maintenance date, never the licence text).
+## Using a licence (Pro build)
 
-**More accounts active than the limit allows?** That happens when a licence is removed, expires or does not cover an updated build while more accounts are active than Community allows. Nobody is locked out: every active account keeps working, and the report shows `over_limit` with a warning. Only new accounts and reactivations are refused until fewer accounts are active than the limit, or a covering licence is installed again.
+The licence is bound to the host of `instance.base_url` and carries a maintenance date: a build is covered **for ever** when the release line it was built from is dated on or before that day; newer release lines need a licence with a later date, and patch releases of a covered line are always covered. Without a covering licence the Pro features are off and the limits are the Community ones. Details for instance admins: [the instance admin guide](user/05-instance-admin.md#the-licence).
 
-`server_info` shows every user only the edition and the release line. `admin_health` has an informational `license` check that never makes the instance unhealthy.
+In the Pro build the `license:` section of `config.yaml` names an optional licence file (`file:`); a licence an instance admin installs at run time takes precedence. The Community build refuses a `license:` section at start with a message saying that it has no licence support.
 
-**Renewal** is installing a new file once the maintenance is extended: at most once a year, in the running instance. The `notice` reminds you 60 days ahead. Someone who does not want new versions never touches the file again.
+Issuing licences, the key ceremony and the register are the owner's business and live in the private Pro repository.
 
-**After an update the licence says `not covered`?** The build is of a line newer than the maintenance. Pro features are off and the limits are the Community ones, all data stays accessible. Go back to the covered version, or renew the maintenance.
+## FAQ
 
-## For the owner who issues licences
+**Can I lift the user limit in the Community build?** No setting does it. The source is yours to modify under the Elastic License 2.0, but that licence does not allow you to circumvent licence key functionality or to offer the software as a managed service to third parties; if your team outgrows 8 accounts, that is what Pro is for.
 
-Everything here runs on **your** machine. The tool is `cmd/atrium-license`.
+**Which image do I pull?** The official one. It is the Pro build and runs as Community until you install a licence.
 
-### One-off: the issuer keys
-
-Five Ed25519 key pairs, created **offline**: on a machine that is not on a network, into a directory on removable media that is not inside any repository (the tool refuses a directory inside a git working tree and a directory that already holds keys).
-
-```bash
-go run ./cmd/atrium-license genesis -out /media/offline/atrium-issuer -count 5
-```
-
-It writes one private key file per pair (`k<8 hex>.key`, mode 0600) and an `anchors.txt` with the public halves. Then:
-
-1. **Paste the lines of `anchors.txt` into `internal/license/anchors.txt`** and rebuild. Public keys are not secret; they belong in the binary and in the repository.
-2. **Move the `*.key` files to offline media**, keep copies in more than one physical place, and delete them from the machine that made them. They are the one thing in this system that matters; whoever holds one can issue licences.
-3. Use **one** key to sign. The other four stay unused: if the signing key is lost or leaked, you sign with a spare, and no release is needed because every build already trusts all five.
-
-Until real keys are in `anchors.txt`, no licence verifies and every instance is Community.
-
-### Issuing
-
-```bash
-go run ./cmd/atrium-license issue -key /media/offline/atrium-issuer/k1a2b3c4d.key \
-    -licensee "Example GmbH" -domain atrium.example.com \
-    -months 12 -features scim,group_sync -limit users=200 \
-    -register /secure/place/issued.jsonl
-```
-
-It prints the licence (one line, `atrium-license-v1.…`) to stdout and a summary to stderr, and appends the licence and its claims to the register if `-register` is given.
-
-| Option | Meaning |
-|---|---|
-| `-domain` | the host of the customer's `instance.base_url` (a licence for another host is refused at installation) |
-| `-months N`, `-until DATE`, `-lifetime` | `maintenance_until`: N months from today, a date, or 2099-12-31 |
-| `-features`, `-limit name=number` | what it switches on and the ceilings (0 = unlimited); a limit that is not set falls back to the Community default |
-| `-expires DATE` | optional: no effect after this day (trials, subscriptions); leave it out for a normal licence |
-| `-edition` | the name of the offer, `pro` by default, any other such as `education` (lower case, one word); shown by `server_info` and `admin_license`, it switches nothing by itself: what a licence grants are `-features` and `-limit` |
-
-For a renewal issue a new licence and extend `maintenance_until` from the **previous end date** when the customer renews in time, so that no gap arises. For a kulanz, issue a new file with a later date, free of charge. A whole line can be covered more widely with an **epoch** in `line.txt` (see below).
-
-Check a licence: `go run ./cmd/atrium-license verify -base-url https://atrium.example.com <licence>` (signature, content, and how it evaluates for that instance and this source tree's line).
-
-### The register and what never goes into the repository
-
-The **register** (who got what, when) and the **licences** are customer and commercial data: keep them outside the repository, with the keys. `.gitignore` catches `*.key`, `register/` and the usual licence file names; that is a net for slips, not the plan. The tool itself, the format and the public keys are public on purpose: the secret is the private keys, never the procedure.
-
-### The release line
-
-Every build knows the release line it belongs to from `internal/product/line.txt`, embedded in the binary:
-
-```
-line 3.4
-date 2022-05-10
-epoch 2022-01-01      # optional
-```
-
-- **`date`** is the day the line (`X.Y.0`) was released. All patch builds of the line carry it; they are covered like `X.Y.0`.
-- **`epoch`** (optional) replaces the date for coverage: an "amnesty" release sets it to an earlier date, so that every licence valid from then on covers it, without relabelling any version.
-- When a **new line starts**, set `line` and `date` (and no epoch) in the commit that gets the tag `vX.Y.0`. The branch of the line keeps the file for all its patches; a backport never takes it along. Until the release mechanics are automated (design, phase 3) this is a manual step, and a forgotten update would give the new line away: check it before tagging.
-- The **build date** (the commit date, passed as a build argument) is for support only and never used for licensing.
-
-### Testing it end to end
-
-1. `genesis` into a temporary directory outside the repository, paste the anchors into `internal/license/anchors.txt` (do not commit test keys).
-2. `go run ./cmd/server -config config.yaml`, log in as an instance admin.
-3. `issue` a licence for the host of your `base_url`, `-months 12 -limit users=5`.
-4. In the assistant: *"Install this licence: …"*, then *"Show the Atrium licence."*
-5. Try the limits (`license.community_max_users: 2` without a licence refuses the third new account), `-until` a past date (`not covered`), another `-domain` (refused), and `-expires` yesterday (`expired`).
-
-Remove the test keys from `anchors.txt` again before committing.
+**Does the Pro image phone home?** No. A licence is verified offline and nothing ever calls anybody.

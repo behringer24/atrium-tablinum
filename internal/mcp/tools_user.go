@@ -11,7 +11,7 @@ import (
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
-	"github.com/behringer24/atrium-tablinum/internal/license"
+	"github.com/behringer24/atrium-tablinum/internal/edition"
 	"github.com/behringer24/atrium-tablinum/internal/product"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -234,7 +234,7 @@ type serverInfoOut struct {
 	Line      string `json:"line,omitempty"`
 	LineDate  string `json:"line_date,omitempty"`
 	BuildDate string `json:"build_date,omitempty"`
-	// Edition in effect: community, or the edition of a valid licence.
+	// Edition in effect: community, or the edition of the Pro build.
 	Edition string `json:"edition,omitempty"`
 }
 
@@ -242,9 +242,9 @@ func (s *Server) serverInfo(_ context.Context, _ *call, _ serverInfoIn) (serverI
 	out := serverInfoOut{Name: s.set.ProductName, Version: product.Version, Commit: product.Commit(), BuildDate: product.BuildDate}
 	line := product.CurrentLine()
 	out.Line, out.LineDate = line.Name, line.Coverage().Format("2006-01-02")
-	out.Edition = license.Community
-	if s.License != nil {
-		out.Edition = s.License.State().Edition
+	out.Edition = edition.Community
+	if s.Edition != nil {
+		out.Edition = s.Edition.Name()
 	}
 	return out, nil
 }

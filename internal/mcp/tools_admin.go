@@ -40,9 +40,6 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_revoke_sessions", "End a user's sessions", tierInstanceAdmin, true, s.adminRevokeSessions)
 	addTool(s, ms, "admin_allowlist", "Manage login allowlist", tierInstanceAdmin, true, s.adminAllowlist)
 	addTool(s, ms, "admin_context", "Manage context", tierInstanceAdmin, true, s.adminContext)
-	if s.License != nil {
-		addTool(s, ms, "admin_license", "Manage licence", tierInstanceAdmin, true, s.adminLicense)
-	}
 	if s.Quota != nil {
 		addTool(s, ms, "admin_quotas", "Manage quotas", tierInstanceAdmin, true, s.adminQuotas)
 	}
@@ -51,6 +48,9 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_support_bundle", "Support information", tierInstanceAdmin, false, s.adminSupportBundle)
 	if s.Reembed != nil {
 		addTool(s, ms, "admin_reembed", "Re-embed sections", tierInstanceAdmin, true, s.adminReembed)
+	}
+	for _, add := range editionTools {
+		add(s, ms)
 	}
 }
 

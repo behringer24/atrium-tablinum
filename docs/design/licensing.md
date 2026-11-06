@@ -1,29 +1,29 @@
 # Commercial editions and licence files
 
-**Status:** the model is agreed in outline; the licence core (verification, installation, the user limit, the issuing tool) is built, everything marked as a later phase is not. Where a decision belongs to the owner and not to engineering it is marked **Open** and carries a recommendation. Nothing here is a legal text; the terms a customer signs, and the reading of the EU Cyber Resilience Act below, need a lawyer.
+**Status:** the model is decided. The public tree has the extension points (`internal/edition` and three hooks in `internal/mcp`) and a fixed Community limit, and **contains no licence code at all**: verification, the issuer public keys, `admin_license` and the issuing tool live in the private Pro repository (`atrium-tablinum-pro`) and are laid over this tree at build time. Everything marked as a later phase is not built. Where a decision belongs to the owner and not to engineering it is marked **Open** and carries a recommendation. Nothing here is a legal text; the terms a customer signs, and the reading of the EU Cyber Resilience Act below, need a lawyer.
 
 ## Goal
 
 Atrium Tablinum is sold to organisations of different sizes and is usable for free where that is fair:
 
-- a **Community** edition: public source, public build, free for small use;
+- a **Community** edition: public source, free for small use, with a fixed limit and no licence support;
 - a **Pro** edition: the same product with extra code that is not public and with limits lifted;
-- a **licence file** that a customer puts on their server, which switches limits and features on, without a restart and without the server calling anybody.
+- a **licence file** that a customer puts on their server, which only the Pro build reads: it switches limits and features on, without a restart and without the server calling anybody.
 
 Non-goals: an uncircumventable copy protection (impossible for a Go binary, see [What cannot be protected](#what-cannot-be-protected)), a licence server the customer's instance must reach, and hosting Atrium for third parties (the Elastic License 2.0 already forbids that for everybody else).
 
 ## Where we start
 
-- Source is public (for now the repository is still private), the licence is the [Elastic License 2.0](../../LICENSE): use, modify and redistribute allowed; **offering it as a managed service to third parties is not**, and neither is **circumventing or removing licence key functionality**. The second clause is what makes a licence-file model enforceable by contract and the main reason to stay with ELv2 instead of a copyleft licence.
+- Source is public (the repository becomes public as it is: its history never contained Pro code), the licence is the [Elastic License 2.0](../../LICENSE): use, modify and redistribute allowed; **offering it as a managed service to third parties is not**, and neither is **circumventing or removing licence key functionality**. The second clause is what makes a licence-file model enforceable by contract and the main reason to stay with ELv2 instead of a copyleft licence. It bites on the Pro build, which has licence key functionality; for the Community limit it is a question for the lawyer (below).
 - ELv2 is **source-available, not open source** in the OSI sense. Say so in every public text.
-- The code is one monolithic tree. The Pro overlay below only matters when there is Pro code; until then the licence gates limits, and the feature gate has nothing behind it yet.
+- The public tree is one monolithic tree that builds and tests alone. The Pro files are laid over a copy of it by the private pipeline.
 
 ## Options considered
 
 | Option | How | Verdict |
 |---|---|---|
 | **A. Licence file in the open code** | Every feature is in the public repo; limits and some features check a signed licence | Simple, one build. The protection is **legal only**. Fine for limits |
-| **B. Build tag plus private overlay** | The public repo defines small extension points with free defaults; a private repository holds Pro code as files with `//go:build pro`; the private pipeline lays the overlay into the tree of the public tag and builds with `-tags pro` | **Chosen for real Pro features.** The code is not public, the overlay can use `internal/` packages |
+| **B. Build tag plus private overlay** | The public repo defines small extension points with free defaults; a private repository holds Pro code as files with `//go:build pro`; the private pipeline lays the overlay into the tree of the public tag and builds with `-tags pro` | **Chosen, and built.** The code is not public, the overlay can use `internal/` packages, and the licence code itself is part of the overlay |
 | C. Second Go module with an exported API | The private module imports the public one | Clean boundary, but `internal/` is invisible to other modules, so a stable public `pkg/` API would have to be designed and kept. More promises |
 | D. Go `plugin` package | Load Pro code at run time | **Rejected.** No Windows, identical toolchain and dependency versions required, fragile |
 | E. Separate service (sidecar) | Pro features as their own process | Only for heavy add-on services |
@@ -32,13 +32,15 @@ Non-goals: an uncircumventable copy protection (impossible for a Go binary, see 
 
 ## Decision
 
-**A and B together, two binaries from one code base.**
+**B, with the licence code inside the overlay: two builds from one code base, one public image.**
 
-- `atrium` (Community): built from the public repository, published as a public image. Contains the licence verification and every limit check.
-- `atrium-pro` (Pro): the same code plus the private overlay, built in a private pipeline, published to a private registry. Pro features need a covering licence.
-- Both read the same licence file. A licence can lift a limit in either binary.
+- **Community build:** the public repository alone (`go build ./cmd/server`). It has **no licence verification, no issuer keys and no `admin_license`**, and a fixed limit of **8 active accounts** (`edition.CommunityMaxUsers`, a constant: there is no configuration key that lifts it). A `license:` section in `config.yaml` is refused at start with a message that says so. Anybody can build it and verify that it contains no licence or telemetry code.
+- **Pro build:** the same tree with the overlay of the private repository laid over it and built with `-tags pro`. The overlay brings the licence manager, the issuer public keys, `admin_license`, the issuing tool and every Pro feature. Pro features need a covering licence; the licence also lifts the user limit.
+- **One public image.** The official image is built by the private pipeline from the public tag plus the overlay (`GO_TAGS=pro`) and published as a public package. Without a licence it behaves as Community; a licence unlocks Pro, with no change of image and no registry credentials. Whoever wants a pure Community binary builds from the public repository.
 
-Limits are protected by the contract (and the friction of patching), Pro features additionally by the code not being public. That is an honest split, and the documents say it.
+Why the licence code moved out of the public tree: the protection of Pro rests on the Pro features **not being public**, not on the check (a Go binary can always be patched). With the check public, the Community build carried code and keys it can never use, and a configuration key (`community_max_users: 0`) lifted the one hard limit by itself.
+
+Protection, honestly: the limit by the contract and the friction of patching, Pro features additionally by the code not being public. The documents say so.
 
 ## Editions and what is gated
 
@@ -46,15 +48,21 @@ Limits are protected by the contract (and the friction of patching), Pro feature
 
 | Area | Community | Pro (candidates) |
 |---|---|---|
-| Knowledge, skills, search, spaces, roles, review, audit log, handoffs, personal spaces | yes | yes |
-| Users | up to **8 active accounts** (decided) | higher or unlimited by licence |
+| Knowledge, knowledge types, responsible people and review dates as data, skills, search, spaces, roles, review, audit log, handoffs, personal spaces | yes | yes |
+| Users | up to **8 active accounts** (decided, fixed) | higher or unlimited by licence |
 | Spaces, quotas | the built-in defaults, runtime quotas for the instance admin | higher ceilings by licence |
 | Login providers | as today | group synchronisation, SCIM provisioning |
+| Offboarding | **locking an account and ending its sessions** (`admin_revoke_sessions`), the retention period and its purge | **the guided workflow**: handing a personal space on (`admin_transfer_personal_space`), reassigning responsibilities (`reassign_owner`), the hints that lead through it |
+| Review dates | the dates, the filter for entries that are due | **enforcement**: due-date reports, reminders and notifications by mail, Teams or Slack |
 | Audit | the log in the database | export to a SIEM, hash chain, retention rules |
-| Operations | health, backups | alerts and notifications, multi-instance administration |
+| Importers | the ingest base | connectors to Confluence, SharePoint, Notion |
 | Support | community | support and SLA (a service, not a feature) |
 
-The list is a menu, not a promise. **Open:** which Pro features go first and the price model (the free limit is decided: 8 active accounts). **Recommendation:** group sync and SCIM first in Pro, support sold alongside as a subscription.
+The list is a menu, not a promise. Multi-instance administration is **dropped**: one instance serves exactly one organisation. **Decided:** the free limit (8 active accounts). **Recommendation:** group sync and SCIM first in Pro, then the guided offboarding and the review reminders, support sold alongside as a subscription.
+
+Features are only ever moved to Pro **before the public repository exists**. Taking a released free feature away would break trust, so what is free now stays free.
+
+**Built so far:** neither the guided offboarding nor the review enforcement has been moved: the guided offboarding is still in the public tree (`admin_offboard_user` with its hints, `admin_transfer_personal_space`, `reassign_owner`), the review reminders do not exist yet. Moving offboarding means a free basic `admin_offboard_user` (lock, end sessions, delete handoffs) and the rest in the overlay; it is the next step of the split, on its own branch.
 
 **Further editions need no code.** An edition is the name of an offer, not a switch: the code only ever asks for a feature (`license.Has("scim")`) or a limit (`users`). An **Education** or non-profit offer is a licence issued with `-edition education` and its own features and limits; who qualifies is settled by the contract, not by the software. Keep edition names lower case and one word, so that the register and the reports stay consistent.
 
@@ -70,7 +78,7 @@ A customer buys **the right to use what they have, forever, and to receive new v
 - **Subscription** (features off when payment stops) stays possible for customers who want it, with the optional `expires` field; it is also what trial licences use. `expires` is the only field that needs the clock.
 - **Kulanz** has two clean forms, neither of which falsifies a version number: issue the customer a **new licence file with a later `maintenance_until`** (free), or ship an **"amnesty" release** whose line file carries an earlier **epoch** (below), so that every licence valid from that date on covers it. A version tag is never relabelled (`v3.4.3` is never `6.2.1`: it would break the promise a patch number makes, drag customers through irreversible database migrations when tools update patches automatically, and make `server_info` and the audit log lie).
 - **Renewal** extends from the previous end date when it is renewed in time, so that no gap arises. Renewal is the installation of a new file, once a year at most, by an instance admin (`admin_license`), without a restart. A customer who does not want new versions never touches the file again.
-- Withdrawing a paid version is **not possible** (that would need a call home). Disputes are a matter for the contract; the technical lever is the **private registry**, which hands out only versions covered by a customer's token.
+- Withdrawing a paid version is **not possible** (that would need a call home). Disputes are a matter for the contract; the technical lever is the state `not covered`, which switches the Pro features off for a build beyond the maintenance.
 
 Example, with a customer covered until 1 May 2023:
 
@@ -119,8 +127,8 @@ A small signed statement, verified **offline**, much like a JWS: the issuer sign
 | `expires` | optional, for trials and subscriptions |
 | `issuer_key` | the id of the issuer key that signed it |
 
-- **Trust anchors:** **five** Ed25519 public keys are compiled into the binary (`internal/license/anchors.txt`, embedded), one id per line. Only one signs; the others are cold spares, so rotating the signing key needs no release. A licence names which key signed it.
-- **The issuing tool is in this repository** (`cmd/atrium-license`): `genesis` creates the key pairs, `issue` signs a licence, `verify` and `show` check and print one. That is deliberate: the secret is the private keys, never the procedure, and the format is public anyway. The tool is useless without a private key, because the binary trusts only the embedded public keys, and anybody who rebuilds with their own keys circumvents the licence key functionality, which ELv2 forbids. **What must never be in a public repository:** the private keys, the register of issued licences (customer and commercial data), and the real licences. `.gitignore` catches the usual file names; it is a net, not the plan.
+- **Trust anchors:** **five** Ed25519 public keys are compiled into the Pro build (`internal/license/anchors.txt` in the **Pro repository**, embedded), one id per line. Only one signs; the others are cold spares, so rotating the signing key needs no release. A licence names which key signed it. The public keys are public information; they sit in the private repository so that the Community build carries no licence code and no keys, not because they are secret.
+- **The issuing tool is in the Pro repository** (`cmd/atrium-license`): `genesis` creates the key pairs, `issue` signs a licence, `verify` and `show` check and print one. The secret is the private keys, never the procedure, and the format is not meant to be a secret either. **What must never be in any repository:** the private keys, the register of issued licences (customer and commercial data), and the real licences. `.gitignore` catches the usual file names; it is a net, not the plan. The practical side (key ceremony, issuing, testing) is in the Pro repository's `docs/licensing.md`.
 - **Private keys** are generated **offline**, on a machine that is not on a network, stored on removable media in more than one physical place, and never touch a server, a CI system or this repository. The public halves go into `anchors.txt`.
 - **Installing:** `license.file` in `config.yaml`, or at run time by an instance admin with `admin_license` (`get`, `install`, `remove`, with `confirm`), stored in the database, effective at once, audited (`license_install`, `license_remove`), shown by `admin_health` and `server_info`. `admin_license` also compares the active accounts with the user limit in force and warns when it is reached, so that an instance over the limit is visible without anybody being locked out.
 - **States** the instance reports: `none` (Community), `valid`, `not covered` (the build is newer than the maintenance: Pro features off, the message names the dates), `expired` (the optional `expires` passed), `wrong domain`, `invalid` (signature or unknown key). In every state except `valid` the limits are the Community defaults, **and content stays readable and exportable**. Nothing existing is blocked or deleted, and nobody is logged out because of a licence. A valid licence carries a notice from 60 days before its `expires` date and before the end of maintenance, so that a renewal is never a surprise.
@@ -128,15 +136,18 @@ A small signed statement, verified **offline**, much like a JWS: the issuer sign
 
 ## How limits are enforced
 
-Limits already exist as quotas with runtime overrides. The licence adds a **ceiling**: an instance admin may override within the licensed ceiling, and without a licence the ceiling is the Community default. The **user limit** is the one new hard limit: it applies when a **new account** would be created and is a refusal with an explanation, never an effect on existing accounts. The code is small, open, and covered by the contract clause above.
+Limits already exist as quotas with runtime overrides. In the Pro build the licence adds a **ceiling**: an instance admin may override within the licensed ceiling, and without a licence the ceiling is the Community default (not built yet). The **user limit** is the one hard limit: it applies when a **new account** would be created and is a refusal with an explanation, never an effect on existing accounts. In the public build it is the constant `edition.CommunityMaxUsers` (8) behind `edition.Running.MaxUsers()`; in the Pro build the licence manager answers instead and can lift it. There is **no configuration key** for it in either build: a limit the customer can set to 0 is no limit.
 
-## Extension points and the overlay (option B)
+## Extension points and the overlay (option B, built)
 
-Not needed until there is Pro code; designed now so that the first Pro feature does not force a redesign.
+The public tree has what the first Pro feature needs, with a free default for each (so it builds and is tested alone):
 
-The public repo gets a small package (working name `internal/edition`) with a **registry** the overlay fills at start-up (`init()` in files with `//go:build pro`), **hooks** for what Pro code needs (tools, HTTP routes, background jobs, config sections, an audit exporter, a login-provider capability), **free defaults** for every hook (so the public build is complete and tested alone), and a **gate helper** (`license.Has("scim")`).
+- **`internal/edition`:** `Register` (called from `init()` of the overlay), `Start` (called by the server once the database is ready), the interface `Running` (`Name`, `MaxUsers`) and the optional `Prober` for `admin_health`. It hands the edition the pool, the base URL, a logger and the opaque `license:` section of `config.yaml` (`config.Config.License` is a raw YAML node; the Community build refuses a non-empty one).
+- **`internal/mcp/edition.go`:** `editionTools` (extra tools), `editionDescriptions` (their descriptions, rendered like the built-in ones) and `editionSupport` (named parts of `admin_support_bundle`, nested under `edition`).
 
-The private repository holds the Pro packages and a build recipe: its pipeline checks out the public tag, copies the overlay into `internal/pro/`, builds with `-tags pro`. The overlay lives inside the module, so it can use `internal/` packages; the cost is that it is rebuilt against every public release. Keep the hooks few and stable: every hook is a promise to the private side.
+Everything else the overlay needs it reaches directly, because the overlay files live **inside the module** (also inside `internal/mcp`, so unexported helpers such as `addTool` are usable) and are rebuilt against every public release. Keep the hooks few: every hook is a promise to the private side, and each new one should be justified by two uses.
+
+The private repository holds the files under `overlay/` at their final paths, a build script (`scripts/build.sh`: lays the overlay over a copy of a public tag or of the working tree, builds and tests with and without the tag) and its pipeline. Files that hook in carry `//go:build pro`, so the combined tree built without the tag is still the Community build.
 
 ## Release policy
 
@@ -168,10 +179,12 @@ The EU Cyber Resilience Act ([Regulation (EU) 2024/2847](https://eur-lex.europa.
 
 ## Build, release and distribution
 
-- **Community:** this repository's workflow builds and publishes the image (tests, `govulncheck`, pinned actions as today). Making the package public is a one-time decision with the licence and the name (**Open**).
-- **Pro:** a private repository with its own workflow triggered by the same tag; it builds `atrium-pro` against the public tag plus the overlay, runs the full suite in both modes, and publishes to a **private registry**. Customers pull with **per-customer tokens** scoped to the versions their maintenance covers (revocable), or download for air-gapped installations.
-- **Versions** are identical in both editions; `server_info` and `admin_health` report the edition, the line and the licence state.
-- **Documentation** states per feature which edition has it.
+- **The public image** is built by the **private** pipeline: it checks out the public tag, lays the overlay over it, runs the full suite in both modes (`scripts/build.sh test`), builds with this repository's Dockerfile and `--build-arg GO_TAGS=pro`, signs the image (cosign) and attaches an SBOM and provenance, and publishes it as a **public package**. No registry credentials for customers; air-gapped sites mirror the public image.
+- **This repository's workflow** tests the public tree and builds the pure Community image for those who want it (`community` tag). It is the only image whose content can be rebuilt from public source.
+- **The private registry as a lever is given up.** The case it served (a customer pulling a `latest` beyond their maintenance by accident) is covered by the state `not covered`: Pro features are off, the limits are the Community ones, all data stays accessible.
+- **Versions** are identical in both builds; `server_info` and `admin_health` report the edition, the line and (in Pro) the licence state.
+- **Documentation** states per feature which edition has it. The user guides and design documents are public; only the practical licence operations (key ceremony, issuing, register) live in the Pro repository.
+- **The Pro licence** is a separate proprietary licence for the overlay; the image carries both texts (ELv2 for the public part, the Pro terms for the overlay). Settled with the lawyer.
 
 ## What cannot be protected
 
@@ -198,7 +211,7 @@ Not engineering tasks; the design depends on them.
 | The extension points grow into an unstable API | Few hooks, each justified by two uses; Community tests exercise the free defaults |
 | Customers dislike a hard limit | Only new accounts are refused, never existing ones; clear message |
 | A signing key is lost or leaked | Five trust anchors from day one, spares offline in more than one place; a leaked key is replaced by promoting a spare, bounded by the licence lifetimes |
-| A customer upgrades by accident beyond the maintenance (the `latest` tag) | The registry token limits what can be pulled; the build says `not covered` clearly and keeps all data accessible |
+| A customer upgrades by accident beyond the maintenance (the `latest` tag) | The build says `not covered` clearly, switches the Pro features off and keeps all data accessible (there is no registry token to limit the pull) |
 | A paid version cannot be withdrawn | Accepted; the contract and the registry are the levers |
 | Community feels crippled | Security and governance basics stay free; the limit is generous enough for a real small team |
 
@@ -208,9 +221,9 @@ Not engineering tasks; the design depends on them.
 1. **Licence core** (**built**): the format and verification with five embedded trust anchors, `line.txt`, the line and build date, `license.file`, `admin_license`, `admin_health` and `server_info`, audit events, the issuing tool in `cmd/atrium-license`, tests, documentation.
 2. **Limits** (**partly built**: the user limit with a configurable Community default): licensed ceilings for the existing quotas; the final Community defaults.
 3. **Release mechanics:** the CI guard for `line.txt`, the start-line script, release branches per line, automated backports, the SBOM.
-4. **Extension points and the overlay skeleton:** `internal/edition`, the build tag, a private repository with a no-op Pro package, pipelines for both editions, tests in both modes. The point of no easy return, because hooks are promises; do it when the first Pro feature is decided.
-5. **First Pro features** (group sync, SCIM, audit export) behind the gate helper.
-6. **Distribution:** public Community image, private Pro registry and customer tokens, commercial terms, price list.
+4. **Extension points and the overlay** (**built**): `internal/edition`, the three hooks in `internal/mcp`, the Pro repository with the licence code as its first overlay, `scripts/build.sh`, the `GO_TAGS` build argument of the Dockerfile. Not built: the pipeline of the Pro repository.
+5. **Moving the guided offboarding and building the review reminders** into the overlay (see "Editions and what is gated"), then the first new Pro features (group sync, SCIM, audit export) behind the gate (`Edition.Has`-style checks live in the overlay).
+6. **Distribution:** the private pipeline that publishes the public image, signing, SBOM, commercial terms, price list.
 
 ## Open decisions
 
@@ -223,7 +236,10 @@ Not engineering tasks; the design depends on them.
 | Feature lines per year | Two |
 | Support period per line | Five years of security fixes until the lawyer says otherwise |
 | Hosted offering by the owner | Not now; the model does not depend on it |
-| Make the image public | Yes, with the licence and name decision, so that Community can be tried |
+| Make the image public | **Decided: yes**, one public image built from the overlay; the licence unlocks Pro. A package only becomes public once, so do it together with the lawyer's review of the licence texts |
+| Licence code in the public tree | **Decided: no.** It lives in the Pro repository; the Community limit is a constant |
+| Name of the public repository | `atrium-tablinum` (the Go module path already is `github.com/behringer24/atrium-tablinum`); the private one is `atrium-tablinum-pro` |
+| ELv2 clause on the Community limit | Ask the lawyer: with no licence key functionality in the public build, does editing the constant circumvent it? The limit stays protected by the contract either way |
 
 ## Rejected, for the record
 

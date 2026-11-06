@@ -2,8 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -13,10 +11,7 @@ import (
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
-	"github.com/behringer24/atrium-tablinum/internal/license"
-	"github.com/behringer24/atrium-tablinum/internal/product"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
-	"github.com/behringer24/atrium-tablinum/internal/users"
 )
 
 func toolNames(t *testing.T, e *env, cs *mcp.ClientSession) map[string]bool {
@@ -1029,120 +1024,5 @@ func TestAdminQuotas(t *testing.T) {
 	m := e.mustCall(t, anna, "space_members", map[string]any{"space": "ops"})
 	if q, _ := m["quota"].(map[string]any); q == nil || q["documents"] == nil {
 		t.Errorf("space_members shows no quota: %v", m)
-	}
-}
-
-// An instance admin installs a licence at run time; it applies at once and is audited.
-func TestAdminLicense(t *testing.T) {
-	e := setup(t, 0)
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	line := product.CurrentLine()
-	e.srv.License = license.NewManager(license.Config{Anchors: license.Anchors{"k1": pub}, Line: line,
-		BaseURL: "https://atrium.example.com", Pool: e.srv.Pool, CommunityMaxUsers: 3})
-	e.team(t, "dev", "Development", false, map[string]authz.Role{"anna@x.de": authz.Author})
-	boss, anna := e.session(t, "boss@x.de"), e.session(t, "anna@x.de")
-
-	mint := func(domain, until string) string {
-		tok, err := license.Sign(priv, license.Claims{V: 1, ID: "lic-" + until, Licensee: "Example GmbH", Domain: domain, Edition: "pro",
-			Features: []string{"scim"}, Limits: map[string]int64{"users": 50}, Issued: "2026-01-01", MaintenanceUntil: until, IssuerKey: "k1"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return tok
-	}
-	view := func(m map[string]any) (string, map[string]any) {
-		l := m["license"].(map[string]any)
-		return l["status"].(string), l
-	}
-	// seats checks the active accounts and the user limit in force shown by the tool
-	seats := func(m map[string]any, limit int, over bool) {
-		t.Helper()
-		var n int
-		if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n); err != nil {
-			t.Fatal(err)
-		}
-		u := m["users"].(map[string]any)
-		if u["active"] != float64(n) || u["limit"] != float64(limit) || u["over_limit"] != over {
-			t.Errorf("users: %v, want %d active, limit %d, over %v", u, n, limit, over)
-		}
-		if w, _ := m["warning"].(string); (w != "") != (n >= limit) {
-			t.Errorf("warning with %d active and limit %d: %q", n, limit, w)
-		}
-	}
-
-	// users do not even see the tool; server_info shows only the edition
-	if res, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_license", Arguments: map[string]any{"action": "get"}}); err == nil && !res.IsError {
-		t.Fatal("a user used admin_license")
-	}
-	if got := e.mustCall(t, anna, "server_info", map[string]any{}); got["edition"] != "community" || got["line"] != line.Name {
-		t.Errorf("server_info: %v", got)
-	}
-
-	out := e.mustCall(t, boss, "admin_license", map[string]any{"action": "get"})
-	if st, _ := view(out); st != "none" {
-		t.Fatalf("fresh instance: %s", st)
-	}
-	seats(out, 3, false)
-	for name, tc := range map[string]struct {
-		args map[string]any
-		want string
-	}{
-		"no licence":      {map[string]any{"action": "install", "confirm": true}, "licence text"},
-		"no confirmation": {map[string]any{"action": "install", "license": mint("atrium.example.com", "2099-12-31")}, "confirm"},
-		"garbage":         {map[string]any{"action": "install", "license": "atrium-license-v1.x.y", "confirm": true}, "not accepted"},
-		"other domain":    {map[string]any{"action": "install", "license": mint("other.example.com", "2099-12-31"), "confirm": true}, "other.example.com"},
-		"unknown action":  {map[string]any{"action": "steal"}, "action must be"},
-	} {
-		if _, msg := e.call(t, boss, "admin_license", tc.args); !strings.Contains(msg, tc.want) {
-			t.Errorf("%s: %q", name, msg)
-		}
-	}
-
-	out = e.mustCall(t, boss, "admin_license", map[string]any{"action": "install", "license": mint("Atrium.Example.com", "2099-12-31"), "confirm": true})
-	st, l := view(out)
-	if st != "valid" || l["edition"] != "pro" || l["licensee"] != "Example GmbH" || l["source"] != "installed" || l["maintenance_until"] != "2099-12-31" {
-		t.Fatalf("install: %v", out)
-	}
-	if lim := l["limits"].(map[string]any); lim["users"] != float64(50) {
-		t.Errorf("limits: %v", l["limits"])
-	}
-	// accounts created under the licence go beyond the Community limit
-	for _, email := range []string{"carl@x.de", "dora@x.de", "emil@x.de"} {
-		if _, err := e.users.Provision(e.ctx, users.Identity{EmailVerified: true, IDP: "t", Subject: email, Email: email}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	seats(e.mustCall(t, boss, "admin_license", map[string]any{"action": "get"}), 50, false)
-	if got := e.mustCall(t, anna, "server_info", map[string]any{}); got["edition"] != "pro" {
-		t.Errorf("server_info after install: %v", got)
-	}
-	// a licence that does not cover this build is accepted and says why
-	out = e.mustCall(t, boss, "admin_license", map[string]any{"action": "install", "license": mint("atrium.example.com", "2020-01-01"), "confirm": true})
-	if st, l := view(out); st != "not covered" || !strings.Contains(l["detail"].(string), "2020-01-01") {
-		t.Fatalf("not covering: %v", out)
-	}
-	seats(out, 3, true)
-	// the question before a removal names what it means for the accounts
-	if _, msg := e.call(t, boss, "admin_license", map[string]any{"action": "remove"}); !strings.Contains(msg, "confirm") || !strings.Contains(msg, "Community allows 3") {
-		t.Errorf("remove without confirmation: %q", msg)
-	}
-	out = e.mustCall(t, boss, "admin_license", map[string]any{"action": "remove", "confirm": true})
-	seats(out, 3, true)
-	if w, _ := out["warning"].(string); !strings.Contains(w, "the Community edition allows 3") || !strings.Contains(w, "keep working") {
-		t.Errorf("warning after remove: %q", w)
-	}
-	if st, _ := view(e.mustCall(t, boss, "admin_license", map[string]any{"action": "get"})); st != "none" {
-		t.Errorf("after remove: %s", st)
-	}
-	// the audit log has the changes, the licence text itself is not in it
-	var n int
-	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE action IN ('license_install', 'license_remove')`).Scan(&n); err != nil || n != 3 {
-		t.Errorf("audit entries: %d %v", n, err)
-	}
-	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE details::text LIKE '%atrium-license-v1%'`).Scan(&n); err != nil || n != 0 {
-		t.Errorf("the licence text is in the audit log: %d %v", n, err)
 	}
 }

@@ -6,12 +6,14 @@ ARG TARGETOS TARGETARCH
 ARG VERSION=dev
 # Commit date (YYYY-MM-DD) for support and diagnosis; never used for licensing.
 ARG BUILD_DATE=
+# Go build tags; the private pipeline of the Pro edition sets "pro" (docs/design/licensing.md).
+ARG GO_TAGS=
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # Migrations are in the binary via go:embed, the image needs no further files.
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X github.com/behringer24/atrium-tablinum/internal/product.Version=${VERSION} -X github.com/behringer24/atrium-tablinum/internal/product.BuildDate=${BUILD_DATE}" -o /out/atrium-tablinum ./cmd/server
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -tags "${GO_TAGS}" -ldflags="-s -w -X github.com/behringer24/atrium-tablinum/internal/product.Version=${VERSION} -X github.com/behringer24/atrium-tablinum/internal/product.BuildDate=${BUILD_DATE}" -o /out/atrium-tablinum ./cmd/server
 
 FROM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
 RUN apk add --no-cache ca-certificates tzdata \

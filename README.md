@@ -22,7 +22,7 @@ The first model load of `tei-embed` takes a few minutes; until then `/readyz` re
 
 Releases and the prebuilt image from the GitHub Container Registry: [docs/release.md](docs/release.md).
 
-Editions and licences (Community, Pro, offline-verified licence files, how a licence is issued and installed): [docs/licensing.md](docs/licensing.md), design in [docs/design/licensing.md](docs/design/licensing.md).
+Editions (Community and Pro, what each has, how a licence works): [docs/licensing.md](docs/licensing.md), design in [docs/design/licensing.md](docs/design/licensing.md).
 
 The embedding backend is selectable: your own TEI server, OpenAI and compatible services, or Amazon Bedrock. Settings, memory requirements and data protection: [docs/embedding.md](docs/embedding.md).
 
