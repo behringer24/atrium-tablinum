@@ -32,6 +32,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **Slash commands find their skill:** the descriptions of `list_skills` and `get_skill` now start with the hint that a `/name` command such as `/helloworld` is a skill, because clients that load tools on demand show an assistant only the first words of a description before the server instructions arrive.
 
 ### Changed
+- **Images are built by the maintainer's build pipeline:** the workflow of this repository (`.github/workflows/test.yml`) runs the tests and reports a passed run to that pipeline; it no longer builds or prunes images itself, and `cleanup.yml` is gone. Tags of the form `vX.Y.Z` and pushes to `dev` work as before. `docs/release.md` describes the flow.
 - **The guided offboarding is a Pro feature** (licence feature `offboarding`): `admin_transfer_personal_space` and `reassign_owner` and the hints and the `responsible_for` count in the answer of `admin_offboard_user` now belong to the Pro build. The Community edition keeps `admin_offboard_user` (locks the account, ends its sessions, deletes its handoffs, reports the personal space and its deletion date) and `admin_reactivate_user`; the responsible person of an entry is changed entry by entry with `update_knowledge`. A Pro build without the feature refuses the two tools with a message. New hook `editionOffboarded`; `editionTools` are now called once for every tier of tools.
 
 ### Fixed
