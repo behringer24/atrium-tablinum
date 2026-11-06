@@ -1,13 +1,24 @@
 package mcpserver
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/behringer24/atrium-tablinum/internal/embed"
 	"github.com/behringer24/atrium-tablinum/internal/reembed"
 )
+
+// While the embedding service serves another model, saving fails with a message that says
+// whom to tell, not with "internal error"; the model names stay in the log and admin_health.
+func TestModelMismatchIsExplained(t *testing.T) {
+	err := translate("store_knowledge", fmt.Errorf("embedding: %w: TEI serves %q", embed.ErrModelMismatch, "other/model"))
+	if msg := err.Error(); !strings.Contains(msg, "instance admin") || strings.Contains(msg, "other/model") {
+		t.Fatalf("message: %q", msg)
+	}
+}
 
 // After a change of the model, vectors of the old one are left out of vector search and the
 // duplicate check until admin_reembed has rebuilt them.

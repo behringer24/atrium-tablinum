@@ -22,6 +22,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/audit"
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
+	"github.com/behringer24/atrium-tablinum/internal/embed"
 	"github.com/behringer24/atrium-tablinum/internal/guard"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
@@ -335,6 +336,10 @@ func translate(tool string, err error) error {
 		return err
 	}
 	slog.Error("Tool error", "tool", tool, "error", err)
+	if errors.Is(err, embed.ErrModelMismatch) {
+		return errors.New("the embedding service serves another model than configured, so entries cannot be saved right now; " +
+			"tell an instance admin, admin_health shows the cause")
+	}
 	return errors.New("internal error")
 }
 

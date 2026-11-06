@@ -74,6 +74,7 @@ embedding:
   # timeout: 60s
   # options:                          # apply only to the chosen backend, typos are rejected
   #   batch_size: 16                  # tei 16, openai 32, bedrock (Cohere) 32
+  #   check_model: true               # tei: embed nothing while TEI serves another model than `model` (GET /info)
   #
   # Example OpenAI:
   #   backend: "openai", model: "text-embedding-3-small", dimensions: 1536,

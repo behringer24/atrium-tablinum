@@ -5,12 +5,17 @@ package embed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 )
+
+// ErrModelMismatch is returned while the embedding service serves another model than
+// embedding.model names: its vectors would be stored under the wrong name.
+var ErrModelMismatch = errors.New("the embedding service serves another model than embedding.model")
 
 // Embedder turns texts into vectors. Implementations must return exactly one vector
 // of Dimensions() floats per input, in input order.

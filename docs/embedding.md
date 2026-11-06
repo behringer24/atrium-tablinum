@@ -39,7 +39,10 @@ embedding:
     batch_size: 16      # texts per request, below TEI's --max-client-batch-size (32)
     normalize: true
     truncate: true
+    check_model: true   # compare the model TEI serves with `model`, see below
 ```
+
+**Model check.** TEI loads its model with `--model-id`; Atrium knows only the name in `embedding.model` and records it with every vector. If the two differ, vectors of one model would be stored under the name of another and look current. So before it embeds, and with every readiness check, Atrium asks TEI which model it serves (`GET /info`, at most once a minute). If TEI names another model, Atrium embeds nothing: saving or changing the text of an entry fails with a hint to tell an instance admin, search falls back to full text, `/readyz` answers `not ready`, the server log says why, and `admin_health` (check `embedder`) names both models. Case does not matter. A server that does not name its model is accepted, and the log says once that the check is not possible: one without `/info`, or one that loaded the model from a directory (e.g. `/repository` on Hugging Face Inference Endpoints). `check_model: false` switches the check off, for instance behind a proxy that reports another name.
 
 **Memory requirements of the TEI server** (measured with bge-m3, ONNX backend):
 
@@ -122,9 +125,11 @@ Inference profiles (`eu.cohere.embed-v4:0`) are recognized as well. With Cohere 
 The vector column is created with `embedding.dimensions` on first start. Every section records which model computed its vector (`chunks.embedding_model`). Vectors of different models are not comparable, so **vector search and the duplicate check use only vectors of the configured model**; sections of another model are still found by full-text search until they are rebuilt.
 
 **Changing the model with the same dimension** (e.g. bge-m3 to another model with 1024 dimensions):
-1. Change `embedding.model` (and backend, URL, prefixes) and restart. The server starts and warns how many sections are not embedded with the configured model; `admin_health` (check `embeddings`) says the same.
+1. Change `embedding.model` (and backend, URL, prefixes) and restart. With TEI, change `--model-id` (`TEI_ARGS`) at the same time: until both name the same model, Atrium embeds nothing (see "Model check" above). The server starts and warns how many sections are not embedded with the configured model; `admin_health` (check `embeddings`) says the same.
 2. An instance admin asks *"Rebuild the Atrium search vectors."* (`admin_reembed action=start`, after confirmation). A background task (`reembed`, every minute) embeds the sections again in batches of 16, from their stored text exactly as when an entry is saved. A restart only pauses it. *"How far is the re-embedding?"* (`action=status`) shows the sections left and the models in use; `action=stop` pauses it.
 3. New and changed entries are embedded with the new model right away.
+
+**Prefixes:** changing only `query_prefix` needs no re-embedding, it applies to the next search. A change of `document_prefix` alone is not recognised: the sections keep the model name and count as current, and `admin_reembed` has nothing to rebuild. Set the document prefix together with the model, not later.
 
 **Changing to a model with another dimension** (e.g. 1024 to 768): the server refuses to start with a different dimension unless `embedding.allow_dimension_change: true` is set. With it, **one** start rebuilds the vector column: every vector is dropped (contents, versions and everything else stay), search falls back to full text, and the server log says so. Then start `admin_reembed` as above and **remove the setting again**, so that a later typo in `dimensions` cannot drop the vectors.
 
@@ -136,10 +141,11 @@ With `openai` and `bedrock`, the text of **every** entry goes to the provider, i
 
 ## Readiness and troubleshooting
 
-`/readyz` and `admin_health` call the embedder; `/readyz` is public and answers only `ok` or `not ready` (the reason goes to the log, `admin_health` shows it to admins), and it reuses a result for five seconds. With `openai` and `bedrock` the ping embeds one word and checks the dimension, at most once per minute, so that checks hardly cause any cost. Typical messages:
+`/readyz` and `admin_health` call the embedder; `/readyz` is public and answers only `ok` or `not ready` (the reason goes to the log, `admin_health` shows it to admins), and it reuses a result for five seconds. With `tei` the ping asks `/health` and, at most once per minute, which model is served (`/info`). With `openai` and `bedrock` the ping embeds one word and checks the dimension, at most once per minute, so that checks hardly cause any cost. Typical messages:
 
 | Message | Cause |
 |---|---|
+| "serves another model than embedding.model" | TEI was started with another `--model-id` than `embedding.model` names; change both together |
 | "check credentials" (status 401 or 403) | Key wrong or without permission |
 | "bedrock denies access" | IAM permission or model access in the region is missing |
 | "throttles" | Rate limit of the service |
