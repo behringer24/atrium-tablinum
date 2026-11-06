@@ -233,7 +233,7 @@ code{font-family:var(--f-mono); font-size:11.5px; background:var(--surface-2); b
 /*DATA-START*/
 // Highest migration version this page describes. tools/docs/check-data-model.mjs compares it,
 // and the tables, columns, types, foreign keys and indexes below, with the migrations.
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 const AREAS = [
   {id:"users", name:"Users & groups", h:214},
@@ -413,7 +413,7 @@ const TABLES = [
   "<code>space_id</code> records the space at the time of the version (entries can be moved) and has no foreign key.",
   "Deleting an entry deletes its versions (ON DELETE CASCADE)."]},
 
-{name:"chunks", area:"knowledge", mig:[2], go:1,
+{name:"chunks", area:"knowledge", mig:[2,12], go:1,
  purpose:"Search index: every entry is split into pieces along its headings, each piece with an embedding vector and a tsvector for the hybrid search.",
  code:["internal/db/db.go","internal/ingest/ingest.go","internal/search/search.go"],
  cols:[
@@ -422,7 +422,7 @@ const TABLES = [
   {n:"chunk_index", t:"int", nn:1},
   {n:"heading_path", t:"text", nn:1, d:"''"},
   {n:"content", t:"text", nn:1},
-  {n:"embedding", t:"vector(N)", nn:1},
+  {n:"embedding", t:"vector(N)", m:12},
   {n:"embedding_model", t:"text", nn:1},
   {n:"tsv", t:"tsvector", nn:1}],
  pk:"PRIMARY KEY (id)", uq:["UNIQUE (document_id, chunk_index)"],
@@ -433,7 +433,8 @@ const TABLES = [
  notes:[
   "Created by the Go migration 2 (<code>chunksMigration</code> in <code>internal/db/db.go</code>), because the vector dimension comes from the configuration: <code>vector(N)</code> with N = <code>embedding.dimensions</code>, 1 to 2000 (the HNSW limit). The dimension is then stored in <code>meta</code>.",
   "<code>internal/search</code> combines vector search (cosine distance <code>&lt;=&gt;</code>) and full-text search (<code>websearch_to_tsquery</code>) with reciprocal rank fusion; the permission filter is part of the same SQL query.",
-  "<code>tsv</code> is built with <code>to_tsvector</code> over all configured text search languages (<code>internal/ingest</code>); <code>embedding_model</code> records which model computed the vector."]},
+  "<code>tsv</code> is built with <code>to_tsvector</code> over all configured text search languages (<code>internal/ingest</code>); <code>embedding_model</code> records which model computed the vector.",
+  "Migration 12 lets <code>embedding</code> be empty: after a change of dimension (<code>embedding.allow_dimension_change</code>) every vector is dropped and <code>embedding_model</code> set to <code>''</code>. Vector search and the duplicate check use only vectors of the configured model; the others are found by full text until the task <code>reembed</code> (<code>internal/reembed</code>, started with <code>admin_reembed</code>) has rebuilt them. A pending rebuild is the row <code>reembed_requested</code> in <code>meta</code>."]},
 
 {name:"oauth_clients", area:"oauth", mig:[1],
  purpose:"MCP clients registered through Dynamic Client Registration (RFC 7591), with their allowed redirect URIs.",

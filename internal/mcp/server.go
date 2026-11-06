@@ -27,6 +27,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
 	"github.com/behringer24/atrium-tablinum/internal/license"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
+	"github.com/behringer24/atrium-tablinum/internal/reembed"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -93,6 +94,8 @@ type Deps struct {
 	// Embedding describes the configured embedding model for admin_health.
 	EmbeddingModel      string
 	EmbeddingDimensions int
+	// Reembed serves admin_reembed; nil = not managed.
+	Reembed *reembed.Service
 	// SupportConfig is the part of the configuration admin_support_bundle shows
 	// (config.SupportSummary: settings only, no secrets).
 	SupportConfig map[string]any

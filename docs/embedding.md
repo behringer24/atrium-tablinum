@@ -119,10 +119,16 @@ Inference profiles (`eu.cohere.embed-v4:0`) are recognized as well. With Cohere 
 
 ## Dimension and changing the model
 
-The vector column is created with `embedding.dimensions` on first start. After that:
-- The server refuses to start with a **different dimension**.
-- With the **same dimension but a different model** it only warns. Vectors of different models are not comparable, so search then returns poor results.
-- A job that re-embeds all entries is **not implemented yet**. The error message mentions `admin_reembed`, which does not exist yet. Until then: decide on provider and model before the first entry is stored. Switching between providers of the same model (e.g. bge-m3 locally and bge-m3 at a cloud service), on the other hand, works without re-embedding.
+The vector column is created with `embedding.dimensions` on first start. Every section records which model computed its vector (`chunks.embedding_model`). Vectors of different models are not comparable, so **vector search and the duplicate check use only vectors of the configured model**; sections of another model are still found by full-text search until they are rebuilt.
+
+**Changing the model with the same dimension** (e.g. bge-m3 to another model with 1024 dimensions):
+1. Change `embedding.model` (and backend, URL, prefixes) and restart. The server starts and warns how many sections are not embedded with the configured model; `admin_health` (check `embeddings`) says the same.
+2. An instance admin asks *"Rebuild the Atrium search vectors."* (`admin_reembed action=start`, after confirmation). A background task (`reembed`, every minute) embeds the sections again in batches of 16, from their stored text exactly as when an entry is saved. A restart only pauses it. *"How far is the re-embedding?"* (`action=status`) shows the sections left and the models in use; `action=stop` pauses it.
+3. New and changed entries are embedded with the new model right away.
+
+**Changing to a model with another dimension** (e.g. 1024 to 768): the server refuses to start with a different dimension unless `embedding.allow_dimension_change: true` is set. With it, **one** start rebuilds the vector column: every vector is dropped (contents, versions and everything else stay), search falls back to full text, and the server log says so. Then start `admin_reembed` as above and **remove the setting again**, so that a later typo in `dimensions` cannot drop the vectors.
+
+**Cost and time:** re-embedding sends every section to the embedding service again, which with a paid service costs as much as saving them did. With TEI on 2 CPU cores a section of about 500 tokens takes roughly 2.5 s, so 1,000 sections take about 40 minutes. Switching between providers of the **same** model (e.g. bge-m3 locally and at a cloud service) needs no re-embedding when the configured model name stays the same.
 
 ## Data protection
 

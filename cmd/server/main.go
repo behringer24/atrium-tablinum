@@ -33,6 +33,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/oauth"
 	"github.com/behringer24/atrium-tablinum/internal/product"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
+	"github.com/behringer24/atrium-tablinum/internal/reembed"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -75,7 +76,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		if err != nil {
 			return fmt.Errorf("migration account: %w", err)
 		}
-		err = db.Migrate(ctx, mpool, db.Embedding{Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions})
+		err = db.Migrate(ctx, mpool, db.Embedding{Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions, AllowDimensionChange: cfg.Embedding.AllowDimensionChange})
 		mpool.Close()
 		if err != nil {
 			return err
@@ -87,7 +88,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	}
 	defer pool.Close()
 	if migrationURL == cfg.Database.URL {
-		if err := db.Migrate(ctx, pool, db.Embedding{Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions}); err != nil {
+		if err := db.Migrate(ctx, pool, db.Embedding{Model: cfg.Embedding.Model, Dimensions: cfg.Embedding.Dimensions, AllowDimensionChange: cfg.Embedding.AllowDimensionChange}); err != nil {
 			return err
 		}
 	}
@@ -156,6 +157,10 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	}
 
 	runner := jobs.New(pool, 5*time.Second)
+	// After a change of the embedding model an instance admin starts the rebuild of the vectors
+	// (admin_reembed); this task works through it in the background, also across restarts.
+	reembedder := reembed.New(pool, emb)
+	runner.AddPeriodic(jobs.Periodic{Name: "reembed", Every: time.Minute, Run: reembedder.Run})
 	runner.AddPeriodic(jobs.Periodic{Name: "expire_handoffs", Every: time.Hour, Run: func(ctx context.Context) error {
 		n, err := docStore.ExpireHandoffs(ctx)
 		if n > 0 {
@@ -180,11 +185,25 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	mcpSrv := mcpserver.New(
 		mcpserver.Deps{
 			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Quota: quotaStore, License: licenseMgr, Search: searchSvc, Checker: checker,
-			Pool: pool, Jobs: runner, EmbeddingModel: cfg.Embedding.Model, EmbeddingDimensions: cfg.Embedding.Dimensions,
+			Pool: pool, Jobs: runner, Reembed: reembedder, EmbeddingModel: cfg.Embedding.Model, EmbeddingDimensions: cfg.Embedding.Dimensions,
 			SupportConfig: cfg.SupportSummary(),
 			Health: []mcpserver.HealthCheck{
 				{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }},
 				{Name: "embedder", Check: func(ctx context.Context) (string, error) { return cfg.Embedding.Backend, emb.Ping(ctx) }},
+				// Informational: sections of another model are still found by full text.
+				{Name: "embeddings", Check: func(ctx context.Context) (string, error) {
+					st, err := reembedder.Status(ctx)
+					if err != nil {
+						return "", err
+					}
+					switch {
+					case st.Stale == 0:
+						return fmt.Sprintf("all %d sections embedded with %s", st.Total, st.Model), nil
+					case st.Requested != nil:
+						return fmt.Sprintf("re-embedding under way: %d of %d sections left", st.Stale, st.Total), nil
+					}
+					return fmt.Sprintf("%d of %d sections not embedded with %s, found by full text only: start admin_reembed", st.Stale, st.Total, st.Model), nil
+				}},
 				// Informational: a licence problem never makes the instance unhealthy.
 				{Name: "license", Check: func(context.Context) (string, error) {
 					s := licenseMgr.State()

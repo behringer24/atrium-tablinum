@@ -65,7 +65,9 @@ embedding:
   backend: "tei"                 # tei | openai | bedrock
   url: "http://tei-embed:80"   # tei: Compose service name, locally e.g. http://localhost:8081; openai: base address of the API (empty = api.openai.com)
   model: "BAAI/bge-m3"
-  dimensions: 1024             # fixed per database, at most 2000
+  dimensions: 1024             # fixed per database, at most 2000; changing it needs allow_dimension_change
+  # allow_dimension_change: false     # true for ONE start: rebuilds the vector column for a new dimension (all vectors are
+                                      # dropped, admin_reembed rebuilds them; full-text search works meanwhile). Remove it afterwards.
   # api_key: "${EMBEDDING_API_KEY}"   # openai: key; tei: only if the TEI server runs with --api-key
   # query_prefix: "query: "           # only for models that require prefixes (E5)
   # document_prefix: "passage: "
