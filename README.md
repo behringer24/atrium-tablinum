@@ -24,6 +24,8 @@ Releases and the prebuilt image from the GitHub Container Registry: [docs/releas
 
 Editions (Community and Pro, what each has, how a licence works): [docs/licensing.md](docs/licensing.md).
 
+Contributing: [CONTRIBUTING.md](CONTRIBUTING.md); contributions need the [Contributor License Agreement](CLA.md).
+
 The embedding backend is selectable: your own TEI server, OpenAI and compatible services, or Amazon Bedrock. Settings, memory requirements and data protection: [docs/embedding.md](docs/embedding.md).
 
 **Why Atrium, and user guides** for every group of users (everyday use, authors, curators, space admins, instance admins), with FAQs and as PDF: start with [docs/user/00-why-atrium.md](docs/user/00-why-atrium.md), index in [docs/user/README.md](docs/user/README.md).
