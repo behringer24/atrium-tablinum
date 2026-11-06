@@ -281,7 +281,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 			return fmt.Errorf("database unreachable: %w", err)
 		}
 		if err := emb.Ping(ctx); err != nil {
-			return fmt.Errorf("embedder unreachable: %w", err)
+			return fmt.Errorf("embedder not ready: %w", err)
 		}
 		return nil
 	}))

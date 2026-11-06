@@ -61,6 +61,10 @@ func capturingTEI(t *testing.T, dim int) (*httptest.Server, *[][]string, *[]stri
 	var batches [][]string
 	var auth []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/embed" {
+			http.NotFound(w, r)
+			return
+		}
 		var req struct {
 			Inputs    []string `json:"inputs"`
 			Normalize bool     `json:"normalize"`
@@ -148,6 +152,10 @@ func TestRetriesRateLimitsThenGivesUp(t *testing.T) {
 	var mu sync.Mutex
 	hits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/info" { // counted are the attempts of /embed
+			http.NotFound(w, r)
+			return
+		}
 		mu.Lock()
 		hits++
 		n := hits
