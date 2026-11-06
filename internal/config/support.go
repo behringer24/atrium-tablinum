@@ -38,7 +38,7 @@ func (c Config) SupportSummary() map[string]any {
 		"database": map[string]any{"separate_migration_account": c.Database.MigrationURL != ""},
 		"embedding": map[string]any{
 			"backend": c.Embedding.Backend, "model": c.Embedding.Model, "dimensions": c.Embedding.Dimensions,
-			"timeout": c.Embedding.Timeout.String(), "options": options,
+			"timeout": c.Embedding.Timeout.String(), "options": options, "allow_dimension_change": c.Embedding.AllowDimensionChange,
 		},
 		"reranker": map[string]any{"enabled": c.Reranker.Enabled, "backend": c.Reranker.Backend, "candidates": c.Reranker.Candidates},
 		"search": map[string]any{

@@ -118,7 +118,7 @@ vis AS (
 vec AS (
     SELECT c.id, row_number() OVER (ORDER BY c.embedding <=> $1::vector) AS rn
     FROM chunks c JOIN vis ON vis.id = c.document_id
-    WHERE $1::vector IS NOT NULL
+    WHERE $1::vector IS NOT NULL AND c.embedding_model = $11 -- vectors of another model are not comparable
     ORDER BY c.embedding <=> $1::vector
     LIMIT $6
 ),
@@ -207,7 +207,7 @@ func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UU
 	if len(types) > 0 {
 		typeFilter = types
 	}
-	rows, err := tx.Query(ctx, s.sql(archive), vec, q, visible, c.Scope.Actor, curator, s.cfg.CandidatesPerMethod, s.cfg.RRFK, limit, tagFilter, typeFilter)
+	rows, err := tx.Query(ctx, s.sql(archive), vec, q, visible, c.Scope.Actor, curator, s.cfg.CandidatesPerMethod, s.cfg.RRFK, limit, tagFilter, typeFilter, s.emb.Model())
 	if err != nil {
 		return nil, err
 	}

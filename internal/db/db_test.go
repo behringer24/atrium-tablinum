@@ -76,6 +76,53 @@ func TestMigrateRejectsDimensionChange(t *testing.T) {
 	}
 }
 
+// With allow_dimension_change one start rebuilds the vector column: vectors go, contents stay.
+func TestMigrateChangesDimensionOnRequest(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	if err := Migrate(ctx, pool, Embedding{Model: "old", Dimensions: 4}); err != nil {
+		t.Fatal(err)
+	}
+	var doc string
+	err := pool.QueryRow(ctx, `
+WITH u AS (INSERT INTO users (email, idp, idp_subject) VALUES ('a@x.de', 't', 'a') RETURNING id),
+     s AS (INSERT INTO spaces (slug, name, type) VALUES ('dev', 'Dev', 'team') RETURNING id)
+INSERT INTO documents (space_id, title, content, author_id, source, updated_by)
+SELECT s.id, 'T', 'text', u.id, 'api', u.id FROM u, s RETURNING id`).Scan(&doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chunks (document_id, chunk_index, content, embedding, embedding_model, tsv)
+		VALUES ($1, 0, 'text', '[1,0,0,0]', 'old', to_tsvector('simple', 'text'))`, doc); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Migrate(ctx, pool, Embedding{Model: "new", Dimensions: 3, AllowDimensionChange: true}); err != nil {
+		t.Fatal(err)
+	}
+	var typ, model, content string
+	var empty bool
+	if err := pool.QueryRow(ctx, `SELECT format_type(a.atttypid, a.atttypmod) FROM pg_attribute a
+		WHERE a.attrelid = 'chunks'::regclass AND a.attname = 'embedding'`).Scan(&typ); err != nil || typ != "vector(3)" {
+		t.Errorf("column type %q %v", typ, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT embedding IS NULL, embedding_model, content FROM chunks`).Scan(&empty, &model, &content); err != nil ||
+		!empty || model != "" || content != "text" {
+		t.Errorf("section after the change: vector gone %v, model %q, content %q, %v", empty, model, content, err)
+	}
+	if v, _, _ := getMeta(ctx, pool, metaEmbeddingDimensions); v != "3" {
+		t.Errorf("meta dimensions %q", v)
+	}
+	var idx bool
+	if err := pool.QueryRow(ctx, `SELECT to_regclass('chunks_embedding_idx') IS NOT NULL`).Scan(&idx); err != nil || !idx {
+		t.Errorf("vector index missing: %v", err)
+	}
+	// a further start with the same setting changes nothing
+	if err := Migrate(ctx, pool, Embedding{Model: "new", Dimensions: 3, AllowDimensionChange: true}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMigrateRejectsInvalidDimension(t *testing.T) {
 	pool := testPool(t)
 	if err := Migrate(context.Background(), pool, Embedding{Dimensions: 4000}); err == nil {

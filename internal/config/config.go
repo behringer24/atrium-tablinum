@@ -127,6 +127,10 @@ type Embedding struct {
 	Timeout time.Duration `yaml:"timeout"`
 	// Options are the settings only one backend knows; see docs/embedding.md.
 	Options map[string]string `yaml:"options"`
+	// AllowDimensionChange lets one start with a dimension other than the database's rebuild the
+	// vector column: all vectors are dropped and admin_reembed builds them again. Off by default;
+	// set it for that one start only.
+	AllowDimensionChange bool `yaml:"allow_dimension_change"`
 }
 
 // Settings converts the config section for the embed package.

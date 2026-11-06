@@ -274,7 +274,9 @@ Per user: 120 reads and 20 writes a minute. Per address: 20 client registrations
 
 ### Embedding and search
 
-Search uses an embedding service you choose (your own TEI server, OpenAI-compatible, Amazon Bedrock). Memory needs, flags for small servers and data protection notes are in [Embedding](../embedding.md). Changing the model means reindexing.
+Search uses an embedding service you choose (your own TEI server, OpenAI-compatible, Amazon Bedrock). Memory needs, flags for small servers and data protection notes are in [Embedding](../embedding.md).
+
+**Changing the model.** Vectors of different models are not comparable: after a change of `embedding.model`, sections of the old model are found by full text only, and `admin_health` (check `embeddings`) says how many. *"Rebuild the Atrium search vectors."* (`admin_reembed action=start`, after confirmation) re-embeds them in the background, also across restarts; *"How far is the re-embedding?"* (`action=status`) shows the progress. A model with **another dimension** needs `embedding.allow_dimension_change: true` for one start, which drops all vectors first; remove the setting afterwards. With a paid service, re-embedding costs as much as saving everything did. Details in [Embedding](../embedding.md#dimension-and-changing-the-model).
 
 ## Security responsibilities and incidents
 
@@ -374,3 +376,5 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 **What do I send when I ask for support?** The answer of *"Collect the Atrium support information."* (`admin_support_bundle`), the time of the problem and what you asked. It holds no content, names or secrets; read it before you send it.
 
 **How do I know that maintenance is about to end?** The licence report and `admin_health` show a notice from 60 days before, and the server log warns at start. Renew in time if you want the next release line.
+
+**Can I switch to another embedding model later?** Yes. Change the model in `config.yaml`, restart, and start *"Rebuild the Atrium search vectors."* (`admin_reembed`); search keeps working by full text until the rebuild is done. A model with another dimension also needs `embedding.allow_dimension_change: true` for that one start. See [Embedding](../embedding.md#dimension-and-changing-the-model).

@@ -198,6 +198,12 @@ var defaultDescriptions = map[string]string{
 
 	"admin_health": `Shows the system state (instance admin): database, embedding service, background tasks and jobs.`,
 
+	"admin_reembed": `Shows and rebuilds the search vectors (instance admin) after the embedding model was changed in the configuration. ` +
+		`action=status (default) tells how many sections are not embedded with the configured model: search finds those by full text only. ` +
+		`action=start rebuilds them in the background, batch by batch, also across restarts; action=stop pauses it. ` +
+		`ONLY on explicit instruction: start sends every such section to the embedding service again, which costs money with a paid service; ` +
+		`tell the user how many sections are concerned and call with confirm=true only after their confirmation.`,
+
 	"admin_support_bundle": `Collects what support needs to help with a problem (instance admin): version and build, licence state, health, ` +
 		`database and runtime versions, counts of users, spaces, entries and skills, and the settings of config.yaml without secrets, ` +
 		`addresses of other systems or names. It contains no content and no names of people or spaces. ` +
