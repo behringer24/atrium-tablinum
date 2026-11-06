@@ -698,37 +698,6 @@ func TestSkillTagsCannotInjectText(t *testing.T) {
 	}
 }
 
-// A personal space turned into a team space brings no unreviewed release along.
-func TestTransferBlocksPersonalSkills(t *testing.T) {
-	e := setup(t, 0)
-	e.team(t, "dev", "Development", false, map[string]authz.Role{"anna@x.de": authz.Author})
-	anna, boss, chef := e.session(t, "anna@x.de"), e.session(t, "boss@x.de"), e.session(t, "chef@x.de")
-	e.mustCall(t, anna, "store_skill", map[string]any{"name": "mine", "space": "my personal space", "files": skillPackage("mine", "Alone released", nil)})
-	e.mustCall(t, boss, "admin_offboard_user", map[string]any{"user_email": "anna@x.de", "confirm": true})
-	res := e.mustCall(t, boss, "admin_transfer_personal_space", map[string]any{"user_email": "anna@x.de", "confirm": true, "mode": "space",
-		"slug": "estate", "name": "Estate", "members": []map[string]any{{"user_email": "chef@x.de", "role": "admin"}}})
-	if res["skills_blocked"] != float64(1) || !strings.Contains(fmt.Sprint(res["message"]), "blocked") {
-		t.Fatalf("transfer: %v", res)
-	}
-	if got := fmt.Sprint(skillNames(e.mustCall(t, chef, "list_skills", map[string]any{}))); got != "[]" {
-		t.Errorf("members see the unreviewed skill: %s", got)
-	}
-	all := e.mustCall(t, chef, "list_skills", map[string]any{"all_versions": true})
-	if v := all["skills"].([]any)[0].(map[string]any)["versions"].([]any)[0].(map[string]any); v["status"] != "blocked" {
-		t.Errorf("version state: %v", v)
-	}
-	log := e.mustCall(t, boss, "admin_audit_log", map[string]any{"skill": "mine", "action": "skill_block"})["entries"].([]any)
-	if len(log) != 1 || log[0].(map[string]any)["space"] != "Estate" {
-		t.Errorf("audit: %v", log)
-	}
-	// Using it again takes a space admin and a curator.
-	e.mustCall(t, chef, "unblock_skill", map[string]any{"skill": "mine", "version": 1, "reason": "checked by the successor", "confirm": true})
-	e.mustCall(t, chef, "publish_skill", map[string]any{"skill": "mine", "version": 1, "confirm": true})
-	if got := fmt.Sprint(skillNames(e.mustCall(t, chef, "list_skills", map[string]any{}))); got != "[mine]" {
-		t.Errorf("after release: %s", got)
-	}
-}
-
 // A name held by a skill the caller cannot see is just taken: nothing is attached to somebody
 // else's unreleased draft, and the tag rights follow whoever released the newest version.
 func TestSkillNamesOfOthers(t *testing.T) {

@@ -16,13 +16,14 @@ type supportIn struct{}
 // supportOut is what a support request needs: versions, licence, health, counts and settings. It
 // holds no content, no names of people or spaces and no secrets, so that an admin can pass it on.
 type supportOut struct {
-	Notice        string         `json:"notice"`
-	GeneratedAt   string         `json:"generated_at"`
-	Product       map[string]any `json:"product"`
-	Runtime       map[string]any `json:"runtime"`
-	Database      map[string]any `json:"database"`
-	Counts        map[string]any `json:"counts"`
-	License       *licenseOut    `json:"license,omitempty"`
+	Notice      string         `json:"notice"`
+	GeneratedAt string         `json:"generated_at"`
+	Product     map[string]any `json:"product"`
+	Runtime     map[string]any `json:"runtime"`
+	Database    map[string]any `json:"database"`
+	Counts      map[string]any `json:"counts"`
+	// Edition holds what the edition adds, for example the licence state of the Pro build.
+	Edition       map[string]any `json:"edition,omitempty"`
 	Health        healthOut      `json:"health"`
 	Configuration map[string]any `json:"configuration,omitempty"`
 }
@@ -88,12 +89,18 @@ func (s *Server) adminSupportBundle(ctx context.Context, c *call, _ supportIn) (
 		"skills": skills, "skills_released": skillsReleased, "audit_entries": auditRows,
 	}
 
-	if s.License != nil {
-		lo, err := s.licenseOut(ctx, "")
+	for _, add := range editionSupport {
+		name, part, err := add(ctx, s)
 		if err != nil {
 			return supportOut{}, err
 		}
-		out.License = &lo
+		if name == "" {
+			continue // the hook does not apply to this edition
+		}
+		if out.Edition == nil {
+			out.Edition = map[string]any{}
+		}
+		out.Edition[name] = part
 	}
 	health, err := s.adminHealth(ctx, c, healthIn{})
 	if err != nil {

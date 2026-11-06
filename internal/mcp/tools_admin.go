@@ -14,7 +14,6 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
-	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
@@ -23,8 +22,8 @@ func (s *Server) registerSpaceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "space_members", "Show members", tierSpaceAdmin, false, s.spaceMembers)
 	addTool(s, ms, "space_add_member", "Add member", tierSpaceAdmin, true, s.spaceAddMember)
 	addTool(s, ms, "space_remove_member", "Remove member", tierSpaceAdmin, true, s.spaceRemoveMember)
-	addTool(s, ms, "reassign_owner", "Reassign responsible person", tierSpaceAdmin, true, s.reassignOwner)
 	s.registerSpaceAdminSkillTools(ms)
+	s.registerEditionTools(ms, tierSpaceAdmin)
 }
 
 func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
@@ -34,15 +33,11 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_restore_space", "Restore space", tierInstanceAdmin, true, s.adminRestoreSpace)
 	addTool(s, ms, "admin_list_users", "List users", tierInstanceAdmin, false, s.adminListUsers)
 	addTool(s, ms, "admin_offboard_user", "Offboard user", tierInstanceAdmin, true, s.adminOffboardUser)
-	addTool(s, ms, "admin_transfer_personal_space", "Transfer personal space", tierInstanceAdmin, true, s.adminTransferPersonalSpace)
 	addTool(s, ms, "admin_reactivate_user", "Reactivate user", tierInstanceAdmin, true, s.adminReactivateUser)
 	addTool(s, ms, "admin_groups", "Manage groups", tierInstanceAdmin, true, s.adminGroups)
 	addTool(s, ms, "admin_revoke_sessions", "End a user's sessions", tierInstanceAdmin, true, s.adminRevokeSessions)
 	addTool(s, ms, "admin_allowlist", "Manage login allowlist", tierInstanceAdmin, true, s.adminAllowlist)
 	addTool(s, ms, "admin_context", "Manage context", tierInstanceAdmin, true, s.adminContext)
-	if s.License != nil {
-		addTool(s, ms, "admin_license", "Manage licence", tierInstanceAdmin, true, s.adminLicense)
-	}
 	if s.Quota != nil {
 		addTool(s, ms, "admin_quotas", "Manage quotas", tierInstanceAdmin, true, s.adminQuotas)
 	}
@@ -52,6 +47,7 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	if s.Reembed != nil {
 		addTool(s, ms, "admin_reembed", "Re-embed sections", tierInstanceAdmin, true, s.adminReembed)
 	}
+	s.registerEditionTools(ms, tierInstanceAdmin)
 }
 
 // record writes an admin audit event. The action has already happened, so a failure is
@@ -467,8 +463,8 @@ type offboardOut struct {
 	RevokedTokens   int64         `json:"revoked_tokens"`
 	HandoffsDeleted int64         `json:"handoffs_deleted"`
 	Personal        *personalMeta `json:"personal_space,omitempty"`
-	// ResponsibleFor counts the entries in team spaces that name the user as responsible person;
-	// they keep the name, marked former, until reassign_owner moves them.
+	// ResponsibleFor and the longer part of Next are filled by the Pro build (editionOffboarded): the
+	// entries in team spaces that name the user as responsible person, and what to do about them.
 	ResponsibleFor int    `json:"responsible_for,omitempty"`
 	Next           string `json:"next,omitempty"`
 }
@@ -510,122 +506,16 @@ func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) 
 			return offboardOut{}, err
 		}
 		out.Personal = s.personalMetaOf(u, stats[u.ID])
-		if out.Personal.Documents > 0 {
-			out.Next = "Transfer the personal space with admin_transfer_personal_space: mode=space turns it into a team space " +
-				"(e.g. supervisor as admin, successor as curator), mode=merge moves everything into the personal space of the successor."
-			if out.Personal.PurgeAfter != "" {
-				out.Next += " Without a transfer it is deleted when the period (purge_after) expires."
-			}
+		if out.Personal.Documents > 0 && out.Personal.PurgeAfter != "" {
+			out.Next = "The personal space is deleted when the retention period (purge_after) expires."
 		}
 	}
-	owned, err := s.Docs.OwnedCounts(ctx, u.ID)
-	if err != nil {
-		return offboardOut{}, err
-	}
-	for _, n := range owned {
-		out.ResponsibleFor += n
-	}
-	if out.ResponsibleFor > 0 {
-		hint := fmt.Sprintf("%s is named as responsible person for %d entries; they stay named as former until you reassign them with reassign_owner (from=%s).",
-			u.Email, out.ResponsibleFor, u.Email)
-		out.Next = strings.TrimSpace(out.Next + " " + hint)
+	for _, add := range editionOffboarded {
+		add(ctx, s, u, &out)
 	}
 	s.record(ctx, c.Actor, "admin_offboard_user", nil, map[string]any{"user": u.Email,
 		"revoked_tokens": out.RevokedTokens, "handoffs_deleted": out.HandoffsDeleted})
 	return out, nil
-}
-
-type transferIn struct {
-	UserEmail   string          `json:"user_email" jsonschema:"E-mail of the locked user whose personal space is transferred"`
-	Mode        string          `json:"mode" jsonschema:"space = convert into a team space; merge = move everything into the personal space of target_email"`
-	TargetEmail string          `json:"target_email,omitempty" jsonschema:"merge only: e-mail of the successor"`
-	Slug        string          `json:"slug,omitempty" jsonschema:"space only: slug of the new team space (lowercase letters, digits, hyphen)"`
-	Name        string          `json:"name,omitempty" jsonschema:"space only: display name, e.g. Estate of Max Muster"`
-	Description string          `json:"description,omitempty" jsonschema:"space only: short description"`
-	Members     []initialMember `json:"members,omitempty" jsonschema:"space only: members, e.g. supervisor as admin, successor as curator"`
-	Confirm     bool            `json:"confirm" jsonschema:"true only after confirmation by the user"`
-}
-
-type transferOut struct {
-	Message       string   `json:"message"`
-	Documents     int      `json:"documents"`
-	Slug          string   `json:"slug,omitempty"`
-	Warnings      []string `json:"warnings,omitempty"`
-	SkillsBlocked int      `json:"skills_blocked,omitempty"`
-}
-
-func (s *Server) adminTransferPersonalSpace(ctx context.Context, c *call, in transferIn) (transferOut, error) {
-	if !in.Confirm {
-		return transferOut{}, userErr("Transferring needs a confirmation: ask the user and then call again with confirm=true.")
-	}
-	u, err := s.knownUser(ctx, in.UserEmail)
-	if err != nil {
-		return transferOut{}, err
-	}
-	if u.Active {
-		return transferOut{}, userErr(fmt.Sprintf("%s is not locked. Personal spaces of active accounts stay private; call admin_offboard_user first.", u.Email))
-	}
-	if u.PersonalSpaceID == nil {
-		return transferOut{}, userErr(fmt.Sprintf("%s no longer has a personal space.", u.Email))
-	}
-	from := *u.PersonalSpaceID
-	switch strings.ToLower(strings.TrimSpace(in.Mode)) {
-	case "merge":
-		to, err := s.knownUser(ctx, in.TargetEmail)
-		if err != nil {
-			return transferOut{}, err
-		}
-		if to.ID == c.Actor.User.ID {
-			return transferOut{}, userErr("The admin cannot take over the personal space of a departed user into their own: give a different recipient (four-eyes principle).")
-		}
-		if !to.Active {
-			return transferOut{}, userErr(fmt.Sprintf("%s is locked and cannot take anything over.", to.Email))
-		}
-		n, err := s.Docs.MergePersonal(ctx, from, to, c.Actor.User.ID)
-		if err != nil {
-			return transferOut{}, err
-		}
-		s.record(ctx, c.Actor, "admin_transfer_personal_space", nil, map[string]any{"user": u.Email, "mode": "merge", "target": to.Email, "documents": n})
-		return transferOut{Message: fmt.Sprintf("%d entries of %s are now in the personal space of %s.", n, u.Email, to.Email), Documents: n}, nil
-	case "space":
-		stats, err := s.Docs.PersonalStats(ctx)
-		if err != nil {
-			return transferOut{}, err
-		}
-		if _, err := s.Docs.DeleteHandoffs(ctx, from); err != nil {
-			return transferOut{}, err
-		}
-		// Skills the owner released alone were never reviewed: withdraw them before the space gets members.
-		var blocked []skills.Blocked
-		const blockReason = "released by the owner in a personal space and never reviewed; the space was transferred"
-		if s.Skills != nil {
-			if blocked, err = s.Skills.BlockReleased(ctx, c.Actor, from, blockReason); err != nil {
-				return transferOut{}, err
-			}
-		}
-		sp, err := s.Spaces.ConvertPersonal(ctx, from, spaces.CreateParams{Slug: in.Slug, Name: in.Name, Description: in.Description})
-		if err != nil {
-			return transferOut{}, err
-		}
-		n := stats[u.ID].Documents
-		if len(blocked) > 0 {
-			s.Skills.AuditBlocked(ctx, c.Actor, sp, blocked, blockReason)
-		}
-		out := transferOut{Documents: n, Slug: sp.Slug, Warnings: s.addInitialMembers(ctx, c, sp.ID, in.Members)}
-		out.SkillsBlocked = len(blocked)
-		added := len(in.Members) - len(out.Warnings)
-		if added == 0 {
-			out.Warnings = append(out.Warnings, "The space has no members; until some are added, only instance admins can see it.")
-		}
-		s.record(ctx, c.Actor, "admin_transfer_personal_space", &sp, map[string]any{"user": u.Email, "mode": "space", "slug": sp.Slug,
-			"documents": n, "members": added})
-		out.Message = fmt.Sprintf("The personal space of %s is now the team space \"%s\" (%s) with %d entries.", u.Email, sp.Name, sp.Slug, n)
-		if len(blocked) > 0 {
-			out.Message += fmt.Sprintf(" %d skill versions the owner had released alone were blocked because nobody reviewed them: a space admin lifts a block (unblock_skill) and a curator releases it again.", len(blocked))
-		}
-		return out, nil
-	}
-	return transferOut{}, userErr("mode must be space or merge.")
 }
 
 type reactivateIn struct {

@@ -22,7 +22,9 @@ The first model load of `tei-embed` takes a few minutes; until then `/readyz` re
 
 Releases and the prebuilt image from the GitHub Container Registry: [docs/release.md](docs/release.md).
 
-Editions and licences (Community, Pro, offline-verified licence files, how a licence is issued and installed): [docs/licensing.md](docs/licensing.md), design in [docs/design/licensing.md](docs/design/licensing.md).
+Editions (Community and Pro, what each has, how a licence works): [docs/licensing.md](docs/licensing.md).
+
+Contributing: [CONTRIBUTING.md](CONTRIBUTING.md); contributions need the [Contributor License Agreement](CLA.md).
 
 The embedding backend is selectable: your own TEI server, OpenAI and compatible services, or Amazon Bedrock. Settings, memory requirements and data protection: [docs/embedding.md](docs/embedding.md).
 
@@ -56,4 +58,4 @@ The dump also contains personal spaces. Protect its storage and access according
 
 ## License
 
-Atrium Tablinum is licensed under the [Elastic License 2.0](LICENSE): you may view, use, modify and redistribute the source code. Not permitted are offering it as a hosted or managed service to third parties, and circumventing or removing license key functionality and license notices. This is not an open source license in the sense of the OSI.
+Atrium Tablinum is licensed under the [Elastic License 2.0](LICENSE), see also [NOTICE](NOTICE). This is source-available software, not an open source license in the sense of the OSI. The Community edition is for up to 8 active user accounts; for more, see [Editions](docs/licensing.md).

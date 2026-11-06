@@ -304,7 +304,7 @@ func TestToolListAndDescriptions(t *testing.T) {
 	}
 	for name := range defaultDescriptions {
 		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" ||
-			name == "review_skill" || name == "publish_skill" || name == "block_skill" || name == "unblock_skill" || name == "reassign_owner" {
+			name == "review_skill" || name == "publish_skill" || name == "block_skill" || name == "unblock_skill" {
 			continue // tools for admins and curators depend on the role, see TestToolListFollowsRole
 		}
 		if got[name] == nil {

@@ -31,9 +31,9 @@ The findings of the second audit (external attack surface, authorisation and int
 - **Database roles by default:** the separate accounts are opt-in (`scripts/db-roles.sql`); make them part of the compose setup and the install steps, so that new installations start hardened.
 - A client whose `client_name` is shown in `my_sessions` should be marked as data.
 
-### Commercial editions and licence file (proposal)
+### Commercial editions and licence file
 
-A free Community edition and a Pro edition with extra, non-public code, switched by an offline-verified signed licence file that lifts limits and enables features without a restart. The design, the options that were rejected, the phases and the open decisions (free limit, first Pro features, price model, grace period) are in [docs/design/licensing.md](docs/design/licensing.md). The licence core (format, verification with five embedded issuer keys, `admin_license`, the release line, the user limit, the issuing tool) is built; the licensed ceilings for the quotas, the release mechanics (CI guard for the line file, start-line script, release branches, SBOM) and the extension points for Pro code are not. Needed before sales: real issuer keys in `internal/license/anchors.txt`, the legal review, `SECURITY.md` with a reporting route (the CRA reporting duty applies since 11 September 2026).
+A free Community edition (this repository, 8 active accounts) and a Pro edition: the same product plus files of a private repository, switched by an offline-verified signed licence file that lifts limits and enables features without a restart ([docs/licensing.md](docs/licensing.md)). Built: the extension points, the licence code and the guided offboarding in the private repository. Not built: the private pipeline that publishes the official (public) image with signing and SBOM, the licensed ceilings for the quotas, the release mechanics (CI guard for the line file, start-line script, release branches), building the review reminders as Pro features, and the first new Pro features (group sync and SCIM, audit export). Needed before sales: real issuer keys in the Pro repository's `anchors.txt`, the legal review of the licence texts, `SECURITY.md` with a reporting route (the CRA reporting duty applies since 11 September 2026).
 
 ### Documentation and operations
 

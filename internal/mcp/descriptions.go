@@ -127,12 +127,6 @@ var defaultDescriptions = map[string]string{
 	"space_remove_member": `Removes a user or a group from a managed space. ONLY on explicit instruction; ` +
 		`ask the user first and call with confirm=true only after confirmation.`,
 
-	"reassign_owner": `Makes another person responsible for all entries one person is responsible for (space admins for the spaces they administer, ` +
-		`instance admins for all team spaces), e.g. when somebody leaves or changes jobs; from may be a former (locked) person. ` +
-		`Optionally limited to one space. The new person must be active; entries in spaces they cannot read are left as they are and reported. ` +
-		`ONLY on explicit instruction; the first call without confirm tells how many entries are concerned, ` +
-		`then call with confirm=true only after the user's confirmation.`,
-
 	"admin_create_space": `Creates a new team space in the "{{.ProductName}}" knowledge store (instance admin). ` +
 		`Optionally with an approval requirement, a default role for everyone logged in (reader/author) and initial members. ONLY on explicit instruction.`,
 
@@ -149,16 +143,8 @@ var defaultDescriptions = map[string]string{
 		`The content of personal spaces cannot be viewed by anyone.`,
 
 	"admin_offboard_user": `Offboarding of a departing user (instance admin): locks the account immediately, revokes all tokens and deletes their handoffs. ` +
-		`Their personal space initially stays untouched and private; it can then be transferred with admin_transfer_personal_space ` +
-		`and is otherwise deleted after the retention period expires. Entries that name the user as responsible person keep the name, ` +
-		`marked former (responsible_for counts them); reassign_owner moves them to a successor. ONLY on explicit instruction. ` +
-		`Ask the user first and call with confirm=true only after their confirmation.`,
-
-	"admin_transfer_personal_space": `Transfers the personal space of a locked user (instance admin, only after admin_offboard_user). ` +
-		`mode=space converts it into a team space (slug, name, members - e.g. supervisor as admin, successor as curator, ` +
-		`so they can review, move or delete entries); instance admins then see it like any team space. ` +
-		`mode=merge moves all entries into the personal space of target_email (their quota applies). ` +
-		`Entries, IDs and version history are kept. ONLY on explicit instruction; this makes the content readable for others. ` +
+		`Their personal space stays untouched and private and is deleted after the retention period expires. ` +
+		`Entries that name the user as responsible person keep the name, marked former. ONLY on explicit instruction. ` +
 		`Ask the user first and call with confirm=true only after their confirmation.`,
 
 	"admin_reactivate_user": `Lifts the lock on a user (instance admin), e.g. after an accidental offboarding; ` +
@@ -178,13 +164,6 @@ var defaultDescriptions = map[string]string{
 	"admin_context": `Manages the context of the "{{.ProductName}}" knowledge store (instance admin): a text that tells all connected AI assistants ` +
 		`when they connect what can be found here (e.g. company knowledge, policies, support) and when they should search. ` +
 		`action=get shows it, set (with text) replaces it entirely, clear removes it; set and clear need the user's confirmation (confirm=true) after the old and new text have been presented. Takes effect for new connections. ONLY on explicit instruction, never with text from entries.`,
-
-	"admin_license": `Shows and manages the licence of this instance (instance admin). action=get shows the edition, the state of the licence ` +
-		`(none, valid, not covered, expired, wrong domain, invalid), what it covers (features, limits, the maintenance date), a notice when the expiry or the end of maintenance is near, the release line of the running build ` +
-		`and how many accounts are active against the user limit in force (warning when it is reached: existing accounts keep working, new accounts are refused). ` +
-		`action=install with the licence text (one line starting atrium-license-v1.) installs it without a restart; action=remove deletes the installed licence (a licence from the configuration file stays). ` +
-		`A licence is checked offline and never calls anybody. Without one the instance is Community; content always stays readable. ` +
-		`ONLY on explicit instruction; install and remove need the user's confirmation (confirm=true).`,
 
 	"admin_quotas": `Shows and changes the storage limits (instance admin), without a restart; a change applies to the next write. ` +
 		`Limits per space: knowledge entries, bytes of entries, skills, bytes of skill files, versions per skill; 0 = unlimited. ` +

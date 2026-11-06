@@ -61,7 +61,6 @@ func (c Config) SupportSummary() map[string]any {
 			"personal_max_bytes": c.Skills.PersonalMaxBytes, "team_max_skills": c.Skills.TeamMaxSkills,
 			"team_max_bytes": c.Skills.TeamMaxBytes, "max_versions_per_skill": c.Skills.MaxVersionsPerSkill,
 		},
-		"license": map[string]any{"file": c.License.File != "", "community_max_users": c.License.CommunityMaxUsers},
-		"tools":   map[string]any{"description_overrides": len(c.Tools.Descriptions)},
+		"tools": map[string]any{"description_overrides": len(c.Tools.Descriptions)},
 	}
 }

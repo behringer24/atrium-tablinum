@@ -9,7 +9,7 @@ import (
 
 // line.txt names the release line this source belongs to and the date the line was released, and
 // optionally an epoch. It is embedded, so a build of 3.4.2 made years after 3.4.0 from the branch of
-// that line still knows the date of 3.4.0 (docs/design/licensing.md, "The maintenance model"):
+// that line still knows the date of 3.4.0:
 //
 //	line 3.4
 //	date 2022-05-10

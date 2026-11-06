@@ -31,7 +31,8 @@ type Config struct {
 	Policy    Policy    `yaml:"policy"`
 	Tools     Tools     `yaml:"tools"`
 	Skills    Skills    `yaml:"skills"`
-	License   License   `yaml:"license"`
+	// License is opaque here: only the edition that supports a licence knows its keys (internal/edition).
+	License yaml.Node `yaml:"license"`
 }
 
 type Instance struct {
@@ -209,19 +210,6 @@ type Skills struct {
 	TeamMaxBytes  int64 `yaml:"team_max_bytes"`
 }
 
-// License configures the licence of the instance (docs/design/licensing.md).
-type License struct {
-	// File is a licence file; a licence installed by an instance admin at run time (admin_license)
-	// takes precedence. Empty = none.
-	File string `yaml:"file"`
-	// CommunityMaxUsers is the number of active user accounts allowed without a licence that sets a
-	// limit (default 8). It counts registered accounts that are active at the same time, not the
-	// assistants that are connected; locked (offboarded) accounts do not count. New accounts beyond it
-	// are refused and a locked account is reactivated only while there is room; existing active accounts
-	// and the administrators in bootstrap_admins are never affected. 0 = unlimited.
-	CommunityMaxUsers int `yaml:"community_max_users"`
-}
-
 type Tools struct {
 	Descriptions map[string]string `yaml:"descriptions"`
 }
@@ -261,9 +249,7 @@ func Defaults() Config {
 			Team:           TeamSpaces{MaxDocuments: 5000, MaxBytes: 200 << 20},
 			HandoffTTLDays: 14,
 		},
-		// The Community edition allows 8 active accounts; a licence lifts it (docs/licensing.md).
-		License: License{CommunityMaxUsers: 8},
-		Skills:  Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
+		Skills: Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
 		Policy: Policy{
 			DuplicateThreshold:       0.90,
 			MaxDocumentBytes:         200000,
@@ -327,9 +313,6 @@ func (c *Config) Validate() error {
 
 	if c.Instance.ProductName == "" {
 		add("instance.product_name must not be empty")
-	}
-	if c.License.CommunityMaxUsers < 0 {
-		add("license.community_max_users must not be negative (0 = unlimited)")
 	}
 	if c.Skills.PersonalMaxSkills < 0 || c.Skills.PersonalMaxBytes < 0 || c.Skills.MaxVersionsPerSkill < 0 || c.Skills.TeamMaxSkills < 0 || c.Skills.TeamMaxBytes < 0 || c.Spaces.Team.MaxDocuments < 0 || c.Spaces.Team.MaxBytes < 0 {
 		add("skills quotas must not be negative (0 = unlimited)")
