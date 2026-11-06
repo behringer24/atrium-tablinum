@@ -135,10 +135,9 @@ skills:
   # admin_quotas) for all personal spaces, all team spaces, one user or one space; the change
   # applies to the next write and survives a restart. docs/user/05-instance-admin.md.
 
-# The licence of the Pro edition (docs/licensing.md). Only the Pro build knows this section: the
-# Community build, which has no licence support, refuses it at start. A licence an instance admin
-# installs at run time (admin_license) takes precedence and needs no restart; without any licence the
-# Pro build runs with the Community limits (8 active accounts, fixed).
+# The licence of the Pro edition (docs/licensing.md). Only the Pro build reads this section.
+# A licence an instance admin installs at run time (admin_license) takes precedence and needs no
+# restart; without any licence the Pro build runs as Community (8 active accounts).
 # license:
 #   file: "/etc/atrium/licence.txt"
 

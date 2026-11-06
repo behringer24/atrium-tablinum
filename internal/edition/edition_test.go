@@ -18,7 +18,7 @@ func TestCommunityDefault(t *testing.T) {
 
 func TestCommunityRefusesLicenseSection(t *testing.T) {
 	_, err := Start(context.Background(), Env{HasSection: true})
-	if err == nil || !strings.Contains(err.Error(), "license") || !strings.Contains(err.Error(), "Community") {
+	if err == nil || !strings.Contains(err.Error(), "license") || !strings.Contains(err.Error(), "Pro build") {
 		t.Errorf("a license section must be refused with an explanation, got %v", err)
 	}
 }

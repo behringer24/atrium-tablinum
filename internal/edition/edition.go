@@ -1,5 +1,5 @@
 // Package edition is the seam between this public build (Community) and the Pro build, which is
-// the same tree with extra files laid over it by a private pipeline (docs/design/licensing.md).
+// the same tree with extra files laid over it by a private pipeline.
 //
 // The public tree is complete and tested on its own: every hook here has a free default. The Pro
 // files register themselves from init() functions and replace the defaults; nothing in the public
@@ -18,8 +18,7 @@ const (
 	// Community is the name of the edition of this build.
 	Community = "community"
 
-	// CommunityMaxUsers is the number of active user accounts the Community build allows. It is a
-	// constant on purpose: this build has no licence support, so there is nothing that could lift it.
+	// CommunityMaxUsers is the number of active user accounts the Community edition is for.
 	CommunityMaxUsers = 8
 )
 
@@ -74,8 +73,7 @@ func (community) MaxUsers() int { return CommunityMaxUsers }
 
 func startCommunity(_ context.Context, env Env) (Running, error) {
 	if env.HasSection {
-		return nil, errors.New("config: the \"license\" section is not supported by this build; " +
-			"this is the Community build, which has no licence support (remove the section, or run the Pro build)")
+		return nil, errors.New("config: the \"license\" section is read by the Pro build only (remove the section, or run the Pro build)")
 	}
 	return community{}, nil
 }

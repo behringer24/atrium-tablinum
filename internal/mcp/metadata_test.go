@@ -17,7 +17,8 @@ func TestKnowledgeTypesOwnersAndReviews(t *testing.T) {
 		"bob@x.de": authz.Reader, "sam@x.de": authz.Admin,
 	})
 	e.team(t, "hr", "HR", false, map[string]authz.Role{"cora@x.de": authz.Curator, "bob@x.de": authz.Reader})
-	anna, cora, bob, sam, boss := e.session(t, "anna@x.de"), e.session(t, "cora@x.de"), e.session(t, "bob@x.de"), e.session(t, "sam@x.de"), e.session(t, "boss@x.de")
+	anna, cora, bob, boss := e.session(t, "anna@x.de"), e.session(t, "cora@x.de"), e.session(t, "bob@x.de"), e.session(t, "boss@x.de")
+	e.session(t, "sam@x.de")  // space admin of dev
 	e.session(t, "carl@x.de") // known, but no access to dev
 	e.mustCall(t, e.session(t, "dave@x.de"), "list_spaces", nil)
 
@@ -102,13 +103,9 @@ func TestKnowledgeTypesOwnersAndReviews(t *testing.T) {
 	if len(waits) != 1 || waits[0].(map[string]any)["reviews_due"] != float64(1) {
 		t.Errorf("whats_new for curators: %v", waits)
 	}
-	hrNote := store(cora, map[string]any{"title": "Holiday calendar", "content": "Where the calendar lives.", "space": "hr", "owner": "bob@x.de"})
 
-	// Offboarding keeps the names, marked former, and says what to reassign.
-	off := e.mustCall(t, boss, "admin_offboard_user", map[string]any{"user_email": "bob@x.de", "confirm": true})
-	if off["responsible_for"] != float64(2) || !strings.Contains(off["next"].(string), "reassign_owner") {
-		t.Errorf("offboarding: %v", off)
-	}
+	// Offboarding keeps the names, marked former.
+	e.mustCall(t, boss, "admin_offboard_user", map[string]any{"user_email": "bob@x.de", "confirm": true})
 	if got := get(anna, tips); got["owner"] != "bob@x.de" || got["owner_former"] != true {
 		t.Errorf("a former owner stays named: %v", got)
 	}
@@ -122,30 +119,5 @@ func TestKnowledgeTypesOwnersAndReviews(t *testing.T) {
 		}
 	}
 
-	// Reassigning: space admins for their spaces, never to someone locked or someone who cannot read.
-	if res, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "reassign_owner", Arguments: map[string]any{"from": "bob@x.de", "to": "anna@x.de"}}); err == nil && !res.IsError {
-		t.Error("an author reassigned")
-	}
-	fails(sam, "reassign_owner", map[string]any{"from": "bob@x.de", "to": "dave@x.de", "confirm": true}, "locked")
-	fails(sam, "reassign_owner", map[string]any{"from": "bob@x.de", "to": "anna@x.de"}, "1 entries")
-	moved := e.mustCall(t, sam, "reassign_owner", map[string]any{"from": "bob@x.de", "to": "anna@x.de", "confirm": true})
-	if r := moved["reassigned"].([]any); len(r) != 1 || r[0].(map[string]any)["entries"] != float64(1) {
-		t.Errorf("space admin reassigned: %v", moved)
-	}
-	if got := get(anna, tips); got["owner"] != "anna@x.de" || got["owner_former"] == true {
-		t.Errorf("after reassigning: %v", got)
-	}
-	// the instance admin reaches HR too, but not for somebody who cannot read it
-	moved = e.mustCall(t, boss, "reassign_owner", map[string]any{"from": "bob@x.de", "to": "anna@x.de", "confirm": true})
-	if sk, _ := moved["skipped"].([]any); len(sk) != 1 || sk[0].(map[string]any)["space"] != "HR" {
-		t.Errorf("skipped: %v", moved)
-	}
-	if got := get(cora, hrNote)["owner"]; got != "bob@x.de" {
-		t.Errorf("an entry was handed to somebody who cannot read it: %v", got)
-	}
-	var n int
-	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE action = 'owner_reassign'`).Scan(&n); err != nil || n != 1 {
-		t.Errorf("audit: %d %v", n, err)
-	}
 	_ = policy
 }

@@ -6,7 +6,7 @@ ARG TARGETOS TARGETARCH
 ARG VERSION=dev
 # Commit date (YYYY-MM-DD) for support and diagnosis; never used for licensing.
 ARG BUILD_DATE=
-# Go build tags; the private pipeline of the Pro edition sets "pro" (docs/design/licensing.md).
+# Go build tags; the private pipeline of the Pro edition sets "pro".
 ARG GO_TAGS=
 WORKDIR /src
 COPY go.mod go.sum ./
