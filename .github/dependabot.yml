@@ -1,16 +1,20 @@
 # Weekly pull requests for new versions of what the build depends on: GitHub Actions (pinned by
-# commit), Go modules and the base images of the Dockerfile (pinned by digest).
+# commit), Go modules and the base images of the Dockerfile (pinned by digest). They target `dev`,
+# so that every update is tried as a canary build before it reaches `main`.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
   - package-ecosystem: gomod
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
   - package-ecosystem: docker
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
