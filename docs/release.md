@@ -69,7 +69,7 @@ What the build depends on is pinned and checked:
 - **Base images** are pinned by tag and digest (`golang:1.26.10-alpine@sha256:...`, `alpine:3.22@sha256:...`). To update one, take the new digest with `docker buildx imagetools inspect <image>`.
 - **GitHub Actions** are pinned to commit SHAs, with the tag in a comment. A moved tag in an action repository cannot run other code in the build. Get a SHA with `git ls-remote --tags https://github.com/<owner>/<repo> refs/tags/<tag>`.
 - **`govulncheck`** runs in the test job of `test.yml` and fails the build when a known vulnerability is reachable from the code. Run it locally with `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`.
-- **Dependabot** (`.github/dependabot.yml`) opens weekly pull requests for Actions, Go modules and base images. Review them like any change; the tests and `govulncheck` run on them.
+- **Dependabot** (`.github/dependabot.yml`) opens weekly pull requests for Actions, Go modules and base images against `dev`, so that an update is tried as a canary build before it reaches `main`. Review them like any change; the tests and `govulncheck` run on them. Security updates that GitHub opens for a known vulnerability always target `main`.
 
 ## Notes
 
