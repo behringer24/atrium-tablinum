@@ -118,3 +118,23 @@ func TestValidName(t *testing.T) {
 		}
 	}
 }
+
+// The block ends at a line that is exactly "---", as clients read it; anything else must not.
+func TestFrontmatterClosesOnAnExactLine(t *testing.T) {
+	for _, bad := range []string{
+		"---\nname: n\ndescription: d\n---x\nbody",
+		"---\nname: n\ndescription: d\n--- \nbody",
+		"---\nname: n\ndescription: d\n----\nbody",
+		"---\nname: n\ndescription: d\n",
+	} {
+		if _, err := Frontmatter(bad); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%q: want ErrInvalid, got %v", bad, err)
+		}
+	}
+	for _, ok := range []string{"---\nname: n\ndescription: d\n---\nbody", "---\r\nname: n\r\ndescription: d\r\n---\r\nbody", "---\nname: n\ndescription: d\n---"} {
+		fm, err := Frontmatter(ok)
+		if err != nil || fm["name"] != "n" {
+			t.Errorf("%q: %v %v", ok, fm, err)
+		}
+	}
+}

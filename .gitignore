@@ -3,3 +3,15 @@ config.yaml
 /bin/
 config.docker.yaml
 CLAUDE.md
+
+# Licensing: never commit issuer private keys, the register of issued licences or real licences
+# (docs/licensing.md). A net for slips; keys live offline.
+*.key
+/register/
+*.licence
+*.license
+license.txt
+licence.txt
+
+# Built binaries
+*.exe

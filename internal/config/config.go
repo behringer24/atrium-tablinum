@@ -31,6 +31,8 @@ type Config struct {
 	Policy    Policy    `yaml:"policy"`
 	Tools     Tools     `yaml:"tools"`
 	Skills    Skills    `yaml:"skills"`
+	// License is opaque here: only the edition that supports a licence knows its keys (internal/edition).
+	License yaml.Node `yaml:"license"`
 }
 
 type Instance struct {
@@ -39,6 +41,12 @@ type Instance struct {
 	// name, otherwise the product name itself.
 	ShortName        string `yaml:"short_name"`
 	OrganizationName string `yaml:"organization_name"`
+	// IconFile is an image (svg, png, ico, jpg, webp; up to 256 KB) shown as favicon and in the
+	// server info. Empty = the built-in Atrium icon.
+	IconFile string `yaml:"icon_file"`
+	// LogLevel is debug, info (default), warn or error. debug adds one line per MCP request
+	// (method, tool, resource URI, client), useful to see which route a client takes.
+	LogLevel string `yaml:"log_level"`
 	// BaseURL is the public HTTPS address clients see. It is the same whether TLS is
 	// terminated by the bundled nginx, an existing reverse proxy or a tunnel.
 	BaseURL string `yaml:"base_url"`
@@ -89,10 +97,21 @@ type Provider struct {
 	// AllowUnverifiedEmail accepts generic OIDC logins whose ID token lacks
 	// email_verified=true. Only for IdPs that never send the claim.
 	AllowUnverifiedEmail bool `yaml:"allow_unverified_email"`
+	// EmailTrusted (type entra only) treats the e-mail addresses of the allowed tenants as
+	// verified, so that they may be linked to existing accounts and used for bootstrap admins.
+	// Set it only for a tenant whose users cannot choose their own address and that has no
+	// guests. Default false.
+	EmailTrusted bool `yaml:"email_trusted"`
 }
 
 type Database struct {
+	// URL is the account the server runs with.
 	URL string `yaml:"url"`
+	// MigrationURL, if set, is the account that applies the schema migrations at start (it owns the
+	// schema); URL can then be an account that cannot change the schema, disable triggers or alter
+	// the audit log. Empty = the migrations run with URL, as before. scripts/db-roles.sql sets both
+	// accounts up (docs/deployment.md, "Separate database accounts").
+	MigrationURL string `yaml:"migration_url"`
 }
 
 type Embedding struct {
@@ -109,6 +128,10 @@ type Embedding struct {
 	Timeout time.Duration `yaml:"timeout"`
 	// Options are the settings only one backend knows; see docs/embedding.md.
 	Options map[string]string `yaml:"options"`
+	// AllowDimensionChange lets one start with a dimension other than the database's rebuild the
+	// vector column: all vectors are dropped and admin_reembed builds them again. Off by default;
+	// set it for that one start only.
+	AllowDimensionChange bool `yaml:"allow_dimension_change"`
 }
 
 // Settings converts the config section for the embed package.
@@ -142,6 +165,7 @@ type Chunking struct {
 
 type Spaces struct {
 	Personal         PersonalSpaces    `yaml:"personal"`
+	Team             TeamSpaces        `yaml:"team"`
 	HandoffTTLDays   int               `yaml:"handoff_ttl_days"`
 	DefaultSpaceByGr map[string]string `yaml:"default_space_by_group"`
 }
@@ -151,6 +175,13 @@ type PersonalSpaces struct {
 	MaxDocuments                  int   `yaml:"max_documents"`
 	MaxBytes                      int64 `yaml:"max_bytes"`
 	RetentionDaysAfterOffboarding int   `yaml:"retention_days_after_offboarding"`
+}
+
+// TeamSpaces are the default limits of every team space; an instance admin changes them at runtime
+// (admin_quotas), per space or for all. 0 = unlimited.
+type TeamSpaces struct {
+	MaxDocuments int   `yaml:"max_documents"`
+	MaxBytes     int64 `yaml:"max_bytes"`
 }
 
 type Policy struct {
@@ -167,6 +198,16 @@ type Skills struct {
 	// AllowSelfApproval lets the author of a skill version also approve it. Off by default;
 	// meant for small installations with a single curator.
 	AllowSelfApproval bool `yaml:"allow_self_approval"`
+	// PersonalMaxSkills and PersonalMaxBytes limit one personal space (count of skills, stored
+	// file bytes over all versions); MaxVersionsPerSkill limits the versions of one skill in any
+	// space. 0 = unlimited.
+	PersonalMaxSkills   int   `yaml:"personal_max_skills"`
+	PersonalMaxBytes    int64 `yaml:"personal_max_bytes"`
+	MaxVersionsPerSkill int   `yaml:"max_versions_per_skill"`
+	// TeamMaxSkills and TeamMaxBytes are the defaults for every team space (count of skills, file
+	// bytes over all versions). 0 = unlimited.
+	TeamMaxSkills int   `yaml:"team_max_skills"`
+	TeamMaxBytes  int64 `yaml:"team_max_bytes"`
 }
 
 type Tools struct {
@@ -205,8 +246,10 @@ func Defaults() Config {
 				MaxBytes:                      10 << 20,
 				RetentionDaysAfterOffboarding: 30,
 			},
+			Team:           TeamSpaces{MaxDocuments: 5000, MaxBytes: 200 << 20},
 			HandoffTTLDays: 14,
 		},
+		Skills: Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
 		Policy: Policy{
 			DuplicateThreshold:       0.90,
 			MaxDocumentBytes:         200000,
@@ -271,6 +314,14 @@ func (c *Config) Validate() error {
 	if c.Instance.ProductName == "" {
 		add("instance.product_name must not be empty")
 	}
+	if c.Skills.PersonalMaxSkills < 0 || c.Skills.PersonalMaxBytes < 0 || c.Skills.MaxVersionsPerSkill < 0 || c.Skills.TeamMaxSkills < 0 || c.Skills.TeamMaxBytes < 0 || c.Spaces.Team.MaxDocuments < 0 || c.Spaces.Team.MaxBytes < 0 {
+		add("skills quotas must not be negative (0 = unlimited)")
+	}
+	switch c.Instance.LogLevel {
+	case "", "debug", "info", "warn", "error":
+	default:
+		add("instance.log_level must be debug, info, warn or error")
+	}
 	if c.Instance.Listen == "" {
 		add("instance.listen must not be empty")
 	}
@@ -288,6 +339,9 @@ func (c *Config) Validate() error {
 		// A static token without expiry is only acceptable where nobody else can reach it.
 		if u, err := url.Parse(c.Instance.BaseURL); err == nil && !isLoopback(u.Hostname()) {
 			add("instance.dev_mode is only allowed with a base_url on localhost")
+		}
+		if !loopbackListen(c.Instance.Listen) {
+			add("instance.dev_mode needs instance.listen on loopback (e.g. \"127.0.0.1:8080\"), otherwise the static dev token is reachable from the network")
 		}
 		if c.Instance.DevToken == "" {
 			add("instance.dev_mode needs its own instance.dev_token (at least 16 characters); it is no longer generated and logged")
@@ -338,9 +392,15 @@ func (c *Config) Validate() error {
 		default:
 			add("%s.type %q unknown (google | entra | oidc)", at, p.Type)
 		}
+		if p.EmailTrusted && p.Type != "entra" {
+			add("%s: email_trusted only applies to type entra (Google and OIDC send email_verified)", at)
+		}
 	}
 	for _, u := range c.Auth.AllowedRedirectURIs {
 		base := strings.TrimSuffix(u, "*")
+		if strings.HasSuffix(u, "*") && !strings.HasSuffix(base, "/") {
+			add("auth.allowed_redirect_uris: %q must have a / before the * (\"https://host/path/*\"), otherwise it also matches other hosts", u)
+		}
 		if pu, err := url.Parse(base); err != nil || pu.Scheme != "https" || pu.Host == "" || pu.Fragment != "" {
 			add("auth.allowed_redirect_uris: %q must be an https URL", u)
 		}
@@ -441,4 +501,13 @@ func dedupe(in []string) []string {
 		}
 	}
 	return out
+}
+
+// loopbackListen reports whether a listen address binds to the loopback interface only.
+func loopbackListen(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	return isLoopback(host)
 }

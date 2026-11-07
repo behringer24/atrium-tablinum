@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Atrium data model</title>
+<!--
+  Interactive overview of the Atrium database after the latest migration. Self-contained: no
+  network access, open it in any browser. The migrations in internal/db/migrations and the Go
+  migration in internal/db/db.go are the source of truth; when they change, update the data
+  between DATA-START and DATA-END and run: node tools/docs/check-data-model.mjs
+-->
+<style>
+/* Layout: one-screen schema atlas. Header and toolbar on top, a pannable ER canvas beside a detail panel; stacks on phones. */
+:root{
+  --bg:#EDF0F3; --surface:#FFFFFF; --surface-2:#F4F6F9; --canvas:#F7F9FB; --dot:#D6DCE4;
+  --ink:#16202B; --muted:#566273; --faint:#8590A0; --line:#D5DBE3; --line-strong:#B9C3CF;
+  --accent:#2446C4; --accent-soft:#E2E8FB; --hit:#FFEFB0; --hit-stroke:#C99A00;
+  --edge:#6A7686; --edge-soft:#AEB7C3;
+  --a-s:52%; --a-l:42%; --a-tint-s:42%; --a-tint-l:95.5%; --a-head-l:90.5%;
+  --f-display:"Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --f-body:system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --f-mono:ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0D1218; --surface:#151C24; --surface-2:#1B242E; --canvas:#11171E; --dot:#232D38;
+    --ink:#E3E8EE; --muted:#9BA7B5; --faint:#6F7B89; --line:#27313D; --line-strong:#384555;
+    --accent:#8AA6FF; --accent-soft:#1D2947; --hit:#463A0C; --hit-stroke:#E8C04A;
+    --edge:#7F8B9B; --edge-soft:#4A5666;
+    --a-s:58%; --a-l:70%; --a-tint-s:24%; --a-tint-l:12.5%; --a-head-l:19%;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html{box-sizing:border-box; padding-top:env(safe-area-inset-top, 0px); padding-bottom:env(safe-area-inset-bottom, 0px)}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:14px; line-height:1.5}
+button{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+.app{display:flex; flex-direction:column; gap:12px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:14px 16px}
+.top{display:flex; flex-wrap:wrap; align-items:center; gap:4px 18px}
+.brand{display:flex; align-items:center; gap:10px}
+.brand svg{flex:none}
+h1{font-family:var(--f-display); font-weight:700; font-size:25px; letter-spacing:-.015em; line-height:1.15; margin:0; text-wrap:balance}
+.sub{margin:0; color:var(--muted); font-size:13px}
+.sub b{color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums}
+
+.toolbar{display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center}
+.search{position:relative; flex:1 1 220px; max-width:300px; min-width:0}
+.search svg{position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--faint); pointer-events:none}
+.search input{width:100%; font:inherit; font-size:13.5px; padding:7px 72px 7px 31px; border:1px solid var(--line-strong); border-radius:8px; background:var(--surface); color:var(--ink)}
+.search input::placeholder{color:var(--faint)}
+#qcount{position:absolute; right:10px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; pointer-events:none}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{font-size:12.5px; padding:3px 10px 3px 8px; border-radius:999px; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); display:inline-flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap}
+.chip .dot{width:9px; height:9px; border-radius:50%; background:hsl(var(--h) var(--a-s) var(--a-l)); flex:none}
+.chip[aria-pressed="true"]{background:hsl(var(--h) var(--a-tint-s) var(--a-head-l)); border-color:hsl(var(--h) var(--a-s) var(--a-l))}
+.chip.all[aria-pressed="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.chips.filtered .chip:not(.all):not([aria-pressed="true"]){color:var(--muted)}
+.chips.filtered .chip:not(.all):not([aria-pressed="true"]) .dot{opacity:.45}
+.opts{display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center}
+.seg{display:inline-flex; border:1px solid var(--line-strong); border-radius:8px; overflow:hidden}
+.seg button{font-size:12.5px; padding:4px 10px; border:0; background:var(--surface); color:var(--muted); cursor:pointer}
+.seg button + button{border-left:1px solid var(--line-strong)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft); color:var(--accent); font-weight:600}
+.tg{display:inline-flex; gap:6px; align-items:center; font-size:12.5px; color:var(--muted); cursor:pointer; white-space:nowrap}
+.tg input{accent-color:var(--accent); margin:0}
+.zoom{display:inline-flex; align-items:center; gap:4px}
+.zoom button{font-size:12.5px; min-width:28px; padding:3px 8px; border:1px solid var(--line-strong); border-radius:7px; background:var(--surface); cursor:pointer}
+#z-val{font-variant-numeric:tabular-nums; font-size:12px; color:var(--muted); min-width:3.6em; text-align:right}
+
+.main{display:flex; flex-direction:column; gap:12px}
+.canvas{position:relative; overflow:auto; height:64vh; border:1px solid var(--line); border-radius:10px;
+  background-color:var(--canvas); background-image:radial-gradient(var(--dot) 1px, transparent 1.3px); background-size:18px 18px;
+  cursor:grab; overscroll-behavior:contain}
+.canvas.dragging{cursor:grabbing; user-select:none}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px 18px 22px; min-width:0}
+@media (min-width: 960px){
+  html, body{height:100%}
+  .app{height:100%}
+  .main{flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 400px; grid-template-rows:minmax(0,1fr)}
+  .canvas{height:auto; min-height:0}
+  .panel{overflow:auto; min-height:0}
+}
+
+/* Diagram */
+#er{display:block}
+#er text{font-family:var(--f-mono)}
+.areabox rect{fill:hsl(var(--h) var(--a-tint-s) var(--a-tint-l)); stroke:hsl(var(--h) var(--a-s) var(--a-l) / .3)}
+.areabox text{font-family:var(--f-body) !important; font-size:11px; font-weight:600; letter-spacing:.09em; fill:hsl(var(--h) var(--a-s) var(--a-l))}
+.node{cursor:pointer; transition:opacity .15s}
+.node .nb{fill:var(--surface); stroke:var(--line-strong); stroke-width:1}
+.node .nh{fill:hsl(var(--h) var(--a-tint-s) var(--a-head-l))}
+.node .nl{stroke:hsl(var(--h) var(--a-s) var(--a-l) / .45)}
+.node .nt{font-size:12px; font-weight:600; fill:var(--ink)}
+.node .rb{fill:transparent}
+.node .row:hover .rb{fill:var(--surface-2)}
+.node .cn{font-size:10.5px; fill:var(--ink)}
+.node .ct{font-size:10px; fill:var(--faint)}
+.node .bd{font-size:8px; font-weight:600; fill:var(--muted)}
+.node .bd.pk{fill:var(--accent)}
+.node .more{font-size:10px; fill:var(--faint); font-style:italic}
+.node:focus{outline:none}
+.node:focus-visible .nb{stroke:var(--accent); stroke-width:2; stroke-dasharray:4 3}
+.node.match .nb{stroke:var(--hit-stroke); stroke-width:2}
+.node.sel .nb{stroke:var(--accent); stroke-width:2.2; stroke-dasharray:none}
+.row.hit .rb{fill:var(--hit)}
+.row.hot .rb{fill:var(--accent-soft)}
+.row.hot .cn{fill:var(--accent); font-weight:600}
+svg.focus .node:not(.sel):not(.rel){opacity:.22}
+svg.searching:not(.focus) .node:not(.match){opacity:.25}
+.edge{transition:opacity .15s}
+.edge path{fill:none; stroke:var(--edge); stroke-width:1.3}
+.edge.k-actor path{stroke:var(--edge-soft); stroke-width:1}
+.edge.k-logical .ln{stroke-dasharray:5 4}
+.edge.off:not(.sel){display:none}
+svg.focus .edge:not(.sel){opacity:.08}
+svg.searching:not(.focus) .edge{opacity:.25}
+.edge.sel path{stroke:var(--accent); stroke-width:2.1}
+.edge.sel.k-actor path{stroke-width:1.5}
+
+/* Panel */
+.panel h2{font-family:var(--f-display); font-size:19px; font-weight:600; letter-spacing:-.01em; margin:0 0 6px; text-wrap:balance}
+.panel h3{font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); margin:20px 0 6px; font-weight:600}
+.panel p{margin:0 0 8px; max-width:65ch}
+.lead{color:var(--muted); font-size:13.5px}
+.stats{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; margin:12px 0 4px}
+.stat{border:1px solid var(--line); border-radius:8px; padding:7px 10px; background:var(--surface-2)}
+.stat b{display:block; font-family:var(--f-display); font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.2}
+.stat span{font-size:11.5px; color:var(--muted); line-height:1.3; display:block}
+.legend{list-style:none; margin:0; padding:0; display:grid; gap:6px}
+.legend li{display:flex; gap:10px; align-items:center; font-size:13px}
+.legend svg{flex:none}
+.legend path{fill:none; stroke-width:1.4}
+.lg-fk{stroke:var(--edge)}
+.lg-actor{stroke:var(--edge-soft)}
+.lg-log{stroke:var(--edge); stroke-dasharray:5 4}
+.badges-legend{display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12.5px; color:var(--muted); margin-top:8px}
+.arealist{list-style:none; margin:0; padding:0; display:grid; gap:9px}
+.arealist li{display:grid; grid-template-columns:12px minmax(0,1fr); gap:2px 8px; align-items:baseline}
+.arealist .dot{width:9px; height:9px; border-radius:50%; background:hsl(var(--h) var(--a-s) var(--a-l)); transform:translateY(-1px)}
+.arealist .an{font-weight:600; font-size:13px}
+.arealist .tl{grid-column:2; display:flex; flex-wrap:wrap; gap:4px 10px}
+.plain{margin:0; padding-left:18px; display:grid; gap:5px; font-size:13px}
+.plain li{max-width:65ch}
+
+.p-head{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap}
+.back{font-size:12.5px; border:1px solid var(--line-strong); background:var(--surface); border-radius:7px; padding:3px 9px; cursor:pointer; color:var(--muted)}
+.chip-area{font-size:12px; font-weight:600; padding:2px 9px; border-radius:999px; background:hsl(var(--h) var(--a-tint-s) var(--a-head-l)); color:hsl(var(--h) var(--a-s) var(--a-l))}
+.p-title{font-family:var(--f-mono) !important; font-size:21px !important; font-weight:600 !important; margin:12px 0 4px !important; overflow-wrap:anywhere; letter-spacing:0 !important}
+.purpose{font-size:14.5px; line-height:1.55}
+.facts{display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 12px; margin:10px 0 0; font-size:13px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0; display:flex; flex-wrap:wrap; gap:4px}
+.cols{list-style:none; margin:0; padding:0; border-top:1px solid var(--line)}
+.ci{padding:6px 0 7px; border-bottom:1px solid var(--line)}
+.ci-1{display:flex; gap:7px; align-items:baseline; flex-wrap:wrap}
+.ci-n{font-family:var(--f-mono); font-size:12.5px; font-weight:600}
+.ci-t{margin-left:auto; font-family:var(--f-mono); font-size:12px; color:var(--muted); text-align:right}
+.ci-2{font-size:12.5px; color:var(--muted); overflow-wrap:anywhere; margin-top:1px}
+.ci.hl{background:var(--accent-soft); margin-inline:-8px; padding-inline:8px; border-radius:6px}
+.badge{font-family:var(--f-mono); font-size:9.5px; font-weight:600; padding:0 5px; border-radius:4px; border:1px solid var(--line-strong); color:var(--muted); line-height:1.6}
+.badge.pk{color:var(--accent); border-color:var(--accent)}
+.new{font-size:11px; color:var(--faint)}
+code{font-family:var(--f-mono); font-size:11.5px; background:var(--surface-2); border:1px solid var(--line); padding:0 5px; border-radius:4px; overflow-wrap:anywhere}
+.tlink{font-family:var(--f-mono); font-size:12.5px; color:var(--accent); background:none; border:0; padding:0; cursor:pointer; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px}
+.rels{list-style:none; margin:0; padding:0; display:grid; gap:5px}
+.rels li{font-size:12.5px; display:flex; flex-wrap:wrap; gap:2px 6px; align-items:baseline}
+.rels .ref{font-family:var(--f-mono)}
+.kind{font-size:10.5px; font-weight:600; letter-spacing:.04em; padding:0 6px; border-radius:4px; border:1px solid var(--line-strong); color:var(--muted)}
+.kind.k-fk{color:var(--ink)}
+.kind.k-logical{border-style:dashed}
+.idx{list-style:none; margin:0; padding:0; display:grid; gap:6px}
+.idx li{font-size:12.5px}
+.idx .m{font-size:10.5px; font-weight:600; letter-spacing:.04em; padding:0 6px; border-radius:4px; background:var(--surface-2); border:1px solid var(--line); color:var(--muted); margin-right:4px}
+.idx .m.hnsw{color:var(--accent); border-color:var(--accent)}
+.muted{color:var(--muted)}
+.empty{font-size:12.5px; color:var(--faint)}
+
+@media (max-width: 520px){
+  .stats{grid-template-columns:repeat(2, minmax(0,1fr))}
+  .search{max-width:none; flex-basis:100%}
+}
+@media (prefers-reduced-motion: reduce){
+  .node, .edge{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1b3358"/><path d="M15 53V31a17 17 0 0 1 34 0v22" fill="none" stroke="#f4f6fa" stroke-width="9" stroke-linejoin="round"/><circle cx="32" cy="38" r="7.5" fill="#f2b441"/></svg>
+      <h1>Atrium data model</h1>
+    </div>
+    <p class="sub">Postgres with pgvector · state after migration <b id="sum-v"></b> · <b id="sum-t"></b> tables in <b id="sum-a"></b> areas</p>
+  </header>
+
+  <div class="toolbar">
+    <div class="search">
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <input id="q" type="search" placeholder="Table or column" aria-label="Search tables and columns" autocomplete="off" spellcheck="false">
+      <span id="qcount" aria-live="polite"></span>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="Filter by area"></div>
+    <div class="opts">
+      <div class="seg" role="group" aria-label="Columns in the diagram">
+        <button id="mode-all" type="button" aria-pressed="true">All columns</button>
+        <button id="mode-keys" type="button" aria-pressed="false">Keys only</button>
+      </div>
+      <label class="tg" for="tg-actor"><input id="tg-actor" type="checkbox"> Actor references</label>
+      <label class="tg" for="tg-logical"><input id="tg-logical" type="checkbox" checked> Logical references</label>
+      <div class="zoom">
+        <button id="z-out" type="button" aria-label="Zoom out">−</button>
+        <button id="z-fit" type="button">Fit</button>
+        <button id="z-in" type="button" aria-label="Zoom in">+</button>
+        <span id="z-val"></span>
+      </div>
+    </div>
+  </div>
+
+  <main class="main">
+    <div class="canvas" id="wrap"><svg id="er" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ER diagram of the Atrium database"></svg></div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </main>
+</div>
+
+<script>
+/*DATA-START*/
+// Highest migration version this page describes. tools/docs/check-data-model.mjs compares it,
+// and the tables, columns, types, foreign keys and indexes below, with the migrations.
+const SCHEMA_VERSION = 12;
+
+const AREAS = [
+  {id:"users", name:"Users & groups", h:214},
+  {id:"spaces", name:"Spaces & memberships", h:160},
+  {id:"knowledge", name:"Knowledge", h:258},
+  {id:"skills", name:"Skills & versions", h:28},
+  {id:"oauth", name:"OAuth & sessions", h:188},
+  {id:"audit", name:"Audit", h:2},
+  {id:"jobs", name:"Jobs", h:58},
+  {id:"meta", name:"meta & licence", h:292},
+  {id:"allowlist", name:"Login allowlist", h:122},
+  {id:"quotas", name:"Quotas", h:328}
+];
+
+const TABLES = [
+{name:"meta", area:"meta", mig:[1],
+ purpose:"Key-value table for instance-wide settings: embedding model and dimension, the licence installed at runtime (Pro build only) and the instance admin's context text.",
+ code:["internal/db/db.go","internal/mcp/context.go"],
+ cols:[
+  {n:"key", t:"text", nn:1, pk:1},
+  {n:"value", t:"text", nn:1}],
+ pk:"PRIMARY KEY (key)",
+ idx:[{impl:1, d:"PRIMARY KEY (key)"}],
+ notes:[
+  "<code>embedding_dimensions</code> and <code>embedding_model</code> are written by <code>internal/db</code> at the first start. Every start compares the stored dimension with <code>embedding.dimensions</code>; if they differ, the server does not start.",
+  "<code>license</code> holds the licence installed at runtime; only the Pro build writes it (<code>admin_license</code> installs or removes it, code in the private repository). The Community build never creates this row.",
+  "<code>instance_context</code> is the instance admin's context text for the assistants, at most 2000 characters (<code>admin_context</code>)."]},
+
+{name:"users", area:"users", mig:[1,10],
+ purpose:"One account per person, created just in time from the identity provider at the first login, with status, instance admin flag and default space.",
+ code:["internal/users/users.go","internal/authz/authz.go","internal/docs/offboard.go","internal/audit/audit.go"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"email", t:"citext", nn:1, uq:1},
+  {n:"display_name", t:"text", nn:1, d:"''"},
+  {n:"idp", t:"text", nn:1},
+  {n:"idp_subject", t:"text", nn:1},
+  {n:"status", t:"text", nn:1, d:"'active'", chk:"status IN ('active', 'disabled')"},
+  {n:"instance_admin", t:"boolean", nn:1, d:"false"},
+  {n:"default_space_id", t:"uuid", fk:{t:"spaces", c:"id", del:"SET NULL", name:"users_default_space_fk"}},
+  {n:"disabled_at", t:"timestamptz"},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"last_login_at", t:"timestamptz"}],
+ pk:"PRIMARY KEY (id)", uq:["UNIQUE (email)","UNIQUE (idp, idp_subject)"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (email)"},{impl:1, d:"UNIQUE (idp, idp_subject)"}],
+ trg:[{n:"users_remove_memberships", w:"AFTER DELETE, for each row", f:"remove_principal_memberships('user')", d:"deletes the user's rows in <code>space_members</code>, because <code>principal_id</code> cannot have a foreign key."}],
+ notes:[
+  "The user limit (<code>edition.CommunityMaxUsers</code> in the Community build) counts the rows with <code>status = 'active'</code> (<code>internal/users/users.go</code>).",
+  "<code>instance_admin = true</code> makes the instance admin. The space admin is something else: <code>role = 'admin'</code> in <code>space_members</code> (<code>internal/authz</code>).",
+  "The code never deletes accounts. Offboarding sets <code>status = 'disabled'</code> and <code>disabled_at</code>; the hourly task <code>purge_offboarded</code> deletes the personal space after the retention period (<code>retention_days_after_offboarding</code>, default 30 days).",
+  "Migration 10 moved the columns <code>quota_documents</code> and <code>quota_bytes</code> to <code>quotas</code>."]},
+
+{name:"groups", area:"users", mig:[1,4],
+ purpose:"Named groups of users, used to grant space roles to many users at once; the code creates local groups only so far.",
+ code:["internal/users/groups.go","internal/spaces/members.go"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"name", t:"text", nn:1, uq:1},
+  {n:"source", t:"text", nn:1, chk:"source IN ('local', 'idp')"},
+  {n:"idp", t:"text"},
+  {n:"external_id", t:"text"},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"}],
+ pk:"PRIMARY KEY (id)", uq:["UNIQUE (name)","UNIQUE (source, idp, external_id)","UNIQUE INDEX groups_name_ci_idx (lower(name))"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (name)"},{impl:1, d:"UNIQUE (source, idp, external_id)"},
+      {n:"groups_name_ci_idx", m:"btree", u:1, d:"(lower(name))", mig:4}],
+ trg:[{n:"groups_remove_memberships", w:"AFTER DELETE, for each row", f:"remove_principal_memberships('group')", d:"deletes the group's rows in <code>space_members</code>."}],
+ notes:[
+  "<code>admin_groups</code> creates groups with <code>source = 'local'</code>. <code>source = 'idp'</code> with <code>idp</code> and <code>external_id</code> is prepared for groups from the identity provider, which are still on the roadmap.",
+  "Group names are unique regardless of case (<code>groups_name_ci_idx</code>, migration 4), because groups are resolved that way.",
+  "Local groups have <code>idp</code> and <code>external_id</code> NULL, so <code>UNIQUE (source, idp, external_id)</code> only applies to groups from the identity provider."]},
+
+{name:"group_members", area:"users", mig:[1],
+ purpose:"Assigns users to groups; internal/authz resolves space roles granted to a group through it.",
+ code:["internal/users/groups.go","internal/authz/authz.go"],
+ cols:[
+  {n:"group_id", t:"uuid", nn:1, pk:1, fk:{t:"groups", c:"id", del:"CASCADE"}},
+  {n:"user_id", t:"uuid", nn:1, pk:1, fk:{t:"users", c:"id", del:"CASCADE"}}],
+ pk:"PRIMARY KEY (group_id, user_id)",
+ idx:[{impl:1, d:"PRIMARY KEY (group_id, user_id)"}]},
+
+{name:"spaces", area:"spaces", mig:[1],
+ purpose:"Spaces that hold knowledge and skills: exactly one personal space per user and any number of team spaces with their own rules for approval and base role.",
+ code:["internal/spaces/spaces.go","internal/authz/authz.go","internal/docs/offboard.go","internal/quota/quota.go"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"slug", t:"text", nn:1, uq:1},
+  {n:"name", t:"text", nn:1},
+  {n:"description", t:"text", nn:1, d:"''"},
+  {n:"type", t:"text", nn:1, chk:"type IN ('personal', 'team')"},
+  {n:"owner_user_id", t:"uuid", fk:{t:"users", c:"id", del:"CASCADE"}},
+  {n:"require_approval", t:"boolean", nn:1, d:"false"},
+  {n:"default_role", t:"text", chk:"default_role IN ('reader', 'author')"},
+  {n:"status", t:"text", nn:1, d:"'active'", chk:"status IN ('active', 'archived')"},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"}],
+ pk:"PRIMARY KEY (id)", uq:["UNIQUE (slug)","UNIQUE INDEX one_personal_space_per_user (owner_user_id) WHERE type = 'personal'"],
+ chk:["CHECK ((type = 'personal') = (owner_user_id IS NOT NULL))","CHECK (type = 'team' OR (require_approval = false AND default_role IS NULL))"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (slug)"},
+      {n:"one_personal_space_per_user", m:"btree", u:1, d:"(owner_user_id) WHERE type = 'personal'", partial:1, mig:1}],
+ notes:[
+  "A personal space always has an owner, a team space never; the partial unique index allows at most one personal space per user.",
+  "<code>require_approval</code> (team only): entries from roles below <code>curator</code> go to review as drafts (<code>internal/docs/write.go</code>).",
+  "<code>default_role</code> (team only): base role for all users without a membership; the effective role is the higher of membership and base role (<code>internal/authz</code>).",
+  "<code>status = 'archived'</code> is set by <code>admin_archive_space</code> and reset by <code>admin_restore_space</code>."]},
+
+{name:"space_members", area:"spaces", mig:[1],
+ purpose:"Roles in a space (reader, author, curator, admin), granted to a single user or to a whole group.",
+ code:["internal/spaces/members.go","internal/authz/authz.go"],
+ cols:[
+  {n:"space_id", t:"uuid", nn:1, pk:1, fk:{t:"spaces", c:"id", del:"CASCADE"}},
+  {n:"principal_type", t:"text", nn:1, pk:1, chk:"principal_type IN ('user', 'group')"},
+  {n:"principal_id", t:"uuid", nn:1, pk:1, ref:[{t:"users", c:"id", when:"principal_type = 'user'"},{t:"groups", c:"id", when:"principal_type = 'group'"}]},
+  {n:"role", t:"text", nn:1, chk:"role IN ('reader', 'author', 'curator', 'admin')"},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"created_by", t:"uuid", fk:{t:"users", c:"id", del:"NO ACTION", actor:1}}],
+ pk:"PRIMARY KEY (space_id, principal_type, principal_id)",
+ idx:[{impl:1, d:"PRIMARY KEY (space_id, principal_type, principal_id)"}],
+ notes:[
+  "<code>role = 'admin'</code> is the space admin of this one space, not the instance admin (<code>users.instance_admin</code>).",
+  "<code>internal/authz</code> takes the highest role from direct membership, group memberships and the space's <code>default_role</code>. The owner of a personal space is its admin.",
+  "<code>principal_id</code> points to <code>users</code> or <code>groups</code> depending on <code>principal_type</code> and therefore has no foreign key; the triggers on both tables clean up on delete."]},
+
+{name:"documents", area:"knowledge", mig:[1,11],
+ purpose:"Knowledge entries (kind = knowledge) and personal handoffs (kind = handoff) with content, tags, approval status and a running version number.",
+ code:["internal/docs/write.go","internal/docs/review.go","internal/docs/manage.go","internal/docs/handoff.go","internal/search/search.go","internal/ingest/ingest.go","internal/quota/quota.go"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"space_id", t:"uuid", nn:1, fk:{t:"spaces", c:"id", del:"CASCADE"}},
+  {n:"kind", t:"text", nn:1, d:"'knowledge'", chk:"kind IN ('knowledge', 'handoff')"},
+  {n:"title", t:"text", nn:1},
+  {n:"content", t:"text", nn:1},
+  {n:"tags", t:"text[]", nn:1, d:"'{}'"},
+  {n:"status", t:"text", nn:1, d:"'approved'", chk:"status IN ('draft', 'approved', 'rejected', 'archived')"},
+  {n:"review_note", t:"text"},
+  {n:"author_id", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"NO ACTION", actor:1}},
+  {n:"source", t:"text", nn:1},
+  {n:"version", t:"int", nn:1, d:"1"},
+  {n:"review_due_at", t:"timestamptz"},
+  {n:"expires_at", t:"timestamptz"},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"updated_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"updated_by", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"NO ACTION", actor:1}},
+  {n:"knowledge_type", t:"text", nn:1, d:"'documentation'", m:11, chk:"knowledge_type IN ('rule', 'documentation', 'recommendation', 'experience')"},
+  {n:"owner_id", t:"uuid", m:11, fk:{t:"users", c:"id", del:"NO ACTION"}}],
+ pk:"PRIMARY KEY (id)",
+ chk:["CHECK (kind = 'knowledge' OR expires_at IS NOT NULL)"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},
+      {n:"documents_space_status_idx", m:"btree", d:"(space_id, status)", mig:1},
+      {n:"documents_author_idx", m:"btree", d:"(author_id)", mig:1},
+      {n:"documents_tags_idx", m:"GIN", d:"(tags)", mig:1},
+      {n:"documents_expires_idx", m:"btree", d:"(expires_at) WHERE expires_at IS NOT NULL", partial:1, mig:1},
+      {n:"documents_owner_idx", m:"btree", d:"(owner_id) WHERE owner_id IS NOT NULL", partial:1, mig:11}],
+ notes:[
+  "<code>status</code> carries the approval workflow: <code>draft</code> → <code>approved</code> or <code>rejected</code>, plus <code>archived</code>. Curators review with <code>review_knowledge</code>.",
+  "Handoffs need an <code>expires_at</code> (CHECK); the hourly task <code>expire_handoffs</code> deletes expired ones (<code>internal/docs/handoff.go</code>).",
+  "<code>source</code> is the name of the writing client, <code>'api'</code> without one.",
+  "<code>author_id</code> and <code>updated_by</code> have no ON DELETE; an account with entries cannot be hard-deleted, which the code never does anyway.",
+  "Every change also writes a row to <code>document_versions</code>; the search index is in <code>chunks</code>.",
+  "Migration 11: <code>knowledge_type</code> says whether an entry is binding (<code>rule</code>, set and changed by curators only), describes (<code>documentation</code>), advises (<code>recommendation</code>) or reports (<code>experience</code>). <code>owner_id</code> names the responsible person (team spaces, explicit, never derived; a locked owner stays named as former until <code>reassign_owner</code> moves the entries). <code>review_due_at</code> is the review date set with <code>review_due</code>. See <code>docs/design/knowledge-metadata.md</code>."]},
+
+{name:"document_versions", area:"knowledge", mig:[1,11],
+ purpose:"Immutable copy of every state of an entry, written on create, update, review, archive and move.",
+ code:["internal/docs/write.go","internal/docs/review.go","internal/docs/manage.go","internal/docs/handoff.go","internal/docs/offboard.go"],
+ cols:[
+  {n:"document_id", t:"uuid", nn:1, pk:1, fk:{t:"documents", c:"id", del:"CASCADE"}},
+  {n:"version", t:"int", nn:1, pk:1},
+  {n:"space_id", t:"uuid", nn:1, ref:[{t:"spaces", c:"id"}]},
+  {n:"title", t:"text", nn:1},
+  {n:"content", t:"text", nn:1},
+  {n:"tags", t:"text[]", nn:1},
+  {n:"status", t:"text", nn:1},
+  {n:"changed_by", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"NO ACTION", actor:1}},
+  {n:"changed_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"knowledge_type", t:"text", nn:1, d:"'documentation'", m:11}],
+ pk:"PRIMARY KEY (document_id, version)",
+ idx:[{impl:1, d:"PRIMARY KEY (document_id, version)"}],
+ notes:[
+  "<code>space_id</code> records the space at the time of the version (entries can be moved) and has no foreign key.",
+  "Deleting an entry deletes its versions (ON DELETE CASCADE)."]},
+
+{name:"chunks", area:"knowledge", mig:[2,12], go:1,
+ purpose:"Search index: every entry is split into pieces along its headings, each piece with an embedding vector and a tsvector for the hybrid search.",
+ code:["internal/db/db.go","internal/ingest/ingest.go","internal/search/search.go"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"document_id", t:"uuid", nn:1, fk:{t:"documents", c:"id", del:"CASCADE"}},
+  {n:"chunk_index", t:"int", nn:1},
+  {n:"heading_path", t:"text", nn:1, d:"''"},
+  {n:"content", t:"text", nn:1},
+  {n:"embedding", t:"vector(N)", m:12},
+  {n:"embedding_model", t:"text", nn:1},
+  {n:"tsv", t:"tsvector", nn:1}],
+ pk:"PRIMARY KEY (id)", uq:["UNIQUE (document_id, chunk_index)"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (document_id, chunk_index)"},
+      {n:"chunks_embedding_idx", m:"HNSW", d:"(embedding vector_cosine_ops)", mig:2},
+      {n:"chunks_tsv_idx", m:"GIN", d:"(tsv)", mig:2},
+      {n:"chunks_document_idx", m:"btree", d:"(document_id)", mig:2}],
+ notes:[
+  "Created by the Go migration 2 (<code>chunksMigration</code> in <code>internal/db/db.go</code>), because the vector dimension comes from the configuration: <code>vector(N)</code> with N = <code>embedding.dimensions</code>, 1 to 2000 (the HNSW limit). The dimension is then stored in <code>meta</code>.",
+  "<code>internal/search</code> combines vector search (cosine distance <code>&lt;=&gt;</code>) and full-text search (<code>websearch_to_tsquery</code>) with reciprocal rank fusion; the permission filter is part of the same SQL query.",
+  "<code>tsv</code> is built with <code>to_tsvector</code> over all configured text search languages (<code>internal/ingest</code>); <code>embedding_model</code> records which model computed the vector.",
+  "Migration 12 lets <code>embedding</code> be empty: after a change of dimension (<code>embedding.allow_dimension_change</code>) every vector is dropped and <code>embedding_model</code> set to <code>''</code>. Vector search and the duplicate check use only vectors of the configured model; the others are found by full text until the task <code>reembed</code> (<code>internal/reembed</code>, started with <code>admin_reembed</code>) has rebuilt them. A pending rebuild is the row <code>reembed_requested</code> in <code>meta</code>."]},
+
+{name:"oauth_clients", area:"oauth", mig:[1],
+ purpose:"MCP clients registered through Dynamic Client Registration (RFC 7591), with their allowed redirect URIs.",
+ code:["internal/oauth/store.go","internal/oauth/server.go"],
+ cols:[
+  {n:"client_id", t:"text", nn:1, pk:1},
+  {n:"client_name", t:"text"},
+  {n:"redirect_uris", t:"text[]", nn:1},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"}],
+ pk:"PRIMARY KEY (client_id)",
+ idx:[{impl:1, d:"PRIMARY KEY (client_id)"}],
+ notes:[
+  "The hourly task <code>oauth_cleanup</code> deletes clients without a login state, code or token one hour after they registered.",
+  "Deleting a client deletes its login states, codes and tokens (ON DELETE CASCADE)."]},
+
+{name:"oauth_login_states", area:"oauth", mig:[1,3],
+ purpose:"A client's pending authorization request while the user logs in at the identity provider; usable once.",
+ code:["internal/oauth/store.go"],
+ cols:[
+  {n:"state_hash", t:"text", nn:1, pk:1},
+  {n:"client_id", t:"text", nn:1, fk:{t:"oauth_clients", c:"client_id", del:"CASCADE"}},
+  {n:"redirect_uri", t:"text", nn:1},
+  {n:"code_challenge", t:"text", nn:1},
+  {n:"client_state", t:"text"},
+  {n:"idp", t:"text"},
+  {n:"idp_nonce", t:"text"},
+  {n:"expires_at", t:"timestamptz", nn:1},
+  {n:"resource", t:"text", nn:1, d:"''", m:3},
+  {n:"idp_verifier", t:"text", m:3}],
+ pk:"PRIMARY KEY (state_hash)",
+ idx:[{impl:1, d:"PRIMARY KEY (state_hash)"}],
+ notes:[
+  "Holds the client's PKCE challenge and state, the chosen identity provider with nonce and Atrium's own PKCE verifier, and the target resource per RFC 8707 (<code>resource</code> and <code>idp_verifier</code>: migration 3).",
+  "The state is stored only as a SHA-256 hash; <code>oauth_cleanup</code> deletes expired rows."]},
+
+{name:"oauth_codes", area:"oauth", mig:[1,3],
+ purpose:"Authorization codes after a successful login, redeemable once for a token pair.",
+ code:["internal/oauth/store.go"],
+ cols:[
+  {n:"code_hash", t:"text", nn:1, pk:1},
+  {n:"client_id", t:"text", nn:1, fk:{t:"oauth_clients", c:"client_id", del:"CASCADE"}},
+  {n:"user_id", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"CASCADE"}},
+  {n:"redirect_uri", t:"text", nn:1},
+  {n:"code_challenge", t:"text", nn:1},
+  {n:"expires_at", t:"timestamptz", nn:1},
+  {n:"resource", t:"text", nn:1, d:"''", m:3}],
+ pk:"PRIMARY KEY (code_hash)",
+ idx:[{impl:1, d:"PRIMARY KEY (code_hash)"}],
+ notes:[
+  "Stored only as a SHA-256 hash. Redeeming consumes the code even when a later check fails.",
+  "<code>resource</code> (migration 3) binds the code to the target resource."]},
+
+{name:"oauth_tokens", area:"oauth", mig:[1,3,5],
+ purpose:"The clients' access and refresh tokens, stored only as hashes, with expiry, revocation and the start of the session.",
+ code:["internal/oauth/store.go"],
+ cols:[
+  {n:"token_hash", t:"text", nn:1, pk:1},
+  {n:"kind", t:"text", nn:1, chk:"kind IN ('access', 'refresh')"},
+  {n:"client_id", t:"text", nn:1, fk:{t:"oauth_clients", c:"client_id", del:"CASCADE"}},
+  {n:"user_id", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"CASCADE"}},
+  {n:"expires_at", t:"timestamptz", nn:1},
+  {n:"revoked_at", t:"timestamptz"},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"last_used_at", t:"timestamptz"},
+  {n:"resource", t:"text", nn:1, d:"''", m:3},
+  {n:"session_started_at", t:"timestamptz", nn:1, d:"now()", m:5}],
+ pk:"PRIMARY KEY (token_hash)",
+ idx:[{impl:1, d:"PRIMARY KEY (token_hash)"},
+      {n:"oauth_tokens_user_idx", m:"btree", d:"(user_id)", mig:1},
+      {n:"oauth_tokens_client_user_idx", m:"btree", d:"(user_id, client_id)", mig:3}],
+ notes:[
+  "A refresh rotates the pair and carries <code>session_started_at</code> (migration 5) over, so an absolute maximum session lifetime applies even to a client in constant use.",
+  "<code>revoked_at</code> blocks tokens: at offboarding, through <code>admin_revoke_sessions</code> and <code>revoke_my_sessions</code>, and through the revocation endpoint (RFC 7009). <code>my_sessions</code> lists the open refresh tokens per client.",
+  "<code>oauth_cleanup</code> deletes tokens one week after they expired."]},
+
+{name:"audit_log", area:"audit", mig:[1],
+ purpose:"Record of actions with actor, client, space, entry and details as JSON, but without content.",
+ code:["internal/audit/audit.go","internal/mcp/tools_admin.go"],
+ cols:[
+  {n:"id", t:"bigserial", nn:1, pk:1},
+  {n:"ts", t:"timestamptz", nn:1, d:"now()"},
+  {n:"user_id", t:"uuid", ref:[{t:"users", c:"id"}]},
+  {n:"client", t:"text"},
+  {n:"action", t:"text", nn:1},
+  {n:"space_id", t:"uuid", ref:[{t:"spaces", c:"id"}]},
+  {n:"document_id", t:"uuid", ref:[{t:"documents", c:"id"}]},
+  {n:"details", t:"jsonb"}],
+ pk:"PRIMARY KEY (id)",
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},
+      {n:"audit_log_ts_idx", m:"btree", d:"(ts)", mig:1},
+      {n:"audit_log_user_ts_idx", m:"btree", d:"(user_id, ts)", mig:1}],
+ notes:[
+  "No foreign keys: entries outlive the deletion of users, spaces and entries.",
+  "<code>admin_audit_log</code> (instance admin) filters by user, action (also by prefix), space, entry, skill (<code>details-&gt;&gt;'skill'</code>), client and time range. It does not return the names of personal spaces.",
+  "With <code>scripts/db-roles.sql</code> the server account <code>atrium_app</code> can only read and insert here (no UPDATE, DELETE or TRUNCATE)."]},
+
+{name:"jobs", area:"jobs", mig:[1],
+ purpose:"Queue for background jobs with status, progress and error message.",
+ code:["internal/jobs/jobs.go","internal/mcp/tools_admin.go"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"kind", t:"text", nn:1},
+  {n:"status", t:"text", nn:1, d:"'queued'", chk:"status IN ('queued', 'running', 'done', 'failed')"},
+  {n:"params", t:"jsonb"},
+  {n:"progress", t:"int", nn:1, d:"0"},
+  {n:"total", t:"int"},
+  {n:"error", t:"text"},
+  {n:"created_by", t:"uuid", ref:[{t:"users", c:"id"}]},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"started_at", t:"timestamptz"},
+  {n:"finished_at", t:"timestamptz"}],
+ pk:"PRIMARY KEY (id)",
+ idx:[{impl:1, d:"PRIMARY KEY (id)"}],
+ notes:[
+  "The runner claims the oldest queued job with <code>FOR UPDATE SKIP LOCKED</code>. At start it marks jobs still in <code>running</code> as <code>failed</code>.",
+  "<code>admin_health</code> shows a summary and the jobs that failed in the last 24 hours.",
+  "The current code registers no job kind yet; re-embedding jobs are on the roadmap. The hourly maintenance tasks (<code>expire_handoffs</code>, <code>purge_offboarded</code>, <code>oauth_cleanup</code>) run without this table."]},
+
+{name:"login_allowlist", area:"allowlist", mig:[6],
+ purpose:"Additional login approvals the instance admin maintains at runtime: domains, email addresses and Entra tenants.",
+ code:["internal/allowlist/allowlist.go","internal/mcp/allowlist.go"],
+ cols:[
+  {n:"kind", t:"text", nn:1, pk:1, chk:"kind IN ('domain', 'email', 'tenant')"},
+  {n:"value", t:"text", nn:1, pk:1},
+  {n:"provider", t:"text", nn:1, pk:1, d:"''"},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"created_by", t:"uuid", fk:{t:"users", c:"id", del:"SET NULL", actor:1}}],
+ pk:"PRIMARY KEY (kind, value, provider)",
+ idx:[{impl:1, d:"PRIMARY KEY (kind, value, provider)"}],
+ notes:[
+  "Extends <code>allowed_domains</code>, <code>allowed_emails</code> and <code>allowed_tenants</code> from the configuration; <code>internal/idp</code> merges both at every login. Maintained with <code>admin_allowlist</code>, without a restart.",
+  "<code>provider = ''</code> applies to all providers of the matching type (domains and addresses: google and oidc, tenants: entra)."]},
+
+{name:"skills", area:"skills", mig:[7,8,9],
+ purpose:"Skill registry: a named skill in a space, deliberately kept apart from knowledge entries, because a skill is an instruction and knowledge is only data.",
+ code:["internal/skills/skills.go","internal/quota/quota.go"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"space_id", t:"uuid", nn:1, fk:{t:"spaces", c:"id", del:"CASCADE"}},
+  {n:"name", t:"text", nn:1, chk:"name ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length(name) <= 64"},
+  {n:"created_by", t:"uuid", fk:{t:"users", c:"id", del:"SET NULL", actor:1}},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"archived_at", t:"timestamptz", m:8},
+  {n:"archived_by", t:"uuid", m:8, fk:{t:"users", c:"id", del:"SET NULL", actor:1}},
+  {n:"tags", t:"text[]", nn:1, d:"'{}'", m:9}],
+ pk:"PRIMARY KEY (id)", uq:["UNIQUE (space_id, name)"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (space_id, name)"},
+      {n:"skills_tags_idx", m:"GIN", d:"(tags)", mig:9}],
+ notes:[
+  "The name consists of lowercase letters, digits and hyphens, at most 64 characters, unique per space.",
+  "<code>archived_at</code> and <code>archived_by</code> (migration 8) hide the whole skill. Deleting is a DELETE; versions and files go with it (CASCADE).",
+  "<code>tags</code> (migration 9) belong to the skill, not to a version, so that a keyword needs no new version and no new review. They are not part of the digest."]},
+
+{name:"skill_versions", area:"skills", mig:[7,8],
+ purpose:"One version of a skill (a release candidate) with description, requested tools, risk class, digest and the trail of review, publishing and blocking.",
+ code:["internal/skills/skills.go","internal/quota/quota.go"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"skill_id", t:"uuid", nn:1, fk:{t:"skills", c:"id", del:"CASCADE"}},
+  {n:"version", t:"int", nn:1, chk:"version > 0"},
+  {n:"status", t:"text", nn:1, d:"'draft'", chk:"status IN ('draft', 'approved', 'rejected', 'published', 'blocked')"},
+  {n:"description", t:"text", nn:1},
+  {n:"requested_tools", t:"text", nn:1, d:"''"},
+  {n:"risk_class", t:"text", chk:"risk_class IN ('A', 'B', 'C')"},
+  {n:"digest", t:"text", nn:1},
+  {n:"created_by", t:"uuid", fk:{t:"users", c:"id", del:"SET NULL", actor:1}},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"reviewed_by", t:"uuid", fk:{t:"users", c:"id", del:"SET NULL", actor:1}},
+  {n:"reviewed_at", t:"timestamptz"},
+  {n:"review_note", t:"text"},
+  {n:"published_by", t:"uuid", fk:{t:"users", c:"id", del:"SET NULL", actor:1}},
+  {n:"published_at", t:"timestamptz"},
+  {n:"blocked_by", t:"uuid", fk:{t:"users", c:"id", del:"SET NULL", actor:1}},
+  {n:"blocked_at", t:"timestamptz"},
+  {n:"block_reason", t:"text"}],
+ pk:"PRIMARY KEY (id)", uq:["UNIQUE (skill_id, version)"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (skill_id, version)"},
+      {n:"skill_versions_status_idx", m:"btree", d:"(skill_id, status)", mig:7}],
+ trg:[{n:"skill_versions_frozen", w:"BEFORE UPDATE, for each row", f:"skill_versions_frozen()", d:"once a version has left draft, <code>skill_id</code>, <code>version</code>, <code>description</code>, <code>requested_tools</code>, <code>digest</code>, <code>created_by</code> and <code>created_at</code> are frozen. A version never goes back to <code>draft</code>; <code>blocked</code> only goes back to <code>approved</code> (version from migration 8)."}],
+ notes:[
+  "Status transitions: <code>draft</code> → <code>approved</code> or <code>rejected</code>, <code>approved</code> → <code>published</code>, <code>approved</code> or <code>published</code> → <code>blocked</code>, <code>blocked</code> → <code>approved</code> (unblocking, publish again afterwards).",
+  "<code>risk_class</code> (A, B, C) is set by the review when approving; the digest identifies the content of the version."]},
+
+{name:"skill_resources", area:"skills", mig:[7],
+ purpose:"The files of a skill version (SKILL.md and references) with path, size and SHA-256.",
+ code:["internal/skills/skills.go","internal/quota/quota.go"],
+ cols:[
+  {n:"version_id", t:"uuid", nn:1, pk:1, fk:{t:"skill_versions", c:"id", del:"CASCADE"}},
+  {n:"path", t:"text", nn:1, pk:1},
+  {n:"content", t:"text", nn:1},
+  {n:"size", t:"int", nn:1},
+  {n:"sha256", t:"text", nn:1}],
+ pk:"PRIMARY KEY (version_id, path)",
+ idx:[{impl:1, d:"PRIMARY KEY (version_id, path)"}],
+ trg:[{n:"skill_resources_frozen", w:"BEFORE INSERT OR UPDATE OR DELETE, for each row", f:"skill_resources_frozen()", d:"allows changes only while the version is a draft; deleting a whole version by cascade still works."}]},
+
+{name:"quotas", area:"quotas", mig:[10],
+ purpose:"Storage limits the instance admin sets at runtime: for all personal spaces, all team spaces, one user or one team space.",
+ code:["internal/quota/quota.go","internal/mcp/tools_admin.go"],
+ cols:[
+  {n:"scope", t:"text", nn:1, pk:1, chk:"scope IN ('personal_default', 'team_default', 'space', 'user')"},
+  {n:"scope_id", t:"uuid", nn:1, pk:1, d:"'00000000-0000-0000-0000-000000000000'", ref:[{t:"users", c:"id", when:"scope = 'user'"},{t:"spaces", c:"id", when:"scope = 'space'"}]},
+  {n:"documents", t:"int", chk:"documents >= 0"},
+  {n:"bytes", t:"bigint", chk:"bytes >= 0"},
+  {n:"skills", t:"int", chk:"skills >= 0"},
+  {n:"skill_bytes", t:"bigint", chk:"skill_bytes >= 0"},
+  {n:"skill_versions", t:"int", chk:"skill_versions >= 0"},
+  {n:"updated_by", t:"uuid", fk:{t:"users", c:"id", del:"SET NULL", actor:1}},
+  {n:"updated_at", t:"timestamptz", nn:1, d:"now()"}],
+ pk:"PRIMARY KEY (scope, scope_id)",
+ idx:[{impl:1, d:"PRIMARY KEY (scope, scope_id)"}],
+ notes:[
+  "Each field is resolved on its own: <code>user</code> → <code>personal_default</code> → config.yaml for a personal space, <code>space</code> → <code>team_default</code> → config.yaml for a team space. NULL inherits, 0 means unlimited.",
+  "<code>scope_id</code> is the zero UUID for the two defaults, otherwise the ID of the user or space; it has no foreign key because it points to a different table depending on <code>scope</code>.",
+  "Maintained with <code>admin_quotas</code>; a row without any value left is removed. Migration 10 carried the old values over from <code>users.quota_documents</code> and <code>users.quota_bytes</code>."]}
+];
+
+const FUNCS = [
+  {n:"remove_principal_memberships()", mig:"1", d:"trigger function of <code>users_remove_memberships</code> and <code>groups_remove_memberships</code>: deletes the memberships of a deleted user or group in <code>space_members</code>."},
+  {n:"skill_versions_frozen()", mig:"7, replaced in 8", d:"freezes skill versions once they leave draft and decides which status changes are allowed."},
+  {n:"skill_resources_frozen()", mig:"7", d:"prevents changes to the files of a version that is no longer a draft."}
+];
+
+const LAYOUT = [
+  [{a:"oauth", sub:[["oauth_tokens","oauth_clients","oauth_codes","oauth_login_states"]]}, {a:"meta", sub:[["meta"]]}],
+  [{a:"allowlist", sub:[["login_allowlist"]]}, {a:"users", sub:[["users","group_members","groups"]]}, {a:"quotas", sub:[["quotas"]]}],
+  [{a:"spaces", sub:[["spaces","space_members"]]}, {a:"audit", sub:[["audit_log"]]}, {a:"jobs", sub:[["jobs"]]}],
+  [{a:"knowledge", sub:[["documents"],["document_versions","chunks"]]}, {a:"skills", sub:[["skills","skill_resources"],["skill_versions"]]}]
+];
+/*DATA-END*/
+
+const AREA = Object.fromEntries(AREAS.map(a => [a.id, a]));
+const BY = Object.fromEntries(TABLES.map(t => [t.name, t]));
+const RELS = [];
+TABLES.forEach(t => t.cols.forEach(c => {
+  if (c.fk) RELS.push({f:t.name, fc:c.n, t:c.fk.t, tc:c.fk.c, kind:c.fk.actor ? "actor" : "fk", del:c.fk.del});
+  (c.ref || []).forEach(r => RELS.push({f:t.name, fc:c.n, t:r.t, tc:r.c, kind:"logical", when:r.when}));
+}));
+
+const NODE_W = 236, HEAD = 28, ROW = 17, T_GAP = 18, PAD = 12, LABEL_H = 30, AREA_GAP = 22, COL_GAP = 74, SUB_GAP = 34, M = 22;
+const state = {mode:"all", areas:null, actor:false, logical:true, sel:null, hover:null, q:"", zoom:1, pos:{}, boxes:[], W:0, H:0, firstX:0};
+
+const $ = s => document.querySelector(s);
+const svg = $("#er"), wrap = $("#wrap"), panel = $("#panel");
+const reduced = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const isKey = c => c.pk || c.fk || c.uq || c.ref;
+const shownCols = t => state.mode === "all" ? t.cols : t.cols.filter(isKey);
+const hiddenCount = t => t.cols.length - shownCols(t).length;
+const visible = name => !state.areas || state.areas.has(BY[name].area);
+
+function nodeH(t){
+  const n = shownCols(t).length + (hiddenCount(t) > 0 ? 1 : 0);
+  return HEAD + 2 + n * ROW + 4;
+}
+
+function layout(){
+  const pos = {}, boxes = [];
+  let x = M, maxY = 0, first = null;
+  for (const col of LAYOUT){
+    const areas = col.filter(a => !state.areas || state.areas.has(a.a));
+    if (!areas.length) continue;
+    if (first === null) first = x;
+    let y = M, colW = 0;
+    for (const ar of areas){
+      let inner = 0;
+      ar.sub.forEach((list, i) => {
+        let ty = y + LABEL_H;
+        const tx = x + PAD + i * (NODE_W + SUB_GAP);
+        list.forEach(name => {
+          const h = nodeH(BY[name]);
+          pos[name] = {x:tx, y:ty, w:NODE_W, h};
+          ty += h + T_GAP;
+        });
+        inner = Math.max(inner, ty - T_GAP - (y + LABEL_H));
+      });
+      const w = PAD * 2 + ar.sub.length * NODE_W + (ar.sub.length - 1) * SUB_GAP;
+      const h = LABEL_H + inner + PAD;
+      boxes.push({a:ar.a, x, y, w, h});
+      y += h + AREA_GAP;
+      colW = Math.max(colW, w);
+    }
+    maxY = Math.max(maxY, y - AREA_GAP);
+    x += colW + COL_GAP;
+  }
+  state.pos = pos; state.boxes = boxes;
+  state.W = Math.max(x - COL_GAP + M, 300); state.H = maxY + M; state.firstX = first ?? M;
+}
+
+function rowY(name, col){
+  const p = state.pos[name], i = shownCols(BY[name]).findIndex(c => c.n === col);
+  return i < 0 ? p.y + HEAD / 2 : p.y + HEAD + 2 + i * ROW + ROW / 2;
+}
+
+function edgePath(r){
+  const a = state.pos[r.f], b = state.pos[r.t];
+  const y1 = rowY(r.f, r.fc), y2 = rowY(r.t, r.tc);
+  let x1, x2, d1, d2, k;
+  if (Math.abs(a.x - b.x) < 4){
+    const left = a.x <= state.firstX + PAD + 1;
+    d1 = d2 = left ? -1 : 1;
+    x1 = left ? a.x : a.x + a.w; x2 = left ? b.x : b.x + b.w;
+    k = 30 + Math.min(70, Math.abs(y2 - y1) * 0.14);
+  } else if (b.x > a.x){
+    x1 = a.x + a.w; d1 = 1; x2 = b.x; d2 = -1; k = Math.max(32, (x2 - x1) * 0.45);
+  } else {
+    x1 = a.x; d1 = -1; x2 = b.x + b.w; d2 = 1; k = Math.max(32, (x1 - x2) * 0.45);
+  }
+  const ln = `M${x1} ${y1}C${x1 + d1 * k} ${y1} ${x2 + d2 * k} ${y2} ${x2} ${y2}`;
+  const ft = `M${x1} ${y1 - 4.5}L${x1 + d1 * 9} ${y1}L${x1} ${y1 + 4.5}M${x2 + d2 * 6} ${y2 - 5}V${y2 + 5}`;
+  return {ln, ft};
+}
+
+function badgeText(c){
+  const b = [];
+  if (c.pk) b.push("PK");
+  if (c.fk) b.push("FK");
+  if (c.ref) b.push("→");
+  if (c.uq && !c.pk) b.push("UQ");
+  return b.join(" ");
+}
+
+function render(){
+  layout();
+  const {W, H} = state;
+  let s = "<g class=\"areas\">";
+  for (const b of state.boxes){
+    const a = AREA[b.a];
+    s += `<g class="areabox" style="--h:${a.h}"><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="10"/><text x="${b.x + 12}" y="${b.y + 19}">${esc(a.name.toUpperCase())}</text></g>`;
+  }
+  s += "</g><g class=\"edges\">";
+  RELS.forEach((r, i) => {
+    if (!visible(r.f) || !visible(r.t)) return;
+    const p = edgePath(r);
+    s += `<g class="edge k-${r.kind}" data-i="${i}" data-f="${r.f}" data-t="${r.t}"><path class="ln" d="${p.ln}"/><path class="ft" d="${p.ft}"/></g>`;
+  });
+  s += "</g><g class=\"nodes\">";
+  for (const t of TABLES){
+    if (!visible(t.name)) continue;
+    const p = state.pos[t.name], a = AREA[t.area], cols = shownCols(t);
+    s += `<g class="node" data-t="${t.name}" style="--h:${a.h}" transform="translate(${p.x} ${p.y})" tabindex="0" role="button" aria-label="Table ${t.name}">`;
+    s += `<rect class="nb" width="${p.w}" height="${p.h}" rx="6"/>`;
+    s += `<path class="nh" d="M0.5 6.5a6 6 0 0 1 6-6h${p.w - 13}a6 6 0 0 1 6 6v${HEAD - 6.5}h-${p.w - 1}z"/>`;
+    s += `<line class="nl" x1="0.5" x2="${p.w - 0.5}" y1="${HEAD}" y2="${HEAD}"/>`;
+    s += `<text class="nt" x="10" y="18.5">${t.name}</text>`;
+    cols.forEach((c, i) => {
+      const y = HEAD + 2 + i * ROW, bd = badgeText(c);
+      s += `<g class="row" data-c="${c.n}" transform="translate(0 ${y})"><rect class="rb" x="1" width="${p.w - 2}" height="${ROW}"/>`;
+      if (bd) s += `<text class="bd${c.pk ? " pk" : ""}" x="8" y="11.5">${bd}</text>`;
+      s += `<text class="cn" x="36" y="12">${c.n}</text><text class="ct" x="${p.w - 9}" y="12" text-anchor="end">${esc(c.t)}</text></g>`;
+    });
+    const hid = hiddenCount(t);
+    if (hid > 0) s += `<text class="more" x="36" y="${HEAD + 2 + cols.length * ROW + 12}">+ ${hid} more column${hid === 1 ? "" : "s"}</text>`;
+    s += "</g>";
+  }
+  s += "</g>";
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = s;
+  applyZoom();
+  applyEdgeToggles();
+  applyFocus();
+  applySearch();
+}
+
+function applyZoom(){
+  svg.setAttribute("width", Math.round(state.W * state.zoom));
+  svg.setAttribute("height", Math.round(state.H * state.zoom));
+  $("#z-val").textContent = Math.round(state.zoom * 100) + " %";
+}
+function setZoom(z){ state.zoom = Math.min(1.6, Math.max(0.25, z)); applyZoom(); }
+function fitZoom(){
+  const zw = (wrap.clientWidth - 4) / state.W, zh = (wrap.clientHeight - 4) / state.H;
+  return Math.min(1.1, Math.max(0.25, Math.min(zw, zh)));
+}
+
+function applyEdgeToggles(){
+  svg.querySelectorAll(".edge").forEach(e => {
+    const k = RELS[+e.dataset.i].kind;
+    e.classList.toggle("off", (k === "actor" && !state.actor) || (k === "logical" && !state.logical));
+  });
+}
+
+function applyFocus(){
+  const f = state.sel || state.hover;
+  svg.classList.toggle("focus", !!f);
+  const rel = new Set(), hot = new Set();
+  if (f) RELS.forEach(r => {
+    if (r.f === f || r.t === f){ rel.add(r.f); rel.add(r.t); hot.add(r.f + "." + r.fc); hot.add(r.t + "." + r.tc); }
+  });
+  svg.querySelectorAll(".node").forEach(n => {
+    const t = n.dataset.t;
+    n.classList.toggle("sel", t === f);
+    n.classList.toggle("rel", rel.has(t) && t !== f);
+  });
+  const eg = svg.querySelector(".edges");
+  svg.querySelectorAll(".edge").forEach(e => {
+    const on = !!f && (e.dataset.f === f || e.dataset.t === f);
+    e.classList.toggle("sel", on);
+    if (on) eg.appendChild(e);
+  });
+  svg.querySelectorAll(".row").forEach(r => r.classList.toggle("hot", hot.has(r.parentNode.dataset.t + "." + r.dataset.c)));
+}
+
+function matches(t, q){ return t.name.includes(q) || t.cols.some(c => c.n.includes(q)); }
+function applySearch(){
+  const q = state.q.trim().toLowerCase();
+  svg.classList.toggle("searching", !!q);
+  let n = 0, hiddenHits = 0;
+  TABLES.forEach(t => { if (q && matches(t, q)) { if (visible(t.name)) n++; else hiddenHits++; } });
+  svg.querySelectorAll(".node").forEach(nd => nd.classList.toggle("match", !!q && matches(BY[nd.dataset.t], q)));
+  svg.querySelectorAll(".row").forEach(r => r.classList.toggle("hit", !!q && r.dataset.c.includes(q)));
+  $("#qcount").textContent = q ? (n + (n === 1 ? " table" : " tables") + (hiddenHits ? ` (+${hiddenHits})` : "")) : "";
+}
+
+function centerOn(name, instant){
+  const p = state.pos[name]; if (!p) return;
+  const z = state.zoom;
+  wrap.scrollTo({left:(p.x + p.w / 2) * z - wrap.clientWidth / 2, top:(p.y + Math.min(p.h, 260) / 2) * z - wrap.clientHeight / 2, behavior:reduced || instant ? "auto" : "smooth"});
+}
+
+function select(name, opts = {}){
+  if (name && !visible(name)){ state.areas.add(BY[name].area); renderChips(); render(); }
+  state.sel = name; state.hover = null;
+  applyFocus(); renderPanel(opts.col);
+  if (name && opts.center) centerOn(name, opts.instant);
+  if (opts.toPanel && window.innerWidth < 960) panel.scrollIntoView({behavior:reduced ? "auto" : "smooth", block:"start"});
+  else panel.scrollTop = 0;
+}
+
+/* Panel */
+const kindLabel = {fk:"FK", actor:"actor", logical:"logical"};
+const tlink = (name, col) => `<button class="tlink" type="button" data-sel="${name}"${col ? ` data-col="${col}"` : ""}>${name}</button>`;
+const migLabel = t => t.mig.map(m => m === 2 && t.go ? "2 (Go)" : String(m)).join(", ");
+
+function relItem(r, from){
+  const other = from ? r.t : r.f;
+  const lhs = from ? `<span class="ref">${r.fc}</span> → ${tlink(other)}<span class="ref">.${r.tc}</span>`
+                   : `${tlink(other, r.fc)}<span class="ref">.${r.fc}</span> → <span class="ref">${r.tc}</span>`;
+  const tail = r.kind === "logical" ? `no FK${r.when ? ", when " + esc(r.when) : ""}` : `ON DELETE ${r.del}`;
+  return `<li><span class="kind k-${r.kind}">${kindLabel[r.kind]}</span>${lhs}<span class="muted">· ${tail}</span></li>`;
+}
+
+function colItem(t, c, hl){
+  const badges = [c.pk && `<span class="badge pk">PK</span>`, c.fk && `<span class="badge">FK</span>`, c.ref && `<span class="badge">→</span>`, c.uq && `<span class="badge">UQ</span>`].filter(Boolean).join("");
+  const meta = [c.nn ? "NOT NULL" : "nullable", c.d ? "default " + `<code>${esc(c.d)}</code>` : "", c.m ? `<span class="new">since migration ${c.m}</span>` : ""].filter(Boolean).join(" · ");
+  let s = `<li class="ci${hl ? " hl" : ""}" id="col-${c.n}"><div class="ci-1">${badges}<span class="ci-n">${c.n}</span><span class="ci-t">${esc(c.t)}</span></div><div class="ci-2">${meta}</div>`;
+  if (c.chk) s += `<div class="ci-2">CHECK <code>${esc(c.chk)}</code></div>`;
+  if (c.fk) s += `<div class="ci-2">→ ${tlink(c.fk.t)}.${c.fk.c} · ON DELETE ${c.fk.del}${c.fk.actor ? " · actor reference" : ""}</div>`;
+  (c.ref || []).forEach(r => { s += `<div class="ci-2">→ ${tlink(r.t)}.${r.c} without FK${r.when ? ", when <code>" + esc(r.when) + "</code>" : ""}</div>`; });
+  return s + "</li>";
+}
+
+function panelTable(t, hlCol){
+  const a = AREA[t.area];
+  const outR = RELS.filter(r => r.f === t.name), inR = RELS.filter(r => r.t === t.name);
+  const cons = [t.pk, ...(t.uq || []), ...(t.chk || []), ...t.cols.filter(c => c.chk).map(c => `CHECK (${c.chk})`)];
+  let s = `<div class="p-head" style="--h:${a.h}"><button class="back" type="button" data-act="clear">← Overview</button><span class="chip-area">${esc(a.name)}</span></div>`;
+  s += `<h2 class="p-title">${t.name}</h2><p class="purpose">${esc(t.purpose)}</p>`;
+  s += `<dl class="facts"><dt>Migration</dt><dd>${migLabel(t)}</dd><dt>Columns</dt><dd>${t.cols.length}</dd><dt>In the code</dt><dd>${t.code.map(c => `<code>${c}</code>`).join("")}</dd></dl>`;
+  s += `<h3>Columns</h3><ul class="cols">${t.cols.map(c => colItem(t, c, c.n === hlCol)).join("")}</ul>`;
+  s += `<h3>Keys and constraints</h3><ul class="plain">${cons.map(x => `<li><code>${esc(x)}</code></li>`).join("")}</ul>`;
+  s += `<h3>Indexes</h3><ul class="idx">${t.idx.map(i => i.impl
+      ? `<li><span class="m">implicit</span><code>${esc(i.d)}</code></li>`
+      : `<li><span class="m${i.m === "HNSW" ? " hnsw" : ""}">${i.u ? "UNIQUE " : ""}${i.m}${i.partial ? " · partial" : ""}</span><code>${i.n}</code> <code>${esc(i.d)}</code>${i.mig > 1 ? ` <span class="new">migration ${i.mig}</span>` : ""}</li>`).join("")}</ul>`;
+  if (t.trg) s += `<h3>Triggers</h3><ul class="plain">${t.trg.map(g => `<li><code>${g.n}</code> · ${g.w} → <code>${esc(g.f)}</code>: ${g.d}</li>`).join("")}</ul>`;
+  s += `<h3>References</h3>${outR.length ? `<ul class="rels">${outR.map(r => relItem(r, true)).join("")}</ul>` : `<p class="empty">No references to other tables.</p>`}`;
+  s += `<h3>Referenced by</h3>${inR.length ? `<ul class="rels">${inR.map(r => relItem(r, false)).join("")}</ul>` : `<p class="empty">No table refers to this one.</p>`}`;
+  if (t.notes) s += `<h3>Notes</h3><ul class="plain">${t.notes.map(n => `<li>${n}</li>`).join("")}</ul>`;
+  return s;
+}
+
+function panelOverview(){
+  const nFk = RELS.filter(r => r.kind !== "logical").length, nLog = RELS.filter(r => r.kind === "logical").length;
+  const nIdx = TABLES.reduce((s, t) => s + t.idx.filter(i => !i.impl).length, 0);
+  const nCols = TABLES.reduce((s, t) => s + t.cols.length, 0);
+  let s = `<h2>State after migration ${SCHEMA_VERSION}</h2>`;
+  s += `<p class="lead">The source of truth are the SQL migrations in <code>internal/db/migrations</code> and the Go migration 2 in <code>internal/db/db.go</code>, which creates <code>chunks</code> with the configured vector dimension. This page shows the result, not the history. Click a table to see its details.</p>`;
+  s += `<div class="stats">
+    <div class="stat"><b>${TABLES.length}</b><span>tables</span></div>
+    <div class="stat"><b>${nCols}</b><span>columns</span></div>
+    <div class="stat"><b>${nFk}</b><span>foreign keys</span></div>
+    <div class="stat"><b>${nLog}</b><span>logical references without FK</span></div>
+    <div class="stat"><b>${nIdx}</b><span>own indexes, plus PK and UNIQUE</span></div>
+    <div class="stat"><b>${FUNCS.length}</b><span>trigger functions</span></div></div>`;
+  s += `<h3>Legend</h3><ul class="legend">
+    <li><svg width="46" height="12" aria-hidden="true"><path class="lg-fk" d="M2 6H40M2 1.5L11 6L2 10.5M40 1V11"/></svg>Foreign key between records (fork on the referencing side)</li>
+    <li><svg width="46" height="12" aria-hidden="true"><path class="lg-actor" d="M2 6H40M2 1.5L11 6L2 10.5M40 1V11"/></svg>Actor reference: who created, changed, reviewed or blocked (hidden until the table is selected)</li>
+    <li><svg width="46" height="12" aria-hidden="true"><path class="lg-log" d="M2 6H40"/></svg>Logical reference without a foreign key</li></ul>
+    <div class="badges-legend"><span><span class="badge pk">PK</span> primary key</span><span><span class="badge">FK</span> foreign key</span><span><span class="badge">→</span> logical reference</span><span><span class="badge">UQ</span> unique</span></div>`;
+  s += `<h3>Areas</h3><ul class="arealist">${AREAS.map(a => `<li style="--h:${a.h}"><span class="dot"></span><span class="an">${esc(a.name)}</span><span class="tl">${TABLES.filter(t => t.area === a.id).map(t => tlink(t.name)).join("")}</span></li>`).join("")}</ul>`;
+  s += `<h3>Extensions</h3><ul class="plain">
+    <li><code>vector</code> (pgvector): the type <code>vector(N)</code> and the HNSW index on <code>chunks.embedding</code></li>
+    <li><code>citext</code>: case-insensitive email in <code>users.email</code></li>
+    <li><code>pgcrypto</code>: created by migration 1; IDs come from <code>gen_random_uuid()</code></li></ul>`;
+  s += `<h3>Functions and triggers</h3><ul class="plain">${FUNCS.map(f => `<li><code>${f.n}</code> <span class="new">migration ${f.mig}</span>: ${f.d}</li>`).join("")}</ul>`;
+  s += `<h3>Not in the diagram</h3><ul class="plain">
+    <li><code>goose_db_version</code>: bookkeeping of the migration tool goose, not a domain table.</li>
+    <li>The roles <code>atrium_app</code> and <code>atrium_migrate</code> from <code>scripts/db-roles.sql</code> are optional and do not change the schema; they limit the server to INSERT on <code>audit_log</code> (see <code>docs/deployment.md</code>).</li>
+    <li>The hourly maintenance tasks keep their status in the process only, not in the database.</li></ul>`;
+  s += `<h3>Keeping this page current</h3><p class="lead">When a migration changes the schema, update the data in this file and run <code>node tools/docs/check-data-model.mjs</code>. It compares tables, columns, types, foreign keys, indexes and the migration number with the migrations and names every difference.</p>`;
+  return s;
+}
+
+function renderPanel(col){
+  panel.innerHTML = state.sel ? panelTable(BY[state.sel], col) : panelOverview();
+  if (col){ const el = panel.querySelector("#col-" + CSS.escape(col)); if (el) el.scrollIntoView({block:"nearest"}); }
+}
+
+/* Chips */
+function renderChips(){
+  const box = $("#chips");
+  box.classList.toggle("filtered", !!state.areas);
+  box.innerHTML = `<button class="chip all" type="button" data-area="" aria-pressed="${!state.areas}">All</button>` +
+    AREAS.map(a => `<button class="chip" type="button" data-area="${a.id}" style="--h:${a.h}" aria-pressed="${!!state.areas && state.areas.has(a.id)}"><span class="dot"></span>${esc(a.name)}</button>`).join("");
+}
+$("#chips").addEventListener("click", e => {
+  const b = e.target.closest(".chip"); if (!b) return;
+  const id = b.dataset.area;
+  if (!id) state.areas = null;
+  else if (!state.areas) state.areas = new Set([id]);
+  else if (state.areas.has(id)){ state.areas.delete(id); if (!state.areas.size) state.areas = null; }
+  else state.areas.add(id);
+  if (state.sel && !visible(state.sel)){ state.sel = null; renderPanel(); }
+  renderChips(); render();
+  setZoom(fitZoom()); wrap.scrollTo(0, 0);
+});
+
+/* Diagram events */
+svg.addEventListener("click", e => {
+  const n = e.target.closest(".node");
+  if (n){ const r = e.target.closest(".row"); select(n.dataset.t, {col:r ? r.dataset.c : null, toPanel:true}); }
+});
+svg.addEventListener("keydown", e => {
+  const n = e.target.closest(".node");
+  if (n && (e.key === "Enter" || e.key === " ")){ e.preventDefault(); select(n.dataset.t, {toPanel:true}); }
+});
+svg.addEventListener("pointerover", e => {
+  if (state.sel || e.pointerType !== "mouse") return;
+  const n = e.target.closest(".node");
+  const t = n ? n.dataset.t : null;
+  if (t !== state.hover){ state.hover = t; applyFocus(); }
+});
+svg.addEventListener("pointerleave", () => { if (state.hover){ state.hover = null; applyFocus(); } });
+
+panel.addEventListener("click", e => {
+  const b = e.target.closest("[data-sel]");
+  if (b){ select(b.dataset.sel, {center:true, col:b.dataset.col || null}); return; }
+  if (e.target.closest("[data-act=clear]")) select(null);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && document.activeElement !== $("#q") && state.sel) select(null);
+});
+
+/* Pan with the mouse */
+let drag = null;
+wrap.addEventListener("pointerdown", e => {
+  if (e.pointerType !== "mouse" || e.button !== 0 || e.target.closest(".node")) return;
+  drag = {x:e.clientX, y:e.clientY, l:wrap.scrollLeft, t:wrap.scrollTop, moved:false};
+  wrap.setPointerCapture(e.pointerId);
+});
+wrap.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 3){ drag.moved = true; wrap.classList.add("dragging"); }
+  if (drag.moved){ wrap.scrollLeft = drag.l - dx; wrap.scrollTop = drag.t - dy; }
+});
+const endDrag = () => {
+  if (drag && !drag.moved && state.sel) select(null);
+  drag = null; wrap.classList.remove("dragging");
+};
+wrap.addEventListener("pointerup", endDrag);
+wrap.addEventListener("pointercancel", () => { drag = null; wrap.classList.remove("dragging"); });
+wrap.addEventListener("wheel", e => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  const r = wrap.getBoundingClientRect(), cx = e.clientX - r.left, cy = e.clientY - r.top;
+  const px = (wrap.scrollLeft + cx) / state.zoom, py = (wrap.scrollTop + cy) / state.zoom;
+  setZoom(state.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+  wrap.scrollLeft = px * state.zoom - cx; wrap.scrollTop = py * state.zoom - cy;
+}, {passive:false});
+
+/* Toolbar */
+const zoomBy = f => {
+  const cx = wrap.clientWidth / 2, cy = wrap.clientHeight / 2;
+  const px = (wrap.scrollLeft + cx) / state.zoom, py = (wrap.scrollTop + cy) / state.zoom;
+  setZoom(state.zoom * f);
+  wrap.scrollLeft = px * state.zoom - cx; wrap.scrollTop = py * state.zoom - cy;
+};
+$("#z-in").addEventListener("click", () => zoomBy(1.2));
+$("#z-out").addEventListener("click", () => zoomBy(1 / 1.2));
+$("#z-fit").addEventListener("click", () => { setZoom(fitZoom()); wrap.scrollTo(0, 0); });
+function setMode(m){
+  state.mode = m;
+  $("#mode-all").setAttribute("aria-pressed", m === "all");
+  $("#mode-keys").setAttribute("aria-pressed", m === "keys");
+  render();
+}
+$("#mode-all").addEventListener("click", () => setMode("all"));
+$("#mode-keys").addEventListener("click", () => setMode("keys"));
+$("#tg-actor").addEventListener("change", e => { state.actor = e.target.checked; applyEdgeToggles(); });
+$("#tg-logical").addEventListener("change", e => { state.logical = e.target.checked; applyEdgeToggles(); });
+$("#q").addEventListener("input", e => { state.q = e.target.value; applySearch(); });
+$("#q").addEventListener("keydown", e => {
+  const q = state.q.trim().toLowerCase();
+  if (e.key === "Enter" && q){
+    const hit = TABLES.find(t => t.name === q) || TABLES.find(t => t.name.includes(q)) || TABLES.find(t => matches(t, q));
+    if (hit){ const c = hit.cols.find(c => c.n.includes(q)); select(hit.name, {center:true, col:hit.name.includes(q) ? null : c && c.n}); }
+  }
+  if (e.key === "Escape"){ e.target.value = ""; state.q = ""; applySearch(); }
+});
+
+/* Start */
+$("#sum-v").textContent = SCHEMA_VERSION;
+$("#sum-t").textContent = TABLES.length;
+$("#sum-a").textContent = AREAS.length;
+renderChips();
+render();
+setZoom(wrap.clientWidth < 700 ? 0.6 : fitZoom());
+const start = (location.hash || "").slice(1);
+if (BY[start]) requestAnimationFrame(() => select(start, {center:true, instant:true})); else renderPanel();
+window.addEventListener("resize", () => { if (state.zoom < 0.26) setZoom(fitZoom()); });
+</script>
+</body>
+</html>

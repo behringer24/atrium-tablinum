@@ -45,6 +45,8 @@ type Server struct {
 	log       *slog.Logger
 	regLimit  *httpx.Limiter
 	authLimit *httpx.Limiter
+	// tokenLimit bounds /oauth/token and /oauth/revoke per client address.
+	tokenLimit *httpx.Limiter
 }
 
 func NewServer(cfg Config, store *Store, us *users.Store, providers []idp.Provider) *Server {
@@ -53,6 +55,7 @@ func NewServer(cfg Config, store *Store, us *users.Store, providers []idp.Provid
 		cfg: cfg, store: store, users: us, providers: map[string]idp.Provider{},
 		resource: cfg.BaseURL + ResourcePath, log: slog.Default(),
 		regLimit: httpx.NewLimiter(20, time.Minute), authLimit: httpx.NewLimiter(60, time.Minute),
+		tokenLimit: httpx.NewLimiter(300, time.Minute),
 	}
 	for _, p := range providers {
 		s.providers[p.ID()] = p
@@ -109,7 +112,9 @@ func (s *Server) AllowsRedirect(raw string) bool {
 	}
 	for _, pat := range s.cfg.AllowedRedirect {
 		if prefix, wild := strings.CutSuffix(pat, "*"); wild {
-			if strings.HasPrefix(raw, prefix) {
+			// The part before the star must end in a path separator and name the same host, so
+			// that "https://example.com/*" cannot match "https://example.com.evil.net/".
+			if pu, err := url.Parse(prefix); err == nil && strings.HasSuffix(prefix, "/") && strings.EqualFold(pu.Host, u.Host) && strings.HasPrefix(raw, prefix) {
 				return true
 			}
 		} else if raw == pat {
@@ -248,7 +253,7 @@ var errorTmpl = template.Must(template.New("error").Parse(`<!doctype html>
 
 // errorPage is used when the redirect URI cannot be trusted, so nothing is redirected.
 func (s *Server) errorPage(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	htmlHeaders(w)
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = errorTmpl.Execute(w, map[string]string{"Product": s.cfg.ProductName, "Message": msg})
@@ -335,7 +340,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 	for _, id := range s.order {
 		choices = append(choices, choice{s.providers[id].DisplayName(), "/oauth/login?" + url.Values{"s": {raw}, "p": {id}}.Encode()})
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	htmlHeaders(w)
 	w.Header().Set("Cache-Control", "no-store")
 	_ = chooserTmpl.Execute(w, map[string]any{"Product": s.cfg.ProductName, "Providers": choices})
 }
@@ -417,11 +422,23 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := s.users.Provision(r.Context(), users.Identity{
-		IDP: providerID, Subject: id.Subject, Email: id.Email, DisplayName: id.DisplayName,
+		IDP: providerID, Subject: id.Subject, Email: id.Email, DisplayName: id.DisplayName, EmailVerified: id.EmailVerified,
 	})
 	if errors.Is(err, users.ErrDisabled) {
 		s.log.Warn("Login of a disabled account", "provider", providerID)
 		deny("This account is disabled")
+		return
+	}
+	if errors.Is(err, users.ErrUserLimit) {
+		s.log.Warn("Login refused: the number of users the instance may have is reached", "provider", providerID)
+		s.store.RecordDenied(r.Context(), providerID, "user limit reached")
+		deny("This instance has reached the number of users it may have. Please contact the administrator.")
+		return
+	}
+	if errors.Is(err, users.ErrEmailUnverified) {
+		s.log.Warn("Login refused: e-mail not verified for linking or admin rights", "provider", providerID)
+		s.store.RecordDenied(r.Context(), providerID, "e-mail not verified: needed to link an account or for an administrator account")
+		deny("Your identity provider does not confirm this e-mail address, so it cannot be linked to an existing account or used for an administrator account. Please contact the administrator.")
 		return
 	}
 	if errors.Is(err, users.ErrEmailTaken) {
@@ -473,6 +490,10 @@ func clientID(r *http.Request) string {
 
 func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
+	if !s.tokenLimit.Allow(s.clientIP(r)) {
+		tooManyRequests(w)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
 		tokenError(w, http.StatusBadRequest, "invalid_request", "form not readable")
@@ -557,6 +578,10 @@ func writeTokens(w http.ResponseWriter, p TokenPair) {
 
 func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 	noStore(w)
+	if !s.tokenLimit.Allow(s.clientIP(r)) {
+		tooManyRequests(w)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
 		tokenError(w, http.StatusBadRequest, "invalid_request", "")
@@ -596,3 +621,19 @@ func (s *Server) RevokeClient(ctx context.Context, id uuid.UUID, clientID string
 
 // Cleanup removes expired rows; run it periodically.
 func (s *Server) Cleanup(ctx context.Context) error { return s.store.Cleanup(ctx) }
+
+func tooManyRequests(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "60")
+	tokenError(w, http.StatusTooManyRequests, "temporarily_unavailable", "too many requests, try again in a minute")
+}
+
+// htmlHeaders sets the headers of the pages the server renders itself: no framing, no
+// scripts, no referrer, and nothing cached.
+func htmlHeaders(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+}

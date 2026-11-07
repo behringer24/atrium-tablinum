@@ -16,6 +16,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -39,9 +41,6 @@ import (
 const (
 	skillsExtension = "io.modelcontextprotocol/skills"
 	skillScheme     = "skill://"
-	// maxSkillsListed caps skills/list. The extension allows a partial listing; every skill
-	// stays readable by its URI.
-	maxSkillsListed = 200
 	// maxPeekBytes is how much of a request body is inspected for skills/* methods.
 	maxPeekBytes = 4 << 20
 )
@@ -167,8 +166,43 @@ func (s *Server) skillEntryOf(ctx context.Context, a docs.Actor, v skills.Versio
 	return e, nil
 }
 
-func (s *Server) skillsListResult(ctx context.Context, a docs.Actor) (any, error) {
-	list, err := s.Skills.List(ctx, a, skills.ListFilter{PublishedOnly: true, Limit: 500})
+// maxSkillsListed is the page size of skills/list; further pages follow by nextCursor, and every
+// skill stays readable by its URI. A variable so that a test can use a small page.
+var maxSkillsListed = 200
+
+// errBadCursor is the -32602 answer to a skills/list cursor this server did not issue.
+var errBadCursor = errors.New("bad cursor")
+
+// encodeCursor and decodeCursor turn the position behind the last listed skill into the opaque
+// nextCursor string of skills/list and back.
+func encodeCursor(c skills.Cursor) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(c.Name + "\x00" + c.SpaceID.String()))
+}
+
+func decodeCursor(s string) (*skills.Cursor, error) {
+	if s == "" {
+		return nil, nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, errBadCursor
+	}
+	name, id, ok := strings.Cut(string(raw), "\x00")
+	sid, perr := uuid.Parse(id)
+	if !ok || perr != nil || !skills.ValidName(name) {
+		return nil, errBadCursor
+	}
+	return &skills.Cursor{Name: name, SpaceID: sid}, nil
+}
+
+func (s *Server) skillsListResult(ctx context.Context, a docs.Actor, cursor string) (any, error) {
+	after, err := decodeCursor(cursor)
+	if err != nil {
+		return nil, err
+	}
+	// One page is at most maxSkillsListed skills, the newest released version of each; the result
+	// carries nextCursor while more follow, so a host can reach every skill by listing.
+	list, next, err := s.Skills.ListPage(ctx, a, skills.ListFilter{PublishedOnly: true, NewestOnly: true, Limit: maxSkillsListed, After: after})
 	if err != nil {
 		return nil, err
 	}
@@ -181,16 +215,10 @@ func (s *Server) skillsListResult(ctx context.Context, a docs.Actor) (any, error
 		bySpace[sp.ID.String()] = sp
 	}
 	out := []skillEntry{}
-	seen := map[string]bool{}
-	for _, v := range list { // newest version of a skill first
-		key := v.SpaceID.String() + "/" + v.Name
+	for _, v := range list { // one entry per skill, in the order of the cursor
 		sp, ok := bySpace[v.SpaceID.String()]
-		if seen[key] || !ok {
+		if !ok {
 			continue
-		}
-		seen[key] = true
-		if len(out) >= maxSkillsListed {
-			break
 		}
 		full, err := s.Skills.Get(ctx, a, v.SkillID, v.Version)
 		if err != nil {
@@ -203,7 +231,12 @@ func (s *Server) skillsListResult(ctx context.Context, a docs.Actor) (any, error
 		}
 		out = append(out, e)
 	}
-	return map[string]any{"resultType": "complete", "skills": out}, nil
+	s.Skills.AuditList(ctx, a, "rpc", len(out))
+	res := map[string]any{"resultType": "complete", "skills": out}
+	if next != nil {
+		res["nextCursor"] = encodeCursor(*next)
+	}
+	return res, nil
 }
 
 func (s *Server) skillsGetResult(ctx context.Context, a docs.Actor, uri string) (any, *rpcError) {
@@ -223,6 +256,7 @@ func (s *Server) skillsGetResult(ctx context.Context, a docs.Actor, uri string) 
 		slog.Error("skills/get failed", "skill", v.Name, "error", err)
 		return nil, &rpcError{Code: -32603, Message: "internal error"}
 	}
+	s.Skills.Audit(ctx, a, v, "skill_get", "rpc")
 	return map[string]any{"resultType": "complete", "skill": e}, nil
 }
 
@@ -256,10 +290,23 @@ func (s *Server) skillsRPC(next http.Handler) http.Handler {
 			ID     json.RawMessage `json:"id"`
 			Method string          `json:"method"`
 			Params struct {
-				URI string `json:"uri"`
+				URI        string `json:"uri"`
+				Cursor     string `json:"cursor"`
+				Name       string `json:"name"`
+				ClientInfo struct {
+					Name string `json:"name"`
+				} `json:"clientInfo"`
 			} `json:"params"`
 		}
-		if json.Unmarshal(head, &req) != nil || len(req.ID) == 0 || (req.Method != "skills/list" && req.Method != "skills/get") {
+		if json.Unmarshal(head, &req) != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if slog.Default().Enabled(r.Context(), slog.LevelDebug) && req.Method != "" {
+			slog.Debug("MCP request", "method", req.Method, "tool", req.Params.Name, "uri", req.Params.URI,
+				"client_info", req.Params.ClientInfo.Name, "user_agent", r.UserAgent())
+		}
+		if len(req.ID) == 0 || (req.Method != "skills/list" && req.Method != "skills/get") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -276,7 +323,10 @@ func (s *Server) skillsRPC(next http.Handler) http.Handler {
 			rerr = &rpcError{Code: -32000, Message: "too many requests in a short time, please try again in a minute"}
 		case req.Method == "skills/list":
 			var err error
-			if result, err = s.skillsListResult(r.Context(), a); err != nil {
+			switch result, err = s.skillsListResult(r.Context(), a, req.Params.Cursor); {
+			case errors.Is(err, errBadCursor):
+				rerr = &rpcError{Code: -32602, Message: "Invalid params: unknown cursor"}
+			case err != nil:
 				slog.Error("skills/list failed", "error", err)
 				rerr = &rpcError{Code: -32603, Message: "internal error"}
 			}
@@ -343,7 +393,7 @@ func (s *Server) readSkillResource(ctx context.Context, req *mcp.ReadResourceReq
 	if ref.file == skills.EntryPoint {
 		action = "skill_get"
 	}
-	s.Skills.Audit(ctx, a, v, action)
+	s.Skills.Audit(ctx, a, v, action, "resource")
 	return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{
 		URI: uri, MIMEType: skillMIME(res.Path), Text: content,
 		Meta: mcp.Meta{
@@ -423,7 +473,7 @@ func (s *Server) exportSkill(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.Skills.Audit(r.Context(), a, v, "skill_export")
+	s.Skills.Audit(r.Context(), a, v, "skill_export", "export")
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fmt.Sprintf("%s-v%d.zip", v.Name, v.Version)))
 	w.Header().Set("X-Atrium-Skill-Version", strconv.Itoa(v.Version))

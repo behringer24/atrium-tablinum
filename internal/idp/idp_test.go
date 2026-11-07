@@ -195,3 +195,27 @@ func approve(t *testing.T, authURL string) string {
 	}
 	return loc.Query().Get("code")
 }
+
+func TestIdentityCarriesWhetherTheAddressIsVouchedFor(t *testing.T) {
+	good := claims{Subject: "s", Email: "anna@example.com", EmailVerified: true, HostedDomain: "example.com", TenantID: "t-1"}
+	for name, tc := range map[string]struct {
+		cfg  config.Provider
+		mod  func(*claims)
+		want bool
+	}{
+		"google verified":                   {config.Provider{Type: "google", AllowedDomains: []string{"example.com"}}, nil, true},
+		"oidc verified":                     {config.Provider{Type: "oidc", AllowedDomains: []string{"example.com"}}, nil, true},
+		"oidc without the claim, opted out": {config.Provider{Type: "oidc", AllowedDomains: []string{"example.com"}, AllowUnverifiedEmail: true}, func(c *claims) { c.EmailVerified = false }, false},
+		"entra by default":                  {config.Provider{Type: "entra", AllowedTenants: []string{"t-1"}}, nil, false},
+		"entra with email_trusted":          {config.Provider{Type: "entra", AllowedTenants: []string{"t-1"}, EmailTrusted: true}, nil, true},
+	} {
+		c := good
+		if tc.mod != nil {
+			tc.mod(&c)
+		}
+		id, err := c.check(tc.cfg)
+		if err != nil || id.EmailVerified != tc.want {
+			t.Errorf("%s: verified=%v err=%v, want %v", name, id.EmailVerified, err, tc.want)
+		}
+	}
+}

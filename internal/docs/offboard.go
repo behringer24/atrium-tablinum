@@ -41,8 +41,12 @@ SELECT count(*), COALESCE(sum(octet_length(content)), 0)
 FROM documents WHERE space_id = $1 AND kind = 'knowledge' AND status <> 'archived'`, from).Scan(&docs, &bytes); err != nil {
 		return 0, err
 	}
-	// checkQuota reads the limits from the actor; here they are the receiver's.
-	if err := s.checkQuota(ctx, Actor{User: to}, *to.PersonalSpaceID, docs, bytes); err != nil {
+	// The limits of the receiver's personal space apply.
+	recv, err := s.spaces.GetByID(ctx, *to.PersonalSpaceID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.checkQuota(ctx, recv, docs, bytes); err != nil {
 		return 0, err
 	}
 
@@ -59,9 +63,9 @@ FROM documents WHERE space_id = $1 AND kind = 'knowledge' AND status <> 'archive
 WITH moved AS (
   UPDATE documents SET space_id = $2, version = version + 1, review_note = NULL, updated_at = now(), updated_by = $3
   WHERE space_id = $1 AND kind = 'knowledge'
-  RETURNING id, version, title, content, tags, status)
-INSERT INTO document_versions (document_id, version, space_id, title, content, tags, status, changed_by)
-SELECT id, version, $2, title, content, tags, status, $3 FROM moved`, from, *to.PersonalSpaceID, by)
+  RETURNING id, version, title, content, tags, status, knowledge_type)
+INSERT INTO document_versions (document_id, version, space_id, title, content, tags, status, changed_by, knowledge_type)
+SELECT id, version, $2, title, content, tags, status, $3, knowledge_type FROM moved`, from, *to.PersonalSpaceID, by)
 	if err != nil {
 		return 0, err
 	}

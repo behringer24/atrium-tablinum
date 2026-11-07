@@ -197,3 +197,27 @@ func TestDeleteInPersonalSpace(t *testing.T) {
 		t.Errorf("audit entries: %d", n)
 	}
 }
+
+// An admin deletes an archived entry directly, without restoring it first; others cannot.
+func TestDeleteReachesArchivedEntries(t *testing.T) {
+	e := setup(t)
+	author := e.actor(t, "author@x.de")
+	spaceAdmin := e.actor(t, "sadmin@x.de")
+	sp := e.team(t, "wiki", false, authz.None)
+	e.member(t, sp, author, authz.Author)
+	e.member(t, sp, spaceAdmin, authz.Admin)
+	author, spaceAdmin = e.refresh(t, author), e.refresh(t, spaceAdmin)
+	d := mustStore(t, e, author, sp.ID, "Personenbezogen", "Inhalt alpha")
+	if err := e.docs.Archive(e.ctx, author, d.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.docs.Delete(e.ctx, author, d.ID); !errors.Is(err, docs.ErrForbidden) {
+		t.Fatalf("author deletes an archived entry: %v", err)
+	}
+	if err := e.docs.Delete(e.ctx, spaceAdmin, d.ID); err != nil {
+		t.Fatalf("admin deletes an archived entry: %v", err)
+	}
+	if _, err := e.docs.Get(e.ctx, spaceAdmin, d.ID); !errors.Is(err, docs.ErrNotFound) {
+		t.Fatalf("the entry is still there: %v", err)
+	}
+}

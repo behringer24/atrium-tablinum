@@ -20,6 +20,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/dbtest"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -141,6 +142,7 @@ type env struct {
 	srv    *Server
 	users  *users.Store
 	spaces *spaces.Store
+	quota  *quota.Store
 	http   *httptest.Server
 	export *httptest.Server  // the skill export route
 	tokens map[string]string // token -> email
@@ -160,12 +162,13 @@ func setup(t *testing.T, writesPerMinute int) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ds := docs.New(pool, e.spaces, ing, docs.Options{PersonalMaxDocuments: 100, PersonalMaxBytes: 1 << 20, HandoffTTLDays: 14, DuplicateThreshold: 0.9})
+	e.quota = quota.New(pool, quota.Defaults{Personal: quota.Limits{Documents: 100, Bytes: 1 << 20}})
+	ds := docs.New(pool, e.spaces, ing, docs.Options{Quota: e.quota, HandoffTTLDays: 14, DuplicateThreshold: 0.9})
 	sr, err := search.New(pool, fakeEmbedder{}, search.Config{FTSLanguages: langs, CandidatesPerMethod: 50, RRFK: 60, DefaultLimit: 5, MaxLimit: 20, HNSWEfSearch: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{}), Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
+	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{Quota: e.quota}), Quota: e.quota, Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
 		Health: []HealthCheck{{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }}}},
 		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute})
 
@@ -174,7 +177,7 @@ func setup(t *testing.T, writesPerMinute int) *env {
 		if !ok {
 			return nil, auth.ErrInvalidToken
 		}
-		u, err := e.users.Provision(ctx, users.Identity{IDP: "t", Subject: email, Email: email})
+		u, err := e.users.Provision(ctx, users.Identity{EmailVerified: true, IDP: "t", Subject: email, Email: email})
 		if errors.Is(err, users.ErrDisabled) {
 			return nil, auth.ErrInvalidToken // a verifier must answer 401 for disabled accounts
 		}
@@ -219,6 +222,9 @@ func (e *env) session(t *testing.T, email string) *mcp.ClientSession {
 // call invokes a tool; it returns the structured result as a map, or the error text.
 func (e *env) call(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]any) (map[string]any, string) {
 	t.Helper()
+	if tool == "review_skill" && args["decision"] == "approve" && args["digest"] == nil {
+		args = e.withDigest(t, cs, args)
+	}
 	res, err := cs.CallTool(e.ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
 	if err != nil {
 		t.Fatalf("%s: protocol error %v", tool, err)
@@ -256,7 +262,7 @@ func (e *env) team(t *testing.T, slug, name string, approval bool, members map[s
 		t.Fatal(err)
 	}
 	for email, role := range members {
-		u, err := e.users.Provision(e.ctx, users.Identity{IDP: "t", Subject: email, Email: email})
+		u, err := e.users.Provision(e.ctx, users.Identity{EmailVerified: true, IDP: "t", Subject: email, Email: email})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -818,4 +824,31 @@ func TestAdminAllowlistTool(t *testing.T) {
 	if n := queryCount(t, e, `SELECT count(*) FROM audit_log WHERE action IN ('admin_allowlist_add', 'admin_allowlist_remove')`); n != 4 {
 		t.Errorf("audit entries: %d", n)
 	}
+}
+
+// withDigest adds the digest of the version a reviewer would have read with get_skill, as an
+// honest reviewer does; tests that probe a changed draft pass their own digest.
+func (e *env) withDigest(t *testing.T, cs *mcp.ClientSession, args map[string]any) map[string]any {
+	t.Helper()
+	read := map[string]any{"skill": args["skill"], "version": args["version"]}
+	if sp, ok := args["space"]; ok {
+		read["space"] = sp
+	}
+	res, err := cs.CallTool(e.ctx, &mcp.CallToolParams{Name: "get_skill", Arguments: read})
+	if err != nil || res.IsError {
+		return args
+	}
+	b, _ := json.Marshal(res.StructuredContent)
+	var m struct {
+		Version struct {
+			Digest string `json:"digest"`
+		} `json:"version"`
+	}
+	_ = json.Unmarshal(b, &m)
+	out := map[string]any{}
+	for k, v := range args {
+		out[k] = v
+	}
+	out["digest"] = m.Version.Digest
+	return out
 }

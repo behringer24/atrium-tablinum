@@ -32,6 +32,9 @@ const (
 type Embedding struct {
 	Model      string
 	Dimensions int
+	// AllowDimensionChange lets a start with a dimension other than the stored one rebuild the vector
+	// column: every vector is dropped and the re-embedding task (admin_reembed) builds them again.
+	AllowDimensionChange bool
 }
 
 // Open creates the connection pool and verifies connectivity.
@@ -54,7 +57,8 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
 	if emb.Dimensions < 1 || emb.Dimensions > maxIndexableDimensions {
 		return fmt.Errorf("embedding.dimensions %d out of range 1..%d", emb.Dimensions, maxIndexableDimensions)
 	}
-	if err := checkDimension(ctx, pool, emb); err != nil {
+	change, err := checkDimension(ctx, pool, emb)
+	if err != nil {
 		return err
 	}
 
@@ -73,29 +77,67 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
 	for _, r := range results {
 		slog.Info("Migration applied", "version", r.Source.Version, "duration", r.Duration)
 	}
-
+	if change {
+		if err := changeDimension(ctx, pool, emb); err != nil {
+			return err
+		}
+	}
 	return recordEmbedding(ctx, pool, emb)
 }
 
-// checkDimension fails when meta already holds a different dimension. On a fresh
-// database (no meta table or no entry) it passes.
-func checkDimension(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
+// checkDimension compares the configured dimension with the one stored in meta. A different one
+// fails, unless the configuration allows the change; then it reports that the vector column has to
+// be rebuilt. On a fresh database (no meta table or no entry) it passes.
+func checkDimension(ctx context.Context, pool *pgxpool.Pool, emb Embedding) (bool, error) {
 	var exists bool
 	if err := pool.QueryRow(ctx, `SELECT to_regclass('meta') IS NOT NULL`).Scan(&exists); err != nil {
-		return fmt.Errorf("checking meta: %w", err)
+		return false, fmt.Errorf("checking meta: %w", err)
 	}
 	if !exists {
-		return nil
+		return false, nil
 	}
 	stored, ok, err := getMeta(ctx, pool, metaEmbeddingDimensions)
 	if err != nil || !ok {
+		return false, err
+	}
+	if stored == fmt.Sprint(emb.Dimensions) {
+		return false, nil
+	}
+	if !emb.AllowDimensionChange {
+		return false, fmt.Errorf("embedding.dimensions=%d does not match the database (created with %s). "+
+			"To switch to a model with another dimension, set embedding.allow_dimension_change: true for one start: "+
+			"all vectors are dropped and rebuilt with admin_reembed, full-text search keeps working meanwhile (docs/embedding.md)",
+			emb.Dimensions, stored)
+	}
+	return true, nil
+}
+
+// changeDimension rebuilds the vector column for a new dimension. Every section loses its vector and
+// is marked as not embedded (an empty embedding_model), so search finds it by full text until the
+// re-embedding task has rebuilt it; the contents and everything else stay.
+func changeDimension(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	if stored != fmt.Sprint(emb.Dimensions) {
-		return fmt.Errorf("embedding.dimensions=%d does not match the database (created with %s). "+
-			"A model change requires a migration and admin_reembed", emb.Dimensions, stored)
+	defer tx.Rollback(ctx)
+	for _, q := range []string{
+		`DROP INDEX IF EXISTS chunks_embedding_idx`,
+		fmt.Sprintf(`ALTER TABLE chunks ALTER COLUMN embedding TYPE vector(%d) USING NULL`, emb.Dimensions),
+		`UPDATE chunks SET embedding_model = ''`,
+		`CREATE INDEX chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops)`,
+	} {
+		if _, err := tx.Exec(ctx, q); err != nil {
+			return fmt.Errorf("changing the embedding dimension: %w", err)
+		}
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `UPDATE meta SET value = $2 WHERE key = $1`, metaEmbeddingDimensions, fmt.Sprint(emb.Dimensions)); err != nil {
+		return err
+	}
+	slog.Warn("Embedding dimension changed: all vectors were dropped. Start re-embedding with admin_reembed; "+
+		"until then search uses full text only. Remove embedding.allow_dimension_change from the configuration.",
+		"dimensions", emb.Dimensions)
+	return tx.Commit(ctx)
 }
 
 func recordEmbedding(ctx context.Context, pool *pgxpool.Pool, emb Embedding) error {
@@ -104,18 +146,20 @@ func recordEmbedding(ctx context.Context, pool *pgxpool.Pool, emb Embedding) err
 	if err != nil {
 		return fmt.Errorf("writing meta: %w", err)
 	}
-	stored, ok, err := getMeta(ctx, pool, metaEmbeddingModel)
-	if err != nil {
-		return err
+	// The model in meta is the one configured at the last start; which model built a vector is
+	// recorded per section (chunks.embedding_model), and only those decide what is stale.
+	if _, err := pool.Exec(ctx, `INSERT INTO meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+		metaEmbeddingModel, emb.Model); err != nil {
+		return fmt.Errorf("writing meta: %w", err)
 	}
-	if !ok {
-		_, err = pool.Exec(ctx, `INSERT INTO meta (key, value) VALUES ($1, $2)`, metaEmbeddingModel, emb.Model)
-		return err
+	var stale int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM chunks WHERE embedding IS NULL OR embedding_model <> $1`, emb.Model).Scan(&stale); err != nil {
+		return fmt.Errorf("counting sections: %w", err)
 	}
-	if stored != emb.Model {
-		// Same dimension, different model: vectors are incomparable until re-embedded.
-		slog.Warn("embedding model differs from the stored one - run admin_reembed",
-			"stored", stored, "configured", emb.Model)
+	if stale > 0 {
+		// Vectors of different models are not comparable: search ignores them until re-embedded.
+		slog.Warn("Sections are not embedded with the configured model and are found by full text only - run admin_reembed",
+			"sections", stale, "model", emb.Model)
 	}
 	return nil
 }
@@ -165,4 +209,12 @@ func mustSub() fs.FS {
 		panic(err)
 	}
 	return sub
+}
+
+// IsSuperuser reports whether the connected account is a database superuser, which can switch off
+// triggers and alter anything, the audit log included.
+func IsSuperuser(ctx context.Context, pool *pgxpool.Pool) (bool, error) {
+	var super bool
+	err := pool.QueryRow(ctx, `SELECT rolsuper FROM pg_roles WHERE rolname = current_user`).Scan(&super)
+	return super, err
 }

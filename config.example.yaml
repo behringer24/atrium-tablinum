@@ -3,9 +3,13 @@ instance:
   product_name: "Atrium Tablinum"
   short_name: "Atrium"                  # how users say it in chat
   organization_name: "Example Corp"          # appears in tool descriptions
+  # Icon for the favicon and the MCP server info: svg, png, ico, jpg or webp, up to 256 KB.
+  # Empty = the built-in Atrium icon. Served without login at /favicon.ico and /icon.
+  # icon_file: "/etc/atrium/logo.svg"
+  log_level: info                         # debug adds one log line per MCP request (see docs/skills.md)
   base_url: "https://knowledge.example.com"   # public address, no matter which proxy sits in front
   listen: ":8080"
-  dev_mode: false                         # local only (base_url on localhost); static test token
+  dev_mode: false                         # local only (base_url on localhost and listen on 127.0.0.1); static test token
   # dev_token: "mindestens-16-zeichen"   # mandatory with dev_mode, is neither generated nor logged
   # Proxies whose X-Forwarded-* headers are trusted (IP or CIDR).
   # Leave empty if the server is reachable directly.
@@ -27,6 +31,7 @@ auth:
     #   allowed_tenants: ["<tenant-guid>"]
     #   allowed_domains: ["example.com"]
     #   groups_claim: true
+    #   # email_trusted: false   # true = treat the tenant's addresses as verified (needed for bootstrap admins and e-mail linking); only for a tenant without guests and without self-editable mail attributes
     # - id: keycloak
     #   type: oidc
     #   issuer: "https://sso.example.com/realms/main"
@@ -48,6 +53,11 @@ auth:
   allow_loopback_redirects: true   # local clients such as Claude Code (http://localhost:<port>/...)
 
 database:
+  # Out of the box one account does everything (and is a superuser in the compose setup). For
+  # production, create two accounts with scripts/db-roles.sql: url is the server's account, which
+  # cannot change the schema or alter the audit log, and migration_url the account that runs the
+  # migrations at start. docs/deployment.md, "Separate database accounts".
+  # migration_url: "postgres://atrium_migrate:<password>@postgres:5432/knowledge"
   url: "${DATABASE_URL}"
 
 embedding:
@@ -55,13 +65,16 @@ embedding:
   backend: "tei"                 # tei | openai | bedrock
   url: "http://tei-embed:80"   # tei: Compose service name, locally e.g. http://localhost:8081; openai: base address of the API (empty = api.openai.com)
   model: "BAAI/bge-m3"
-  dimensions: 1024             # fixed per database, at most 2000
+  dimensions: 1024             # fixed per database, at most 2000; changing it needs allow_dimension_change
+  # allow_dimension_change: false     # true for ONE start: rebuilds the vector column for a new dimension (all vectors are
+                                      # dropped, admin_reembed rebuilds them; full-text search works meanwhile). Remove it afterwards.
   # api_key: "${EMBEDDING_API_KEY}"   # openai: key; tei: only if the TEI server runs with --api-key
   # query_prefix: "query: "           # only for models that require prefixes (E5)
   # document_prefix: "passage: "
   # timeout: 60s
   # options:                          # apply only to the chosen backend, typos are rejected
   #   batch_size: 16                  # tei 16, openai 32, bedrock (Cohere) 32
+  #   check_model: true               # tei: embed nothing while TEI serves another model than `model` (GET /info)
   #
   # Example OpenAI:
   #   backend: "openai", model: "text-embedding-3-small", dimensions: 1536,
@@ -91,9 +104,12 @@ chunking:
 spaces:
   personal:
     enabled: true
-    max_documents: 500
+    max_documents: 500           # defaults; an instance admin changes limits at runtime with admin_quotas, no restart
     max_bytes: 10485760          # 10 MB
     retention_days_after_offboarding: 30   # after this the personal space of blocked accounts is deleted; 0 = never (docs/offboarding.md)
+  team:                          # default limits of every team space (counted with drafts, not with archived entries)
+    max_documents: 5000
+    max_bytes: 209715200         # 200 MB
   handoff_ttl_days: 14
   default_space_by_group: {}     # e.g. { "support": "support" }
 
@@ -107,6 +123,23 @@ skills:
   # true: the author of a skill version may also approve it. Leave it off wherever a second
   # curator exists; it is meant for small installations with a single curator (docs/skills.md).
   allow_self_approval: false
+  # Limits against runaway storage (0 = unlimited). A personal space holds at most this many
+  # skills and this many bytes of skill files over all versions; one skill, in any space, at
+  # most this many versions (drafts and blocked ones count). docs/skills.md, "Limits".
+  personal_max_skills: 50
+  personal_max_bytes: 5242880      # 5 MB
+  team_max_skills: 300             # per team space
+  team_max_bytes: 52428800         # 50 MB of skill files per team space
+  max_versions_per_skill: 100
+  # All limits in this file are defaults. An instance admin overrides them at runtime (tool
+  # admin_quotas) for all personal spaces, all team spaces, one user or one space; the change
+  # applies to the next write and survives a restart. docs/user/05-instance-admin.md.
+
+# The licence of the Pro edition (docs/licensing.md). Only the Pro build reads this section.
+# A licence an instance admin installs at run time (admin_license) takes precedence and needs no
+# restart; without any licence the Pro build runs as Community (8 active accounts).
+# license:
+#   file: "/etc/atrium/licence.txt"
 
 tools:
   descriptions: {}

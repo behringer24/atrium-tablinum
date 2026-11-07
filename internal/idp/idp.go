@@ -25,6 +25,10 @@ type Identity struct {
 	Email       string
 	DisplayName string
 	Groups      []string // from the groups claim, if present (used from phase 2)
+	// EmailVerified says that the identity provider vouches for the address: Google's and
+	// OIDC's email_verified claim, or, for Entra, the operator's email_trusted setting. An
+	// unverified address may log in but is not used to link accounts or to grant admin rights.
+	EmailVerified bool
 }
 
 type AuthRequest struct {
@@ -107,22 +111,28 @@ func (c claims) check(cfg config.Provider) (Identity, error) {
 	// Individually approved addresses (e.g. private Gmail accounts) bypass the domain check,
 	// but not the verification of the e-mail address.
 	byEmail := containsFold(cfg.AllowedEmails, email)
+	verified := false
 
 	switch cfg.Type {
 	case "google":
 		if !c.EmailVerified {
 			return Identity{}, reject("e-mail not verified")
 		}
+		verified = true
 		// The hd parameter in the login URL is only a hint; the claim decides.
 		if !byEmail && !containsFold(cfg.AllowedDomains, c.HostedDomain) {
 			return Identity{}, reject("hd claim %q not allowed", c.HostedDomain)
 		}
 	case "entra":
 		// Entra has no email_verified claim; accounts are bound to their tenant instead.
+		// The address is taken as verified only if the operator says the tenant can be trusted
+		// (email_trusted): guests and self-service mail attributes can carry any address.
+		verified = cfg.EmailTrusted
 		if !containsFold(cfg.AllowedTenants, c.TenantID) {
 			return Identity{}, reject("tenant %q not allowed", c.TenantID)
 		}
 	case "oidc":
+		verified = bool(c.EmailVerified)
 		if !bool(c.EmailVerified) && !cfg.AllowUnverifiedEmail {
 			return Identity{}, reject("e-mail not verified")
 		}
@@ -137,7 +147,7 @@ func (c claims) check(cfg config.Provider) (Identity, error) {
 	}
 
 	name := strings.TrimSpace(c.Name)
-	return Identity{Subject: c.Subject, Email: email, DisplayName: name, Groups: c.Groups}, nil
+	return Identity{Subject: c.Subject, Email: email, DisplayName: name, Groups: c.Groups, EmailVerified: verified}, nil
 }
 
 func containsFold(list []string, v string) bool {

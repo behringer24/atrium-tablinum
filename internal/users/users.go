@@ -35,8 +35,6 @@ type User struct {
 	InstanceAdmin   bool
 	DefaultSpaceID  *uuid.UUID
 	PersonalSpaceID *uuid.UUID // nil when personal spaces are disabled
-	QuotaDocuments  *int
-	QuotaBytes      *int64
 	LastLoginAt     *time.Time
 	DisabledAt      *time.Time // set while the account is disabled (offboarding)
 	CreatedAt       time.Time
@@ -48,6 +46,9 @@ type Identity struct {
 	Subject     string
 	Email       string
 	DisplayName string
+	// EmailVerified says that the identity provider vouches for the address (see idp.Identity).
+	// Only then may it be linked to an existing account or create a bootstrap admin.
+	EmailVerified bool
 }
 
 type Options struct {
@@ -58,6 +59,10 @@ type Options struct {
 	// in the allowed domain at a second provider would otherwise become that account,
 	// including an instance admin from bootstrap_admins.
 	LinkByEmail bool
+	// MaxUsers returns the number of active users the instance may have; nil or 0 = unlimited. It is
+	// asked when a new account would be created, so a change (a licence installed) applies at once.
+	// Instance admins from bootstrap_admins are exempt, so that a limit can never lock them out.
+	MaxUsers func() int
 }
 
 type Store struct {
@@ -65,6 +70,7 @@ type Store struct {
 	bootstrap map[string]bool
 	personal  bool
 	linkEmail bool
+	maxUsers  func() int
 
 	// OnChange is called after changes that can alter effective roles (status, admin
 	// flag, group membership). Wire it to authz.Checker.InvalidateAll.
@@ -76,7 +82,7 @@ func New(pool *pgxpool.Pool, opt Options) *Store {
 	for _, e := range opt.BootstrapAdmins {
 		b[strings.ToLower(strings.TrimSpace(e))] = true
 	}
-	return &Store{pool: pool, bootstrap: b, personal: opt.PersonalEnabled, linkEmail: opt.LinkByEmail}
+	return &Store{pool: pool, bootstrap: b, personal: opt.PersonalEnabled, linkEmail: opt.LinkByEmail, maxUsers: opt.MaxUsers}
 }
 
 func (s *Store) changed() {
@@ -87,14 +93,14 @@ func (s *Store) changed() {
 
 const userSelect = `
 SELECT u.id, u.email, u.display_name, u.idp, u.idp_subject, u.status = 'active', u.instance_admin,
-       u.default_space_id, u.quota_documents, u.quota_bytes, u.last_login_at, u.disabled_at, u.created_at,
+       u.default_space_id, u.last_login_at, u.disabled_at, u.created_at,
        (SELECT sp.id FROM spaces sp WHERE sp.owner_user_id = u.id AND sp.type = 'personal')
 FROM users u `
 
 func (s *Store) scan(row pgx.Row) (User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Email, &u.DisplayName, &u.IDP, &u.Subject, &u.Active, &u.InstanceAdmin,
-		&u.DefaultSpaceID, &u.QuotaDocuments, &u.QuotaBytes, &u.LastLoginAt, &u.DisabledAt, &u.CreatedAt, &u.PersonalSpaceID)
+		&u.DefaultSpaceID, &u.LastLoginAt, &u.DisabledAt, &u.CreatedAt, &u.PersonalSpaceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
@@ -193,6 +199,9 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 		if taken && !s.linkEmail {
 			return uuid.Nil, ErrEmailTaken
 		}
+		if taken && !id.EmailVerified {
+			return uuid.Nil, ErrEmailUnverified
+		}
 		if taken {
 			slog.Warn("Account linked by e-mail", "idp", id.IDP, "user", uid)
 			if aerr := audit.Insert(ctx, tx, audit.Event{UserID: &uid, Client: "system", Action: "account_linked",
@@ -201,7 +210,21 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 			}
 		}
 	}
+	if errors.Is(err, pgx.ErrNoRows) && s.maxUsers != nil && !s.bootstrap[strings.ToLower(id.Email)] {
+		if max := s.maxUsers(); max > 0 {
+			var n int
+			if qerr := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n); qerr != nil {
+				return uuid.Nil, qerr
+			}
+			if n >= max {
+				return uuid.Nil, ErrUserLimit
+			}
+		}
+	}
 	switch {
+	case errors.Is(err, pgx.ErrNoRows) && s.bootstrap[strings.ToLower(id.Email)] && !id.EmailVerified:
+		// The address of an instance admin must not be claimed with an address nobody vouches for.
+		return uuid.Nil, ErrEmailUnverified
 	case errors.Is(err, pgx.ErrNoRows):
 		err = tx.QueryRow(ctx, `INSERT INTO users (email, display_name, idp, idp_subject, last_login_at)
 			VALUES ($1, $2, $3, $4, now()) RETURNING id`, id.Email, id.DisplayName, id.IDP, id.Subject).Scan(&uid)
@@ -233,12 +256,58 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 	return uid, tx.Commit(ctx)
 }
 
+// checkRoom refuses to reactivate an account when the number of other active accounts has reached the
+// user limit.
+func (s *Store) checkRoom(ctx context.Context, id uuid.UUID) error {
+	if s.maxUsers == nil {
+		return nil
+	}
+	max := s.maxUsers()
+	if max <= 0 {
+		return nil
+	}
+	var email string
+	var wasActive bool
+	if err := s.pool.QueryRow(ctx, `SELECT email, status = 'active' FROM users WHERE id = $1`, id).Scan(&email, &wasActive); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if wasActive || s.bootstrap[strings.ToLower(email)] {
+		return nil
+	}
+	n, err := s.CountActive(ctx)
+	if err != nil {
+		return err
+	}
+	if n >= max {
+		return ErrUserLimit
+	}
+	return nil
+}
+
+// CountActive returns the number of active accounts, the number the user limit is compared with.
+func (s *Store) CountActive(ctx context.Context) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n)
+	return n, err
+}
+
 // SetActive disables (offboarding) or re-enables an account. Revoking tokens is the
 // caller's job (oauth package).
 func (s *Store) SetActive(ctx context.Context, id uuid.UUID, active bool) error {
 	status := "active"
 	if !active {
 		status = "disabled"
+	}
+	if active {
+		// A reactivated account is an active account again: it needs room under the user limit, so
+		// that offboarding and reactivating cannot be used to go beyond it. Administrators from
+		// bootstrap_admins are exempt, as when an account is created.
+		if err := s.checkRoom(ctx, id); err != nil {
+			return err
+		}
 	}
 	tag, err := s.pool.Exec(ctx, `UPDATE users SET status = $2,
 		disabled_at = CASE WHEN $2 = 'disabled' THEN now() ELSE NULL END WHERE id = $1`, id, status)
@@ -273,19 +342,6 @@ func (s *Store) SetInstanceAdmin(ctx context.Context, id uuid.UUID, admin bool) 
 // must have verified that the user may write to that space.
 func (s *Store) SetDefaultSpace(ctx context.Context, userID uuid.UUID, spaceID *uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE users SET default_space_id = $2 WHERE id = $1`, userID, spaceID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// SetQuota overrides the personal-space limits; nil falls back to the config default.
-func (s *Store) SetQuota(ctx context.Context, userID uuid.UUID, documents *int, bytes *int64) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE users SET quota_documents = $2, quota_bytes = $3 WHERE id = $1`,
-		userID, documents, bytes)
 	if err != nil {
 		return err
 	}

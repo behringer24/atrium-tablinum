@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -103,6 +104,9 @@ func NormalizeTags(tags []string) ([]string, error) {
 	out := []string{}
 	for _, t := range tags {
 		t = strings.ToLower(strings.TrimSpace(t))
+		if strings.IndexFunc(t, isHidden) >= 0 {
+			return nil, fmt.Errorf("%w: tags must not contain line breaks or control characters", ErrInvalid)
+		}
 		if t == "" || seen[t] {
 			continue
 		}
@@ -229,11 +233,12 @@ func (s *Service) FindDuplicates(ctx context.Context, pool *pgxpool.Pool, sc Sco
 		FROM chunks c JOIN documents d ON d.id = c.document_id
 		WHERE ` + visibility.Clause("d", 2, 3, 4) + `
 		  AND d.kind = 'knowledge' AND d.space_id = $5 AND ($6::uuid IS NULL OR d.id <> $6::uuid)
+		  AND c.embedding_model = $7
 		ORDER BY c.embedding <=> $1::vector
 		LIMIT 3`
 	best := map[uuid.UUID]Duplicate{}
 	for _, c := range p.Chunks {
-		rows, err := tx.Query(ctx, q, c.Vector, nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator), space, exclude)
+		rows, err := tx.Query(ctx, q, c.Vector, nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator), space, exclude, p.Model)
 		if err != nil {
 			return nil, err
 		}
@@ -265,4 +270,11 @@ func nonNil(ids []uuid.UUID) []uuid.UUID {
 		return []uuid.UUID{}
 	}
 	return ids
+}
+
+// isHidden reports runes that have no place in a keyword: control characters (line breaks,
+// tabs), invisible format characters and line or paragraph separators. A tag with one of
+// them could break the layout of the text it is shown in.
+func isHidden(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp)
 }

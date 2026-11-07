@@ -49,7 +49,8 @@ func TestToolListFollowsRole(t *testing.T) {
 		t.Errorf("space admin: %v", sadmin)
 	}
 	for _, name := range []string{"admin_create_space", "admin_update_space", "admin_archive_space", "admin_restore_space", "admin_list_users",
-		"admin_offboard_user", "admin_transfer_personal_space", "admin_reactivate_user", "admin_groups", "admin_audit_log", "admin_health", "space_members"} {
+		"admin_offboard_user", "admin_reactivate_user", "admin_groups", "admin_audit_log", "admin_health",
+		"admin_support_bundle", "space_members"} {
 		if !boss[name] {
 			t.Errorf("instance admin without %s", name)
 		}
@@ -441,7 +442,7 @@ func TestAdminListUsersShowsMetadataOnly(t *testing.T) {
 	}
 }
 
-func TestOffboardingConvertsPersonalSpace(t *testing.T) {
+func TestOffboardingLocksAccount(t *testing.T) {
 	e := setup(t, 0)
 	e.srv.set.PersonalRetentionDays = 30
 	var revoked []uuid.UUID
@@ -449,27 +450,21 @@ func TestOffboardingConvertsPersonalSpace(t *testing.T) {
 		revoked = append(revoked, id)
 		return 2, nil
 	}
-	e.team(t, "support", "Support", false, nil)
 	boss := e.session(t, "boss@x.de")
 	anna := e.session(t, "anna@x.de")
-	chef := e.session(t, "chef@x.de")
-	ben := e.session(t, "ben@x.de")
-	first := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "GEHEIMER-TITEL", "content": "alpha Inhalt"})
+	e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "GEHEIMER-TITEL", "content": "alpha Inhalt"})
 	e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "Notiz", "content": "beta Inhalt"})
 	e.mustCall(t, anna, "handoff_save", map[string]any{"title": "Handoff", "content": "State"})
 
 	for name, tc := range map[string]struct {
-		tool string
 		args map[string]any
 		want string
 	}{
-		"without confirmation": {"admin_offboard_user", map[string]any{"user_email": "anna@x.de", "confirm": false}, "confirmation"},
-		"own account":          {"admin_offboard_user", map[string]any{"user_email": "boss@x.de", "confirm": true}, "own"},
-		"unknown":              {"admin_offboard_user", map[string]any{"user_email": "ghost@x.de", "confirm": true}, "unknown"},
-		"active account":       {"admin_transfer_personal_space", map[string]any{"user_email": "anna@x.de", "mode": "space", "slug": "x1", "name": "X", "confirm": true}, "not locked"},
-		"transfer without ok":  {"admin_transfer_personal_space", map[string]any{"user_email": "anna@x.de", "mode": "space", "slug": "x1", "name": "X", "confirm": false}, "confirmation"},
+		"without confirmation": {map[string]any{"user_email": "anna@x.de", "confirm": false}, "confirmation"},
+		"own account":          {map[string]any{"user_email": "boss@x.de", "confirm": true}, "own"},
+		"unknown":              {map[string]any{"user_email": "ghost@x.de", "confirm": true}, "unknown"},
 	} {
-		if _, msg := e.call(t, boss, tc.tool, tc.args); !strings.Contains(msg, tc.want) {
+		if _, msg := e.call(t, boss, "admin_offboard_user", tc.args); !strings.Contains(msg, tc.want) {
 			t.Errorf("%s: %q", name, msg)
 		}
 	}
@@ -489,59 +484,20 @@ func TestOffboardingConvertsPersonalSpace(t *testing.T) {
 		t.Errorf("second offboarding: %v", again)
 	}
 
-	transfer := func(args map[string]any) (map[string]any, string) {
-		args["user_email"], args["confirm"] = "anna@x.de", true
-		return e.call(t, boss, "admin_transfer_personal_space", args)
-	}
-	if _, msg := transfer(map[string]any{"mode": "dance"}); !strings.Contains(msg, "mode") {
-		t.Errorf("unknown mode: %q", msg)
-	}
-	if _, msg := transfer(map[string]any{"mode": "merge", "target_email": "boss@x.de"}); !strings.Contains(msg, "own") {
-		t.Errorf("admin takes over the space themselves: %q", msg)
-	}
-	if _, msg := transfer(map[string]any{"mode": "space", "slug": "support", "name": "X"}); !strings.Contains(msg, "already taken") {
-		t.Errorf("slug already taken: %q", msg)
-	}
-	res, msg := transfer(map[string]any{"mode": "space", "slug": "estate-anna", "name": "Estate Anna",
-		"members": []map[string]any{{"user_email": "chef@x.de", "role": "admin"}, {"user_email": "ben@x.de", "role": "curator"}}})
-	if msg != "" || res["documents"].(float64) != 2 || res["slug"] != "estate-anna" || res["warnings"] != nil {
-		t.Fatalf("%v %q", res, msg)
-	}
-	if _, msg := transfer(map[string]any{"mode": "space", "slug": "again", "name": "X"}); !strings.Contains(msg, "no longer has a personal space") {
-		t.Errorf("second transfer: %q", msg)
-	}
-
-	// the supervisor sees both entries, the handoff is deleted
-	if list := e.mustCall(t, chef, "list_knowledge", map[string]any{"space": "estate-anna"})["entries"].([]any); len(list) != 2 {
-		t.Errorf("entries in the estate: %v", list)
-	}
-	// the successor takes over an entry into their personal space
-	if moved := e.mustCall(t, ben, "move_knowledge", map[string]any{"id": first["id"], "space": "personal", "confirm": true}); moved["result"] != "moved" {
-		t.Fatalf("taking over: %v", moved)
-	}
-	if got := e.mustCall(t, ben, "get_knowledge", map[string]any{"id": first["id"]}); got["content"] != "alpha Inhalt" {
-		t.Errorf("entry taken over: %v", got)
-	}
-
-	// reactivation: new, empty personal space, the legacy stays with the team
-	if got := e.mustCall(t, boss, "admin_reactivate_user", map[string]any{"user_email": "anna@x.de"}); !strings.Contains(got["message"].(string), "new") {
+	// the personal space stays as it is until the retention period expires, and reactivation brings it back
+	if got := e.mustCall(t, boss, "admin_reactivate_user", map[string]any{"user_email": "anna@x.de"}); !strings.Contains(got["message"].(string), "active again") {
 		t.Errorf("reactivation: %v", got)
 	}
 	anna = e.session(t, "anna@x.de")
-	if got, _ := e.mustCall(t, anna, "list_knowledge", nil)["entries"].([]any); len(got) != 0 {
-		t.Errorf("new personal space not empty: %v", got)
-	}
-	for _, sp := range e.mustCall(t, anna, "list_spaces", nil)["spaces"].([]any) {
-		if sp.(map[string]any)["slug"] == "estate-anna" {
-			t.Error("reactivated user sees the estate space")
-		}
+	if got, _ := e.mustCall(t, anna, "list_knowledge", nil)["entries"].([]any); len(got) != 2 {
+		t.Errorf("personal space after reactivation: %v", got)
 	}
 
 	actions := map[string]bool{}
 	for _, en := range e.mustCall(t, boss, "admin_audit_log", map[string]any{"action": "admin_*"})["entries"].([]any) {
 		actions[en.(map[string]any)["action"].(string)] = true
 	}
-	if !actions["admin_offboard_user"] || !actions["admin_transfer_personal_space"] || !actions["admin_reactivate_user"] {
+	if !actions["admin_offboard_user"] || !actions["admin_reactivate_user"] {
 		t.Errorf("audit log: %v", actions)
 	}
 	raw, _ := json.Marshal(e.mustCall(t, boss, "admin_audit_log", map[string]any{"limit": 200}))
@@ -550,67 +506,17 @@ func TestOffboardingConvertsPersonalSpace(t *testing.T) {
 	}
 }
 
-func TestOffboardingMergesIntoSuccessor(t *testing.T) {
-	e := setup(t, 0)
-	boss := e.session(t, "boss@x.de")
-	anna := e.session(t, "anna@x.de")
-	ben := e.session(t, "ben@x.de")
-	e.session(t, "carl@x.de")
-	a1 := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "Recipe", "content": "alpha Inhalt"})
-	e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "Second", "content": "beta Inhalt"})
-	e.mustCall(t, ben, "store_knowledge", map[string]any{"title": "Own", "content": "gamma Inhalt"})
-	e.mustCall(t, boss, "admin_offboard_user", map[string]any{"user_email": "anna@x.de", "confirm": true})
-	e.mustCall(t, boss, "admin_offboard_user", map[string]any{"user_email": "carl@x.de", "confirm": true})
-	merge := func(target string) (map[string]any, string) {
-		return e.call(t, boss, "admin_transfer_personal_space", map[string]any{"user_email": "anna@x.de", "mode": "merge", "target_email": target, "confirm": true})
-	}
-
-	if _, msg := merge("carl@x.de"); !strings.Contains(msg, "locked") {
-		t.Errorf("locked target: %q", msg)
-	}
-	if _, msg := merge("ghost@x.de"); !strings.Contains(msg, "unknown") {
-		t.Errorf("unknown target: %q", msg)
-	}
-	// the successor's quota applies; if exceeded, nothing is moved
-	u, _ := e.users.GetByEmail(e.ctx, "ben@x.de")
-	two := 2
-	if err := e.users.SetQuota(e.ctx, u.ID, &two, nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, msg := merge("ben@x.de"); !strings.Contains(msg, "entries") {
-		t.Errorf("quota: %q", msg)
-	}
-	if err := e.users.SetQuota(e.ctx, u.ID, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-
-	res, msg := merge("ben@x.de")
-	if msg != "" || res["documents"].(float64) != 2 {
-		t.Fatalf("%v %q", res, msg)
-	}
-	if list := e.mustCall(t, ben, "list_knowledge", nil)["entries"].([]any); len(list) != 3 {
-		t.Errorf("Ben's space: %v", list)
-	}
-	// Ben now owns the entries like his own, the history continues
-	up := e.mustCall(t, ben, "update_knowledge", map[string]any{"id": a1["id"], "title": "Recipe (taken over)"})
-	if up["version"].(float64) != 3 || up["space_type"] != "personal" {
-		t.Errorf("after takeover: %v", up)
-	}
-}
-
 func TestPurgeOffboardedPersonalSpaces(t *testing.T) {
 	e := setup(t, 0)
 	boss := e.session(t, "boss@x.de")
-	for _, who := range []string{"anna", "ben", "carl", "dora"} {
+	for _, who := range []string{"anna", "ben", "dora"} {
 		e.mustCall(t, e.session(t, who+"@x.de"), "store_knowledge", map[string]any{"title": "Note " + who, "content": "alpha Inhalt"})
 	}
-	for _, who := range []string{"anna", "carl", "dora"} {
+	for _, who := range []string{"anna", "dora"} {
 		e.mustCall(t, boss, "admin_offboard_user", map[string]any{"user_email": who + "@x.de", "confirm": true})
 	}
-	e.mustCall(t, boss, "admin_transfer_personal_space", map[string]any{"user_email": "carl@x.de", "mode": "space",
-		"slug": "estate-carl", "name": "Estate Carl", "confirm": true})
-	// Anna and Carl have been gone for a long time, Dora only just now
-	if _, err := e.srv.Pool.Exec(e.ctx, `UPDATE users SET disabled_at = now() - interval '31 days' WHERE email IN ('anna@x.de', 'carl@x.de')`); err != nil {
+	// Anna has been gone for a long time, Dora only just now
+	if _, err := e.srv.Pool.Exec(e.ctx, `UPDATE users SET disabled_at = now() - interval '31 days' WHERE email = 'anna@x.de'`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -623,9 +529,6 @@ func TestPurgeOffboardedPersonalSpaces(t *testing.T) {
 		if (u.PersonalSpaceID != nil) != keeps {
 			t.Errorf("%s: personal space present=%v", who, u.PersonalSpaceID != nil)
 		}
-	}
-	if list := e.mustCall(t, boss, "list_knowledge", map[string]any{"space": "estate-carl"})["entries"].([]any); len(list) != 1 {
-		t.Errorf("converted space: %v", list)
 	}
 	entries := e.mustCall(t, boss, "admin_audit_log", map[string]any{"action": "purge_personal"})["entries"].([]any)
 	if len(entries) != 1 {
@@ -789,6 +692,44 @@ func TestAdminHealth(t *testing.T) {
 	}
 }
 
+// The support bundle tells support what runs and how it is set up, without content, names or secrets.
+func TestAdminSupportBundle(t *testing.T) {
+	e := setup(t, 0)
+	e.srv.SupportConfig = map[string]any{"embedding": map[string]any{"backend": "fake"}}
+	e.team(t, "hr-secret", "Layoffs 2027", false, map[string]authz.Role{"anna@x.de": authz.Author})
+	boss, anna := e.session(t, "boss@x.de"), e.session(t, "anna@x.de")
+	e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "Severance terms for Anna", "content": "Confidential plan.", "space": "hr-secret"})
+
+	if res, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_support_bundle"}); err == nil && !res.IsError {
+		t.Fatal("a user got the support bundle")
+	}
+	out := e.mustCall(t, boss, "admin_support_bundle", nil)
+	db := out["database"].(map[string]any)
+	if db["postgres"] == "" || db["pgvector"] == "" || db["migration"].(float64) < 10 {
+		t.Errorf("database: %v", db)
+	}
+	counts := out["counts"].(map[string]any)
+	if counts["users_active"].(float64) < 2 || counts["team_spaces"].(float64) < 1 || counts["entries_approved"].(float64) < 1 {
+		t.Errorf("counts: %v", counts)
+	}
+	if out["product"].(map[string]any)["line"] == "" || out["runtime"].(map[string]any)["go"] == "" {
+		t.Errorf("product/runtime: %v %v", out["product"], out["runtime"])
+	}
+	if out["health"].(map[string]any)["status"] != "ok" || out["configuration"] == nil {
+		t.Errorf("health/configuration: %v %v", out["health"], out["configuration"])
+	}
+	b, _ := json.Marshal(out)
+	for _, private := range []string{"anna@x.de", "boss@x.de", "Layoffs", "hr-secret", "Severance", "Confidential"} {
+		if strings.Contains(string(b), private) {
+			t.Errorf("the support bundle shows %q", private)
+		}
+	}
+	var n int
+	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE action = 'support_bundle'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("audit entries: %d %v", n, err)
+	}
+}
+
 // Schemas must not contain `"type": [...]`: clients with only one type per schema
 // (e.g. Gemini) reject that.
 func TestToolSchemasUseSingleTypes(t *testing.T) {
@@ -870,5 +811,118 @@ func TestMoveAndDeleteTools(t *testing.T) {
 	e.mustCall(t, sadmin, "delete_knowledge", map[string]any{"id": teamID, "confirm": true})
 	if _, msg := e.call(t, anna, "get_knowledge", map[string]any{"id": teamID}); msg != "not found" {
 		t.Errorf("deleted entry: %q", msg)
+	}
+}
+
+// An instance admin changes the limits at runtime: for all personal or team spaces, for one user
+// or one space, and every change applies to the next write.
+func TestAdminQuotas(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{"anna@x.de": authz.Author})
+	boss, anna := e.session(t, "boss@x.de"), e.session(t, "anna@x.de")
+	store := func(space, title string) string {
+		_, msg := e.call(t, anna, "store_knowledge", map[string]any{"title": title, "content": "Inhalt von " + title, "space": space, "force": true})
+		return msg
+	}
+
+	// the tool does not even exist for users (it is not in their tool list)
+	if res, err := anna.CallTool(e.ctx, &mcp.CallToolParams{Name: "admin_quotas", Arguments: map[string]any{"action": "get"}}); err == nil && !res.IsError {
+		t.Fatal("a user used admin_quotas")
+	}
+	// get shows both defaults with their source
+	defs := e.mustCall(t, boss, "admin_quotas", map[string]any{"action": "get"})["targets"].([]any)
+	if len(defs) != 2 {
+		t.Fatalf("defaults: %v", defs)
+	}
+	personal := defs[0].(map[string]any)["limits"].(map[string]any)["documents"].(map[string]any)
+	if personal["limit"] != float64(100) || personal["source"] != "config" {
+		t.Fatalf("personal default: %v", personal)
+	}
+
+	// invalid and unconfirmed requests change nothing
+	set := func(args map[string]any) (map[string]any, string) {
+		args["action"] = "set"
+		return e.call(t, boss, "admin_quotas", args)
+	}
+	for name, tc := range map[string]struct {
+		args map[string]any
+		want string
+	}{
+		"no values":       {map[string]any{"scope": "personal_default", "confirm": true}, "at least one"},
+		"no confirmation": {map[string]any{"scope": "personal_default", "documents": 2}, "confirm"},
+		"below -1":        {map[string]any{"scope": "personal_default", "documents": -5, "confirm": true}, "or more"},
+		"unknown scope":   {map[string]any{"scope": "planet", "documents": 2, "confirm": true}, "scope must be"},
+		"unknown user":    {map[string]any{"scope": "user", "user_email": "ghost@x.de", "documents": 2, "confirm": true}, "unknown"},
+		"unknown space":   {map[string]any{"scope": "space", "space": "nowhere", "documents": 2, "confirm": true}, "not found"},
+	} {
+		if _, msg := set(tc.args); !strings.Contains(msg, tc.want) {
+			t.Errorf("%s: %q", name, msg)
+		}
+	}
+
+	// all personal spaces: two entries, applied at once
+	if _, msg := set(map[string]any{"scope": "personal_default", "documents": 2, "confirm": true}); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("my personal space", "eins"); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("my personal space", "zwei"); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("my personal space", "drei"); !strings.Contains(msg, "limit of this space is 2") || !strings.Contains(msg, "instance admin") {
+		t.Fatalf("third entry: %q", msg)
+	}
+	// one user gets more: the user override wins over the default
+	if _, msg := set(map[string]any{"scope": "user", "user_email": "anna@x.de", "documents": 5, "confirm": true}); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("my personal space", "drei"); msg != "" {
+		t.Fatalf("after the user override: %q", msg)
+	}
+	got := e.mustCall(t, boss, "admin_quotas", map[string]any{"action": "get", "scope": "user", "user_email": "anna@x.de"})["targets"].([]any)[0].(map[string]any)
+	docs := got["limits"].(map[string]any)["documents"].(map[string]any)
+	if docs["limit"] != float64(5) || docs["source"] != "user" || docs["used"] != float64(3) || got["overrides"].(map[string]any)["documents"] != float64(5) {
+		t.Fatalf("user target: %v", got)
+	}
+	// -1 removes the override again: the default of 2 applies, and the user is over it
+	set(map[string]any{"scope": "user", "user_email": "anna@x.de", "documents": -1, "confirm": true})
+	if msg := store("my personal space", "vier"); !strings.Contains(msg, "limit of this space is 2") {
+		t.Fatalf("after removing the override: %q", msg)
+	}
+
+	// one team space, and all team spaces
+	if _, msg := set(map[string]any{"scope": "space", "space": "dev", "documents": 1, "confirm": true}); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("dev", "a"); msg != "" {
+		t.Fatal(msg)
+	}
+	if msg := store("dev", "b"); !strings.Contains(msg, "limit of this space is 1") {
+		t.Fatalf("team space: %q", msg)
+	}
+	set(map[string]any{"scope": "space", "space": "dev", "documents": -1, "confirm": true})
+	set(map[string]any{"scope": "team_default", "documents": 50, "skills": 7, "confirm": true})
+	if msg := store("dev", "b"); msg != "" {
+		t.Fatalf("after raising all team spaces: %q", msg)
+	}
+	team := e.mustCall(t, boss, "admin_quotas", map[string]any{"action": "get", "scope": "space", "space": "dev"})["targets"].([]any)[0].(map[string]any)["limits"].(map[string]any)
+	if d := team["documents"].(map[string]any); d["limit"] != float64(50) || d["source"] != "runtime default" || d["used"] != float64(2) {
+		t.Errorf("team documents: %v", d)
+	}
+	if s := team["skills"].(map[string]any); s["limit"] != float64(7) || s["source"] != "runtime default" {
+		t.Errorf("team skills: %v", s)
+	}
+
+	// every change is audited with old and new values
+	var n int
+	if err := e.srv.Pool.QueryRow(e.ctx, `SELECT count(*) FROM audit_log WHERE action = 'admin_quota_set' AND details->'changes' IS NOT NULL`).Scan(&n); err != nil || n < 6 {
+		t.Errorf("audit entries: %d %v", n, err)
+	}
+	// space admins see the limits and usage of their space
+	e.team(t, "ops", "Operations", false, map[string]authz.Role{"anna@x.de": authz.Admin})
+	m := e.mustCall(t, anna, "space_members", map[string]any{"space": "ops"})
+	if q, _ := m["quota"].(map[string]any); q == nil || q["documents"] == nil {
+		t.Errorf("space_members shows no quota: %v", m)
 	}
 }

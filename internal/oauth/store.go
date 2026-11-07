@@ -77,7 +77,9 @@ type Client struct {
 
 func (s *Store) CreateClient(ctx context.Context, name string, redirectURIs []string) (Client, error) {
 	var n int
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM oauth_clients`).Scan(&n); err != nil {
+	// Only clients that never completed a login count: they cost nothing to create, so they
+	// are what a flood fills; clients in use must not be crowded out by it.
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM oauth_clients c WHERE `+unusedClient).Scan(&n); err != nil {
 		return Client{}, err
 	}
 	if n >= maxClients {
@@ -364,16 +366,14 @@ func (s *Store) RevokeUser(ctx context.Context, userID uuid.UUID) (int64, error)
 }
 
 // Cleanup removes expired codes and login states, tokens a week past their end, and
-// clients that never completed a login.
+// clients that never completed a login, an hour after they registered (they cost nothing
+// to create, so registrations must not pile up).
 func (s *Store) Cleanup(ctx context.Context) error {
 	for _, q := range []string{
 		`DELETE FROM oauth_codes WHERE expires_at < now()`,
 		`DELETE FROM oauth_login_states WHERE expires_at < now()`,
 		`DELETE FROM oauth_tokens WHERE expires_at < now() - interval '7 days'`,
-		`DELETE FROM oauth_clients c WHERE c.created_at < now() - interval '1 day'
-			AND NOT EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.client_id = c.client_id)
-			AND NOT EXISTS (SELECT 1 FROM oauth_codes k WHERE k.client_id = c.client_id)
-			AND NOT EXISTS (SELECT 1 FROM oauth_login_states l WHERE l.client_id = c.client_id)`,
+		`DELETE FROM oauth_clients c WHERE c.created_at < now() - interval '1 hour' AND ` + unusedClient,
 	} {
 		if _, err := s.pool.Exec(ctx, q); err != nil {
 			return err
@@ -399,3 +399,8 @@ func (s *Store) RecordLogin(ctx context.Context, userID uuid.UUID, provider stri
 		slog.Error("audit entry for login failed", "error", err)
 	}
 }
+
+// unusedClient selects (for a table alias c) clients that never completed or started a login.
+const unusedClient = `NOT EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.client_id = c.client_id)
+	AND NOT EXISTS (SELECT 1 FROM oauth_codes k WHERE k.client_id = c.client_id)
+	AND NOT EXISTS (SELECT 1 FROM oauth_login_states l WHERE l.client_id = c.client_id)`

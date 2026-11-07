@@ -33,6 +33,8 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/guard"
+	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 )
 
@@ -48,6 +50,13 @@ var (
 	ErrTampered = errors.New("the stored files do not match the digest of this version")
 	// ErrArchived is returned when a change needs an active skill but the skill is archived.
 	ErrArchived = errors.New("the skill is archived: restore it first (unarchive_skill)")
+	// ErrQuota is returned when a save would exceed a storage limit (see Options).
+	ErrQuota = errors.New("skill quota exceeded")
+	// ErrNameTaken is returned when a name is held by a skill the caller cannot see (an
+	// unreleased draft of somebody else, or an archived skill): it says nothing about which.
+	ErrNameTaken = errors.New("that name is not available in this space, please choose another")
+	// ErrChanged is returned when a draft is not the one the reviewer read.
+	ErrChanged = errors.New("the draft changed since you read it: read it again (get_skill) and review that version")
 )
 
 // Statuses of a version.
@@ -84,6 +93,9 @@ type Options struct {
 	// AllowSelfApproval lets the author of a version also approve it. Off by default: it is
 	// meant for small installations that have only one curator.
 	AllowSelfApproval bool
+	// Quota resolves the storage limits of a space (skills, skill bytes, versions per skill);
+	// nil = no limits.
+	Quota *quota.Store
 }
 
 type Store struct {
@@ -126,7 +138,9 @@ type Version struct {
 	ReviewNote     string
 	BlockReason    string
 	// Archived is a property of the whole skill, repeated on each of its versions.
-	Archived  bool
+	Archived bool
+	// Tags belong to the skill and are repeated on each of its versions.
+	Tags      []string
 	Resources []Resource
 }
 
@@ -145,12 +159,18 @@ func frontmatterBlock(text string) (string, error) {
 	if !strings.HasPrefix(text, "---\n") {
 		return "", invalid("SKILL.md must start with a front matter block (--- name and description ---)")
 	}
+	// The block ends at the first line that is exactly "---", as common clients read it. A line
+	// like "----" or "--- x" inside the block is no end here and must not be one anywhere else,
+	// or Atrium and a client would show different names and descriptions for the same file.
 	rest := text[4:]
-	end := strings.Index(rest, "\n---")
-	if end < 0 {
-		return "", invalid("the front matter of SKILL.md is not closed with ---")
+	offset := 0
+	for _, line := range strings.SplitAfter(rest, "\n") {
+		if strings.TrimSuffix(line, "\n") == "---" {
+			return strings.TrimSuffix(rest[:offset], "\n"), nil
+		}
+		offset += len(line)
 	}
-	return rest[:end], nil
+	return "", invalid("the front matter of SKILL.md is not closed with a line that is exactly ---")
 }
 
 // Frontmatter returns the front matter of a SKILL.md with every field the author wrote, as
@@ -346,9 +366,14 @@ func (s *Store) space(ctx context.Context, a docs.Actor, id uuid.UUID, min authz
 
 // Save stores a package as a new version of the skill, or replaces the draft of the same
 // author. In a team space the result is a draft that a curator has to review. In a personal
-// space only the owner can ever see it, so it is published at once.
-func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name string, files []File) (Version, error) {
+// space only the owner can ever see it, so it is published at once. tags are set when the
+// skill is created and ignored for an existing one (SetTags changes them).
+func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name string, files []File, tags []string) (Version, error) {
 	p, err := prepare(name, files)
+	if err != nil {
+		return Version{}, err
+	}
+	norm, err := normalizeTags(tags)
 	if err != nil {
 		return Version{}, err
 	}
@@ -363,9 +388,10 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 	defer tx.Rollback(ctx)
 
 	var skillID uuid.UUID
-	err = tx.QueryRow(ctx, `INSERT INTO skills (space_id, name, created_by) VALUES ($1, $2, $3)
-		ON CONFLICT (space_id, name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
-		sp.ID, name, a.User.ID).Scan(&skillID)
+	var created bool
+	err = tx.QueryRow(ctx, `INSERT INTO skills (space_id, name, created_by, tags) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (space_id, name) DO UPDATE SET name = EXCLUDED.name RETURNING id, (xmax = 0)`,
+		sp.ID, name, a.User.ID, norm).Scan(&skillID, &created)
 	if err != nil {
 		return Version{}, err
 	}
@@ -374,10 +400,26 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 	if err := tx.QueryRow(ctx, `SELECT archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).Scan(&archived); err != nil {
 		return Version{}, err
 	}
+	if !created {
+		// A new version may only be added to a skill the caller can see: a released one, one with a
+		// version of their own, or any skill of a space they curate. Whatever else holds the name
+		// (somebody's unreleased draft, an archived skill) is reported as a taken name, and
+		// nothing is attached to it.
+		visible, err := s.nameVisible(ctx, tx, a, sp.ID, skillID, archived)
+		if err != nil {
+			return Version{}, err
+		}
+		if !visible {
+			return Version{}, ErrNameTaken
+		}
+	}
 	if archived {
 		return Version{}, ErrArchived
 	}
 
+	if err := s.checkQuota(ctx, tx, sp, skillID, a.User.ID, created, p); err != nil {
+		return Version{}, err
+	}
 	var latestID uuid.UUID
 	var latest int
 	var latestStatus string
@@ -441,6 +483,9 @@ type ReviewParams struct {
 	Approve   bool
 	Note      string
 	RiskClass string // required to approve: A, B or C
+	// Digest is the digest of the version the reviewer read (from get_skill). Approving needs it,
+	// so that a draft its author rewrote in the meantime cannot be approved unseen.
+	Digest string
 }
 
 // Review approves or rejects a draft. Only curators of the space may, and not for their own
@@ -454,6 +499,9 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 		return Version{}, invalid("a note for the author is required when rejecting")
 	}
 	risk := strings.ToUpper(strings.TrimSpace(p.RiskClass))
+	if p.Approve && strings.TrimSpace(p.Digest) == "" {
+		return Version{}, invalid("approving needs the digest of the version you read: pass the digest that get_skill returned")
+	}
 	if p.Approve && risk != "A" && risk != "B" && risk != "C" {
 		return Version{}, invalid("approving needs a risk class: A (instructions only), B (uses tools), C (critical actions)")
 	}
@@ -477,7 +525,10 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 		if v.RequestedTools != "" && risk == "A" {
 			return "", nil, invalid("the skill asks for tools (" + v.RequestedTools + "), so its risk class cannot be A")
 		}
-		details := map[string]any{"skill": v.Name, "version": v.Version, "risk_class": risk}
+		if d := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(p.Digest)), "sha256:"); d != v.Digest {
+			return "", nil, ErrChanged
+		}
+		details := map[string]any{"skill": v.Name, "version": v.Version, "risk_class": risk, "digest": v.Digest}
 		if selfApproved {
 			details["self_approved"] = true
 		}
@@ -751,13 +802,13 @@ type querier interface {
 
 const versionSelect = `SELECT s.id, v.id, s.space_id, s.name, v.version, v.status, v.description, v.requested_tools,
   COALESCE(v.risk_class, ''), v.digest, v.created_by, v.created_at, COALESCE(v.review_note, ''), COALESCE(v.block_reason, ''),
-  s.archived_at IS NOT NULL
+  s.archived_at IS NOT NULL, s.tags
 FROM skill_versions v JOIN skills s ON s.id = v.skill_id `
 
 func scanVersion(row pgx.Row) (Version, error) {
 	var v Version
 	err := row.Scan(&v.SkillID, &v.VersionID, &v.SpaceID, &v.Name, &v.Version, &v.Status, &v.Description, &v.RequestedTools,
-		&v.RiskClass, &v.Digest, &v.CreatedBy, &v.CreatedAt, &v.ReviewNote, &v.BlockReason, &v.Archived)
+		&v.RiskClass, &v.Digest, &v.CreatedBy, &v.CreatedAt, &v.ReviewNote, &v.BlockReason, &v.Archived, &v.Tags)
 	return v, err
 }
 
@@ -800,6 +851,15 @@ type ListFilter struct {
 	Name          string
 	SpaceID       uuid.UUID
 	PublishedOnly bool
+	// Tag keeps skills with this tag, Status versions in this state, Query skills whose name,
+	// description or tags contain the text (case-insensitive).
+	Tag    string
+	Status string
+	Query  string
+	// After continues behind the skill a previous page ended with; NewestOnly returns one version
+	// per skill, the newest that matches.
+	After      *Cursor
+	NewestOnly bool
 	// Archive selects by archive state: "" only active skills, ArchiveOnly only archived
 	// ones, ArchiveAny both. Archived skills are visible to curators of the space only.
 	Archive string
@@ -812,32 +872,89 @@ const (
 	ArchiveAny  = "any"
 )
 
-// List returns the versions the caller may see, newest version of each skill first.
+// Cursor marks the last skill of a page; the next page continues after it (name, then space).
+type Cursor struct {
+	Name    string
+	SpaceID uuid.UUID
+}
+
+// List returns the versions the caller may see, for at most Limit skills (default and maximum 500),
+// ordered by skill name and space, the newest version of each skill first. The limit counts skills,
+// not versions, so a skill with many versions cannot push others out. With NewestOnly each skill
+// appears once, with its newest matching version. After continues behind a Cursor; Next, if not nil,
+// is set to the cursor of the last skill returned when more skills match.
 func (s *Store) List(ctx context.Context, a docs.Actor, f ListFilter) ([]Version, error) {
+	vs, _, err := s.list(ctx, a, f)
+	return vs, err
+}
+
+// ListPage is List that also reports whether more skills match behind the returned page.
+func (s *Store) ListPage(ctx context.Context, a docs.Actor, f ListFilter) ([]Version, *Cursor, error) {
+	return s.list(ctx, a, f)
+}
+
+func (s *Store) list(ctx context.Context, a docs.Actor, f ListFilter) ([]Version, *Cursor, error) {
 	vis, cur := scope(a)
+	tag := strings.ToLower(strings.TrimSpace(f.Tag))
 	limit := f.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 500
 	}
-	rows, err := s.pool.Query(ctx, versionSelect+`WHERE `+visibleSQL+`
-		AND ($4 = '' OR s.name = $4) AND ($5::uuid = '00000000-0000-0000-0000-000000000000'::uuid OR s.space_id = $5)
-		AND (NOT $6 OR v.status = 'published')
-		AND ($8 = 'any' OR ($8 = 'only') = (s.archived_at IS NOT NULL))
-		ORDER BY s.name, s.space_id, v.version DESC LIMIT $7`,
-		vis, a.User.ID, cur, f.Name, f.SpaceID, f.PublishedOnly, limit, f.Archive)
+	afterName, afterSpace := "", uuid.Nil
+	if f.After != nil {
+		afterName, afterSpace = f.After.Name, f.After.SpaceID
+	}
+	// One more skill than asked for tells whether there is a next page.
+	rows, err := s.pool.Query(ctx, `WITH hits AS (
+  SELECT s.id AS skill_id, s.name, s.space_id, v.id AS version_id
+  FROM skill_versions v JOIN skills s ON s.id = v.skill_id
+  WHERE `+visibleSQL+`
+    AND ($4 = '' OR s.name = $4) AND ($5::uuid = '00000000-0000-0000-0000-000000000000'::uuid OR s.space_id = $5)
+    AND (NOT $6 OR v.status = 'published')
+    AND ($8 = 'any' OR ($8 = 'only') = (s.archived_at IS NOT NULL))
+    AND ($9 = '' OR $9 = ANY(s.tags)) AND ($10 = '' OR v.status = $10)
+    AND ($11 = '' OR strpos(lower(s.name || ' ' || v.description || ' ' || array_to_string(s.tags, ' ')), lower($11)) > 0)
+    AND ($12 = '' OR (s.name, s.space_id) > ($12, $13::uuid))
+), picked AS (
+  SELECT DISTINCT skill_id, name, space_id FROM hits ORDER BY name, space_id LIMIT $7
+)
+`+versionSelect+`WHERE v.id IN (SELECT version_id FROM hits WHERE skill_id IN (SELECT skill_id FROM picked))
+ORDER BY s.name, s.space_id, v.version DESC`,
+		vis, a.User.ID, cur, f.Name, f.SpaceID, f.PublishedOnly, limit+1, f.Archive, tag, f.Status, strings.TrimSpace(f.Query), afterName, afterSpace)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
-	var out []Version
+	var all []Version
 	for rows.Next() {
 		v, err := scanVersion(rows)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		all = append(all, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	// Group by skill in the order of the query, keep the first `limit` skills.
+	var out []Version
+	var next *Cursor
+	seen := map[uuid.UUID]bool{}
+	skillsKept := 0
+	for _, v := range all {
+		if !seen[v.SkillID] {
+			if skillsKept == limit {
+				next = &Cursor{Name: out[len(out)-1].Name, SpaceID: out[len(out)-1].SpaceID}
+				break
+			}
+			seen[v.SkillID] = true
+			skillsKept++
+		} else if f.NewestOnly {
+			continue
 		}
 		out = append(out, v)
 	}
-	return out, rows.Err()
+	return out, next, nil
 }
 
 // Get loads one version with its file list. Version 0 means the newest published version.
@@ -884,8 +1001,10 @@ func (s *Store) Resource(ctx context.Context, a docs.Actor, v Version, path stri
 	return content, r, nil
 }
 
-// Audit records that a caller read a skill. Reads of a personal space keep no details.
-func (s *Store) Audit(ctx context.Context, a docs.Actor, v Version, action string) {
+// Audit records that a caller read a skill and by which route: "tool" (get_skill,
+// get_skill_resource), "resource" (resources/read), "rpc" (skills/get) or "export". Reads of
+// a personal space keep no details.
+func (s *Store) Audit(ctx context.Context, a docs.Actor, v Version, action, via string) {
 	sp, err := s.sp.GetByID(ctx, v.SpaceID)
 	if err != nil {
 		return
@@ -893,6 +1012,323 @@ func (s *Store) Audit(ctx context.Context, a docs.Actor, v Version, action strin
 	uid, sid := a.User.ID, sp.ID
 	_ = audit.Insert(ctx, s.pool, audit.Event{
 		UserID: &uid, Client: a.Client, Action: action, SpaceID: &sid, Personal: sp.Type == "personal",
-		Details: map[string]any{"skill": v.Name, "version": v.Version},
+		Details: map[string]any{"skill": v.Name, "version": v.Version, "via": via},
 	})
+}
+
+// AuditList records a skills/list call (the skills offered to the caller, not one skill).
+func (s *Store) AuditList(ctx context.Context, a docs.Actor, via string, count int) {
+	uid := a.User.ID
+	_ = audit.Insert(ctx, s.pool, audit.Event{
+		UserID: &uid, Client: a.Client, Action: "skill_list",
+		Details: map[string]any{"count": count, "via": via},
+	})
+}
+
+// ---- tags ---------------------------------------------------------------------------
+
+// normalizeTags applies the rules of knowledge entry tags and reports a violation as ErrInvalid.
+func normalizeTags(tags []string) ([]string, error) {
+	norm, err := ingest.NormalizeTags(tags)
+	if err != nil {
+		return nil, invalid(strings.TrimPrefix(err.Error(), ingest.ErrInvalid.Error()+": "))
+	}
+	if err := guard.Check(strings.Join(norm, ", ")); err != nil {
+		return nil, err
+	}
+	return norm, nil
+}
+
+// SetTags replaces the tags of a skill without a new version: tags are no instruction and
+// no part of the digest. The creator of the skill, the curators and admins of the space (in
+// a personal space the owner) may do it. It returns the normalised tags.
+func (s *Store) SetTags(ctx context.Context, a docs.Actor, skillID uuid.UUID, tags []string) ([]string, error) {
+	norm, err := normalizeTags(tags)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var name string
+	var spaceID uuid.UUID
+	var createdBy *uuid.UUID
+	var archived bool
+	err = tx.QueryRow(ctx, `SELECT name, space_id, created_by, archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).
+		Scan(&name, &spaceID, &createdBy, &archived)
+	// The tags speak for the skill as it is released: the author of the newest released version
+	// owns them, as long as nothing is released the creator does.
+	if err == nil {
+		var releasedBy *uuid.UUID
+		if rerr := tx.QueryRow(ctx, `SELECT created_by FROM skill_versions WHERE skill_id = $1 AND status = 'published'
+			ORDER BY version DESC LIMIT 1`, skillID).Scan(&releasedBy); rerr == nil {
+			createdBy = releasedBy
+		} else if !errors.Is(rerr, pgx.ErrNoRows) {
+			err = rerr
+		}
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	sp, role, err := s.space(ctx, a, spaceID, authz.Author)
+	if err != nil {
+		return nil, err
+	}
+	if archived {
+		return nil, ErrArchived
+	}
+	if role < authz.Curator && (createdBy == nil || *createdBy != a.User.ID) {
+		return nil, ErrForbidden
+	}
+	if _, err := tx.Exec(ctx, `UPDATE skills SET tags = $2 WHERE id = $1`, skillID, norm); err != nil {
+		return nil, err
+	}
+	if err := record(ctx, tx, a, "skill_tag", sp, map[string]any{"skill": name, "tags": norm}); err != nil {
+		return nil, err
+	}
+	return norm, tx.Commit(ctx)
+}
+
+// ---- quota --------------------------------------------------------------------------
+
+// checkQuota enforces the limits of the space (see package quota: those of the owner in a personal
+// space, the space's own in a team space, each falling back to the runtime and configured
+// defaults) inside the saving transaction, after the skill row is locked. A draft the author
+// revises does not add a version, so it is not counted twice. The limits are read on every call,
+// so a change by an instance admin applies to the next save.
+func (s *Store) checkQuota(ctx context.Context, tx pgx.Tx, sp spaces.Space, skillID, by uuid.UUID, created bool, p prepared) error {
+	if s.opt.Quota == nil {
+		return nil
+	}
+	lim, err := s.opt.Quota.Resolve(ctx, sp)
+	if err != nil {
+		return err
+	}
+	where, raise := "this space", " (an instance admin can raise it)"
+	if sp.Type == "personal" {
+		where = "your personal space"
+	}
+	refuse := func(msg string) error { return fmt.Errorf("%w: %s%s", ErrQuota, msg, raise) }
+	if max := lim.SkillVersions; max > 0 {
+		var n int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM skill_versions WHERE skill_id = $1`, skillID).Scan(&n); err != nil {
+			return err
+		}
+		if n >= max {
+			var ownDraft bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM skill_versions WHERE skill_id = $1 AND status = 'draft' AND created_by = $2
+				AND version = (SELECT max(version) FROM skill_versions WHERE skill_id = $1))`, skillID, by).Scan(&ownDraft); err != nil {
+				return err
+			}
+			if !ownDraft {
+				return refuse(fmt.Sprintf("this skill has reached the limit of %d versions", max))
+			}
+		}
+	}
+	if max := lim.Skills; max > 0 && created {
+		var n int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM skills WHERE space_id = $1`, sp.ID).Scan(&n); err != nil {
+			return err
+		}
+		if n > max {
+			return refuse(fmt.Sprintf("%s is limited to %d skills", where, max))
+		}
+	}
+	if max := lim.SkillBytes; max > 0 {
+		var used int64
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(r.size), 0) FROM skill_resources r
+			JOIN skill_versions v ON v.id = r.version_id JOIN skills k ON k.id = v.skill_id WHERE k.space_id = $1`, sp.ID).Scan(&used); err != nil {
+			return err
+		}
+		var add int64
+		for _, r := range p.resources {
+			add += int64(r.Size)
+		}
+		if used+add > max {
+			return refuse(fmt.Sprintf("%s is limited to %s of skill files", where, humanBytes(max)))
+		}
+	}
+	return nil
+}
+
+func humanBytes(n int64) string {
+	if n >= 1<<20 && n%(1<<20) == 0 {
+		return fmt.Sprintf("%d MB", n>>20)
+	}
+	if n >= 1<<10 {
+		return fmt.Sprintf("%d KB", n>>10)
+	}
+	return fmt.Sprintf("%d bytes", n)
+}
+
+// ---- move ---------------------------------------------------------------------------
+
+// Move files the newest released version of a skill in another space. A skill is an
+// instruction, and what a space's curators approved is no approval for another space's
+// readers, so nothing carries its release over: the target gets a new skill with the same
+// files (same digest) as a draft that its own curators have to review, in a personal space
+// as the owner's own copy, released at once like every save there. The source skill is
+// archived (not deleted: its versions and audit trail stay) unless keepSource is set.
+// The caller needs curator rights in the source space and author rights in the target.
+func (s *Store) Move(ctx context.Context, a docs.Actor, skillID, targetID uuid.UUID, keepSource bool) (Version, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Version{}, err
+	}
+	defer tx.Rollback(ctx)
+	var name string
+	var srcID uuid.UUID
+	var tags []string
+	var archived bool
+	err = tx.QueryRow(ctx, `SELECT name, space_id, tags, archived_at IS NOT NULL FROM skills WHERE id = $1 FOR UPDATE`, skillID).
+		Scan(&name, &srcID, &tags, &archived)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Version{}, ErrNotFound
+	} else if err != nil {
+		return Version{}, err
+	}
+	src, _, err := s.space(ctx, a, srcID, authz.Curator)
+	if err != nil {
+		return Version{}, err
+	}
+	if archived {
+		return Version{}, ErrArchived
+	}
+	if targetID == srcID {
+		return Version{}, invalid("the skill is already in this space")
+	}
+	dst, _, err := s.space(ctx, a, targetID, authz.Author)
+	if err != nil {
+		return Version{}, err
+	}
+
+	var srcVersion uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT id FROM skill_versions WHERE skill_id = $1 AND status = 'published'
+		ORDER BY version DESC LIMIT 1`, skillID).Scan(&srcVersion)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Version{}, fmt.Errorf("%w: only a skill with a released version can be moved", ErrState)
+	} else if err != nil {
+		return Version{}, err
+	}
+	v, err := loadVersion(ctx, tx, srcVersion)
+	if err != nil {
+		return Version{}, err
+	}
+	if err := verifyStored(ctx, tx, v); err != nil {
+		return Version{}, err
+	}
+
+	var newSkill uuid.UUID
+	err = tx.QueryRow(ctx, `INSERT INTO skills (space_id, name, created_by, tags) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (space_id, name) DO NOTHING RETURNING id`, dst.ID, name, a.User.ID, tags).Scan(&newSkill)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Version{}, ErrNameTaken
+	} else if err != nil {
+		return Version{}, err
+	}
+	if err := s.checkQuota(ctx, tx, dst, newSkill, a.User.ID, true, prepared{resources: v.Resources}); err != nil {
+		return Version{}, err
+	}
+	var newVersion uuid.UUID
+	if err := tx.QueryRow(ctx, `INSERT INTO skill_versions (skill_id, version, description, requested_tools, digest, created_by)
+		SELECT $1, 1, description, requested_tools, digest, $3 FROM skill_versions WHERE id = $2 RETURNING id`,
+		newSkill, srcVersion, a.User.ID).Scan(&newVersion); err != nil {
+		return Version{}, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO skill_resources (version_id, path, content, size, sha256)
+		SELECT $1, path, content, size, sha256 FROM skill_resources WHERE version_id = $2`, newVersion, srcVersion); err != nil {
+		return Version{}, err
+	}
+	if dst.Type == "personal" {
+		if _, err := tx.Exec(ctx, `UPDATE skill_versions SET status = 'published', risk_class = 'A', published_by = $2, published_at = now()
+			WHERE id = $1`, newVersion, a.User.ID); err != nil {
+			return Version{}, err
+		}
+	}
+	if !keepSource {
+		if _, err := tx.Exec(ctx, `UPDATE skills SET archived_at = now(), archived_by = $2 WHERE id = $1`, skillID, a.User.ID); err != nil {
+			return Version{}, err
+		}
+	}
+	slug := func(sp spaces.Space) string {
+		if sp.Type == "personal" {
+			return "personal"
+		}
+		return sp.Slug
+	}
+	if err := record(ctx, tx, a, "skill_move_out", src, map[string]any{"skill": name, "version": v.Version, "digest": v.Digest,
+		"to": slug(dst), "source_kept": keepSource}); err != nil {
+		return Version{}, err
+	}
+	if err := record(ctx, tx, a, "skill_move_in", dst, map[string]any{"skill": name, "version": 1, "digest": v.Digest,
+		"from": slug(src), "source_version": v.Version}); err != nil {
+		return Version{}, err
+	}
+	out, err := loadVersion(ctx, tx, newVersion)
+	if err != nil {
+		return Version{}, err
+	}
+	return out, tx.Commit(ctx)
+}
+
+// ---- transfer of a personal space ------------------------------------------------------
+
+// Blocked names a version BlockReleased withdrew.
+type Blocked struct {
+	Skill   string
+	Version int
+}
+
+// BlockReleased withdraws every released or approved version of the skills in a space. It is
+// used when a personal space becomes a team space: the owner released those versions alone,
+// nobody reviewed them, and the approval of a single person must not turn into an
+// organisation's skill. To use one again, a space admin lifts the block (unblock_skill) and a
+// curator releases it.
+func (s *Store) BlockReleased(ctx context.Context, a docs.Actor, spaceID uuid.UUID, reason string) ([]Blocked, error) {
+	rows, err := s.pool.Query(ctx, `UPDATE skill_versions v SET status = 'blocked', blocked_by = $2, blocked_at = now(), block_reason = $3
+		FROM skills k WHERE k.id = v.skill_id AND k.space_id = $1 AND v.status IN ('published', 'approved')
+		RETURNING k.name, v.version`, spaceID, a.User.ID, reason)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Blocked
+	for rows.Next() {
+		var b Blocked
+		if err := rows.Scan(&b.Skill, &b.Version); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// AuditBlocked writes the skill_block events of BlockReleased once the space is a team space,
+// so that the names stay in the log (events of a personal space keep no details).
+func (s *Store) AuditBlocked(ctx context.Context, a docs.Actor, sp spaces.Space, blocked []Blocked, reason string) {
+	uid, sid := a.User.ID, sp.ID
+	for _, b := range blocked {
+		_ = audit.Insert(ctx, s.pool, audit.Event{UserID: &uid, Client: a.Client, Action: "skill_block", SpaceID: &sid,
+			Details: map[string]any{"skill": b.Skill, "version": b.Version, "reason": reason}})
+	}
+}
+
+// nameVisible reports whether the caller may see the skill that already holds a name: curators
+// (and the owner of a personal space) see every skill of the space, everybody else a skill that
+// is not archived and has a released version or a version of their own.
+func (s *Store) nameVisible(ctx context.Context, tx pgx.Tx, a docs.Actor, spaceID, skillID uuid.UUID, archived bool) (bool, error) {
+	if a.Roles.Role(spaceID) >= authz.Curator {
+		return true, nil
+	}
+	if archived {
+		return false, nil
+	}
+	var ok bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM skill_versions WHERE skill_id = $1 AND (status = 'published' OR created_by = $2))`,
+		skillID, a.User.ID).Scan(&ok)
+	return ok, err
 }

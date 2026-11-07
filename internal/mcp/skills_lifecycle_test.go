@@ -76,8 +76,12 @@ func TestSkillArchive(t *testing.T) {
 		}
 	}
 	// An archived skill takes no new versions and no review or release.
-	if _, msg := e.call(t, anna, "store_skill", map[string]any{"name": "code-review", "space": "dev", "files": skillPackage("code-review", "again", nil)}); !strings.Contains(msg, "archived") {
-		t.Fatalf("new version of an archived skill: %q", msg)
+	if _, msg := e.call(t, cora, "store_skill", map[string]any{"name": "code-review", "space": "dev", "files": skillPackage("code-review", "again", nil)}); !strings.Contains(msg, "archived") {
+		t.Fatalf("new version of an archived skill by a curator: %q", msg)
+	}
+	// Somebody who cannot see the archive is told only that the name is taken.
+	if _, msg := e.call(t, anna, "store_skill", map[string]any{"name": "code-review", "space": "dev", "files": skillPackage("code-review", "again", nil)}); !strings.Contains(msg, "not available") {
+		t.Fatalf("new version of an archived skill by an author: %q", msg)
 	}
 	if _, msg := e.call(t, cora, "publish_skill", map[string]any{"skill": "code-review", "version": 1, "confirm": true}); !strings.Contains(msg, "archived") {
 		t.Fatalf("release of an archived skill: %q", msg)

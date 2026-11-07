@@ -49,9 +49,14 @@ type Filter struct {
 	Action     string // exact, or a prefix when it ends in "*" (e.g. "admin_*")
 	SpaceID    *uuid.UUID
 	DocumentID *uuid.UUID
-	Since      *time.Time
-	Until      *time.Time
-	Limit      int
+	// Skill keeps events about the skill with this name (details.skill); Client the events of
+	// one client label (claude, chatgpt, claude-code, mcp-skills, api ...). Events in personal
+	// spaces carry no details, so a skill name never matches there.
+	Skill  string
+	Client string
+	Since  *time.Time
+	Until  *time.Time
+	Limit  int
 }
 
 type Entry struct {
@@ -98,8 +103,10 @@ WHERE ($1 = '' OR u.email = $1)
   AND ($5::uuid IS NULL OR a.document_id = $5)
   AND ($6::timestamptz IS NULL OR a.ts >= $6)
   AND ($7::timestamptz IS NULL OR a.ts < $7)
+  AND ($10 = '' OR a.details->>'skill' = $10)
+  AND ($11 = '' OR a.client = $11)
 ORDER BY a.id DESC LIMIT $8`,
-		f.UserEmail, exact, prefix, f.SpaceID, f.DocumentID, f.Since, f.Until, f.Limit, PersonalLabel)
+		f.UserEmail, exact, prefix, f.SpaceID, f.DocumentID, f.Since, f.Until, f.Limit, PersonalLabel, f.Skill, f.Client)
 	if err != nil {
 		return nil, err
 	}

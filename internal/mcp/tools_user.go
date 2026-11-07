@@ -11,6 +11,7 @@ import (
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
+	"github.com/behringer24/atrium-tablinum/internal/edition"
 	"github.com/behringer24/atrium-tablinum/internal/product"
 	"github.com/behringer24/atrium-tablinum/internal/search"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -30,11 +31,13 @@ func (s *Server) registerUserTools(ms *mcp.Server) {
 	addTool(s, ms, "move_knowledge", "Move entry", tierUser, true, s.moveKnowledge)
 	addTool(s, ms, "delete_knowledge", "Delete entry permanently", tierUser, true, s.deleteKnowledge)
 	addTool(s, ms, "list_knowledge", "List entries", tierUser, false, s.listKnowledge)
+	addTool(s, ms, "whats_new", "What is new", tierUser, false, s.whatsNew)
 	addTool(s, ms, "set_default_space", "Set default space", tierUser, true, s.setDefaultSpace)
 	addTool(s, ms, "handoff_save", "Save handoff", tierUser, true, s.handoffSave)
 	addTool(s, ms, "handoff_list", "List handoffs", tierUser, false, s.handoffList)
 	addTool(s, ms, "handoff_load", "Load handoff", tierUser, false, s.handoffLoad)
 	s.registerSkillTools(ms)
+	s.registerEditionTools(ms, tierUser)
 }
 
 // ---- shared output shapes ---------------------------------------------------
@@ -65,6 +68,15 @@ type docInfo struct {
 	Version    int      `json:"version,omitempty"`
 	Updated    string   `json:"updated"`
 	ExpiresAt  string   `json:"expires_at,omitempty"`
+	// Type is the knowledge type: rule is binding, documentation describes, recommendation and
+	// experience are not binding.
+	Type string `json:"type,omitempty"`
+	// Owner is the responsible person if one was named; OwnerFormer marks somebody who has left.
+	Owner       string `json:"owner,omitempty"`
+	OwnerFormer bool   `json:"owner_former,omitempty"`
+	// ReviewDue is the review date; ReviewOverdue is set once it has passed.
+	ReviewDue     string `json:"review_due,omitempty"`
+	ReviewOverdue bool   `json:"review_overdue,omitempty"`
 }
 
 func (s *Server) spaceInfos(list []spaces.Space, a docs.Actor) []spaceInfo {
@@ -101,6 +113,17 @@ func (s *Server) docInfo(ctx context.Context, d docs.Document, withContent bool)
 	}
 	if d.ExpiresAt != nil {
 		di.ExpiresAt = d.ExpiresAt.Format(time.RFC3339)
+	}
+	if d.Kind == "knowledge" {
+		di.Type = d.Type
+	}
+	if d.OwnerID != nil {
+		di.Owner, di.OwnerFormer = d.OwnerEmail, !d.OwnerActive
+	}
+	if d.ReviewDue != nil {
+		now := time.Now().UTC()
+		di.ReviewDue = d.ReviewDue.Format("2006-01-02")
+		di.ReviewOverdue = d.ReviewDue.Before(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC))
 	}
 	return di, nil
 }
@@ -146,6 +169,9 @@ type contactInfo struct {
 	Type string `json:"type"` // user | group
 	Name string `json:"name"` // e-mail or group name
 	Role string `json:"role"` // curator | admin
+	// Former marks a person who no longer has access (locked account): named for the record, not
+	// someone to ask.
+	Former bool `json:"former,omitempty"`
 }
 
 type spaceContacts struct {
@@ -187,7 +213,7 @@ func (s *Server) spaceContacts(ctx context.Context, c *call, in contactsIn) (con
 		// all members stays with the space admins (space_members).
 		for _, m := range ms {
 			if m.Role >= authz.Curator {
-				sc.Contacts = append(sc.Contacts, contactInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String()})
+				sc.Contacts = append(sc.Contacts, contactInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former})
 			}
 		}
 		out.Spaces = append(out.Spaces, sc)
@@ -205,10 +231,23 @@ type serverInfoOut struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Commit  string `json:"commit,omitempty"`
+	// Line is the release line of the build and its date; BuildDate the commit date, for support.
+	Line      string `json:"line,omitempty"`
+	LineDate  string `json:"line_date,omitempty"`
+	BuildDate string `json:"build_date,omitempty"`
+	// Edition in effect: community, or the edition of the Pro build.
+	Edition string `json:"edition,omitempty"`
 }
 
 func (s *Server) serverInfo(_ context.Context, _ *call, _ serverInfoIn) (serverInfoOut, error) {
-	return serverInfoOut{Name: s.set.ProductName, Version: product.Version, Commit: product.Commit()}, nil
+	out := serverInfoOut{Name: s.set.ProductName, Version: product.Version, Commit: product.Commit(), BuildDate: product.BuildDate}
+	line := product.CurrentLine()
+	out.Line, out.LineDate = line.Name, line.Coverage().Format("2006-01-02")
+	out.Edition = edition.Community
+	if s.Edition != nil {
+		out.Edition = s.Edition.Name()
+	}
+	return out, nil
 }
 
 // ---- store_knowledge ----------------------------------------------------------
@@ -220,6 +259,10 @@ type storeIn struct {
 	Tags    []string `json:"tags,omitempty" jsonschema:"Optional keywords"`
 	Force   bool     `json:"force,omitempty" jsonschema:"true = store despite similar entries (only after checking with the user)"`
 	Draft   bool     `json:"draft,omitempty" jsonschema:"true = store as a draft that a curator of the space reviews and approves first (team spaces only, only on the explicit request of the user)"`
+	Type    string   `json:"type,omitempty" jsonschema:"Optional knowledge type: rule (binding; curators and admins of the space only), documentation (default), recommendation or experience"`
+	Owner   string   `json:"owner,omitempty" jsonschema:"Optional: e-mail of the person responsible for the entry (team spaces; they must be able to read the space). Only when the user names one"`
+	// ReviewDue is a date so that an assistant cannot pass a relative phrase.
+	ReviewDue string `json:"review_due,omitempty" jsonschema:"Optional: date (YYYY-MM-DD) by which the entry should be reviewed"`
 }
 
 type similarInfo struct {
@@ -268,7 +311,23 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 		}, nil
 	}
 
-	res, err := s.Docs.Store(ctx, a, docs.StoreParams{SpaceID: target.ID, Title: in.Title, Content: in.Content, Tags: in.Tags, Force: in.Force, Draft: in.Draft})
+	p := docs.StoreParams{SpaceID: target.ID, Title: in.Title, Content: in.Content, Tags: in.Tags, Force: in.Force, Draft: in.Draft}
+	if p.Type, err = parseType(in.Type); err != nil {
+		return storeOut{}, err
+	}
+	if strings.TrimSpace(in.Owner) != "" {
+		owner, err := s.readerUser(ctx, in.Owner, target.ID)
+		if err != nil {
+			return storeOut{}, err
+		}
+		p.OwnerID = &owner
+	}
+	if strings.TrimSpace(in.ReviewDue) != "" {
+		if p.ReviewDue, err = parseReviewDue(in.ReviewDue); err != nil {
+			return storeOut{}, err
+		}
+	}
+	res, err := s.Docs.Store(ctx, a, p)
 	if err != nil {
 		return storeOut{}, err
 	}
@@ -333,11 +392,13 @@ type searchIn struct {
 	Tags    []string `json:"tags,omitempty" jsonschema:"Optional: only entries with one of these tags"`
 	Limit   int      `json:"limit,omitempty" jsonschema:"Number of hits, default 5, at most 20"`
 	Archive bool     `json:"archive,omitempty" jsonschema:"true = search ONLY the archive (instead of the active entries), only on the explicit request of the user"`
+	Types   []string `json:"types,omitempty" jsonschema:"Optional: only entries of these knowledge types (rule, documentation, recommendation, experience)"`
 }
 
 type hitInfo struct {
 	ID        string  `json:"id"`
 	Title     string  `json:"title"`
+	Type      string  `json:"type"`
 	Space     string  `json:"space"`
 	SpaceType string  `json:"space_type"`
 	Section   string  `json:"section,omitempty"`
@@ -357,6 +418,15 @@ type searchOut struct {
 func (s *Server) searchKnowledge(ctx context.Context, c *call, in searchIn) (searchOut, error) {
 	a := c.Actor
 	p := search.Params{Query: in.Query, Tags: in.Tags, Limit: in.Limit, Archive: in.Archive}
+	for _, t := range in.Types {
+		typ, err := parseType(t)
+		if err != nil {
+			return searchOut{}, err
+		}
+		if typ != "" {
+			p.Types = append(p.Types, typ)
+		}
+	}
 	if len(in.Spaces) > 0 {
 		visible, err := s.spacesAtLeast(ctx, a, authz.Reader)
 		if err != nil {
@@ -385,7 +455,7 @@ func (s *Server) searchKnowledge(ctx context.Context, c *call, in searchIn) (sea
 			name = "My personal space"
 		}
 		out.Results = append(out.Results, hitInfo{
-			ID: r.DocumentID.String(), Title: r.Title, Space: name, SpaceType: r.SpaceType, Section: r.HeadingPath,
+			ID: r.DocumentID.String(), Title: r.Title, Type: r.Type, Space: name, SpaceType: r.SpaceType, Section: r.HeadingPath,
 			Excerpt: r.Content, Status: r.Status, Author: r.AuthorEmail, Updated: r.UpdatedAt.Format(time.RFC3339), Score: r.Score,
 		})
 	}
@@ -425,6 +495,10 @@ type updateIn struct {
 	Title   *string   `json:"title,omitempty" jsonschema:"New title"`
 	Content *string   `json:"content,omitempty" jsonschema:"Complete new content (Markdown)"`
 	Tags    *[]string `json:"tags,omitempty" jsonschema:"New complete tag list"`
+	Type    *string   `json:"type,omitempty" jsonschema:"New knowledge type: rule (binding; curators and admins of the space only), documentation, recommendation or experience"`
+	Owner   *string   `json:"owner,omitempty" jsonschema:"E-mail of the new responsible person (team spaces; must be able to read the space); an empty string removes the responsible person"`
+	// ReviewDue is a date so that an assistant cannot pass a relative phrase.
+	ReviewDue *string `json:"review_due,omitempty" jsonschema:"New review date (YYYY-MM-DD); an empty string removes it"`
 }
 
 func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (docInfo, error) {
@@ -432,10 +506,43 @@ func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (doc
 	if err != nil {
 		return docInfo{}, err
 	}
-	if in.Title == nil && in.Content == nil && in.Tags == nil {
+	if in.Title == nil && in.Content == nil && in.Tags == nil && in.Type == nil && in.Owner == nil && in.ReviewDue == nil {
 		return docInfo{}, userErr("Nothing to change was passed.")
 	}
-	d, err := s.Docs.Update(ctx, c.Actor, docs.UpdateParams{ID: id, Title: in.Title, Content: in.Content, Tags: in.Tags})
+	p := docs.UpdateParams{ID: id, Title: in.Title, Content: in.Content, Tags: in.Tags}
+	if in.Type != nil {
+		t, err := parseType(*in.Type)
+		if err != nil {
+			return docInfo{}, err
+		}
+		if t == "" {
+			t = docs.TypeDocumentation
+		}
+		p.Type = &t
+	}
+	if in.Owner != nil {
+		if strings.TrimSpace(*in.Owner) == "" {
+			p.ClearOwner = true
+		} else {
+			cur, err := s.Docs.Get(ctx, c.Actor, id)
+			if err != nil {
+				return docInfo{}, err
+			}
+			owner, err := s.readerUser(ctx, *in.Owner, cur.SpaceID)
+			if err != nil {
+				return docInfo{}, err
+			}
+			p.OwnerID = &owner
+		}
+	}
+	if in.ReviewDue != nil {
+		if strings.TrimSpace(*in.ReviewDue) == "" {
+			p.ClearReviewDue = true
+		} else if p.ReviewDue, err = parseReviewDue(*in.ReviewDue); err != nil {
+			return docInfo{}, err
+		}
+	}
+	d, err := s.Docs.Update(ctx, c.Actor, p)
 	if err != nil {
 		return docInfo{}, err
 	}
@@ -571,6 +678,9 @@ type listIn struct {
 	Tag    string `json:"tag,omitempty" jsonschema:"Optional: only entries with this tag"`
 	Status string `json:"status,omitempty" jsonschema:"Optional: only draft (waiting for approval), approved, rejected (returned) or archived (archive)"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"Count, default 20, at most 100"`
+	Type   string `json:"type,omitempty" jsonschema:"Optional: only entries of this knowledge type (rule, documentation, recommendation, experience)"`
+	Owner  string `json:"owner,omitempty" jsonschema:"Optional: only entries this person (e-mail) is responsible for, also a former one"`
+	Review string `json:"review,omitempty" jsonschema:"Optional: due = only entries whose review date has passed"`
 }
 type listOut struct {
 	Notice  string    `json:"notice,omitempty"`
@@ -595,8 +705,26 @@ func (s *Server) listKnowledge(ctx context.Context, c *call, in listIn) (listOut
 	case sp == nil:
 		return listOut{}, docs.ErrNotFound
 	}
-	list, err := s.Docs.List(ctx, a, docs.ListParams{SpaceID: sp.ID, Tag: strings.ToLower(strings.TrimSpace(in.Tag)),
-		Status: strings.ToLower(strings.TrimSpace(in.Status)), Limit: in.Limit})
+	lp := docs.ListParams{SpaceID: sp.ID, Tag: strings.ToLower(strings.TrimSpace(in.Tag)),
+		Status: strings.ToLower(strings.TrimSpace(in.Status)), Limit: in.Limit}
+	if lp.Type, err = parseType(in.Type); err != nil {
+		return listOut{}, err
+	}
+	if strings.TrimSpace(in.Owner) != "" {
+		u, err := s.knownUser(ctx, in.Owner)
+		if err != nil {
+			return listOut{}, err
+		}
+		lp.OwnerID = &u.ID
+	}
+	switch strings.ToLower(strings.TrimSpace(in.Review)) {
+	case "":
+	case "due":
+		lp.ReviewDue = true
+	default:
+		return listOut{}, userErr("review must be due or empty.")
+	}
+	list, err := s.Docs.List(ctx, a, lp)
 	if err != nil {
 		return listOut{}, err
 	}

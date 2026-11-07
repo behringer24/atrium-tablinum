@@ -17,7 +17,7 @@ An archived entry (`archive_knowledge`) disappears from the active knowledge bas
 
 **Restoring:** The entry gets the status it had before archiving. A previously approved entry by an author in a space with mandatory approval goes back into review as a draft, so the archive is not a way around approval. `archive`, `unarchive` appear in the audit log with the version.
 
-Archived entries do not count toward the quota of personal spaces; it is checked on restore.
+Archived entries do not count toward the quota of a space; it is checked on restore.
 
 ## Context
 

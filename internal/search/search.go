@@ -52,7 +52,10 @@ type Params struct {
 	// may see; unknown or invisible ids simply match nothing).
 	Spaces []uuid.UUID
 	Tags   []string
-	Limit  int
+	// Types keeps entries of these knowledge types (rule, documentation, recommendation,
+	// experience); empty means all.
+	Types []string
+	Limit int
 	// Archive searches only the archive instead of the active entries. Archived entries
 	// are visible to their author and the curators of the space, nobody else.
 	Archive bool
@@ -68,6 +71,7 @@ type Result struct {
 	HeadingPath string
 	Content     string
 	Status      string // approved | draft | rejected | archived – all but approved only for author/curators
+	Type        string // knowledge type: rule, documentation, recommendation, experience
 	AuthorEmail string
 	UpdatedAt   time.Time
 	Score       float64
@@ -109,11 +113,12 @@ vis AS (
     WHERE ` + visible + `
       AND d.kind = 'knowledge'
       AND ($9::text[] IS NULL OR d.tags && $9::text[])
+      AND ($10::text[] IS NULL OR d.knowledge_type = ANY($10::text[]))
 ),
 vec AS (
     SELECT c.id, row_number() OVER (ORDER BY c.embedding <=> $1::vector) AS rn
     FROM chunks c JOIN vis ON vis.id = c.document_id
-    WHERE $1::vector IS NOT NULL
+    WHERE $1::vector IS NOT NULL AND c.embedding_model = $11 -- vectors of another model are not comparable
     ORDER BY c.embedding <=> $1::vector
     LIMIT $6
 ),
@@ -130,7 +135,7 @@ fused AS (
     GROUP BY id ORDER BY score DESC LIMIT $8
 )
 SELECT c.id, d.id, d.space_id, sp.name, sp.type, d.title, c.heading_path, c.content, d.status,
-       au.email::text, d.updated_at, f.score::float8
+       d.knowledge_type, au.email::text, d.updated_at, f.score::float8
 FROM fused f
 JOIN chunks c    ON c.id = f.id
 JOIN documents d ON d.id = c.document_id
@@ -156,7 +161,7 @@ func (s *Service) Search(ctx context.Context, c Caller, p Params) ([]Result, err
 	var results []Result
 	if len(visible) > 0 {
 		var err error
-		if results, err = s.run(ctx, c, q, visible, p.Tags, limit, p.Archive); err != nil {
+		if results, err = s.run(ctx, c, q, visible, p.Tags, p.Types, limit, p.Archive); err != nil {
 			return nil, err
 		}
 	}
@@ -164,7 +169,7 @@ func (s *Service) Search(ctx context.Context, c Caller, p Params) ([]Result, err
 	return results, nil
 }
 
-func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UUID, tags []string, limit int, archive bool) ([]Result, error) {
+func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UUID, tags, types []string, limit int, archive bool) ([]Result, error) {
 	var vec *string
 	if v, err := embed.Query(ctx, s.emb, q); err != nil {
 		slog.Warn("query embedding failed, using full-text search only", "error", err)
@@ -198,7 +203,11 @@ func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UU
 	if curator == nil {
 		curator = []uuid.UUID{}
 	}
-	rows, err := tx.Query(ctx, s.sql(archive), vec, q, visible, c.Scope.Actor, curator, s.cfg.CandidatesPerMethod, s.cfg.RRFK, limit, tagFilter)
+	var typeFilter []string // nil = no type filter
+	if len(types) > 0 {
+		typeFilter = types
+	}
+	rows, err := tx.Query(ctx, s.sql(archive), vec, q, visible, c.Scope.Actor, curator, s.cfg.CandidatesPerMethod, s.cfg.RRFK, limit, tagFilter, typeFilter, s.emb.Model())
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +216,7 @@ func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UU
 	for rows.Next() {
 		var r Result
 		if err := rows.Scan(&r.ChunkID, &r.DocumentID, &r.SpaceID, &r.SpaceName, &r.SpaceType, &r.Title,
-			&r.HeadingPath, &r.Content, &r.Status, &r.AuthorEmail, &r.UpdatedAt, &r.Score); err != nil {
+			&r.HeadingPath, &r.Content, &r.Status, &r.Type, &r.AuthorEmail, &r.UpdatedAt, &r.Score); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

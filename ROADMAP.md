@@ -11,8 +11,7 @@ The guiding question for all knowledge features: does an assistant find the righ
 ### Reliable knowledge (candidate for 0.4)
 
 - **Optimistic locking for updates:** `update_knowledge` replaces the complete content, but a client cannot say which version it started from. If two assistants load version 3 and both save, the second silently overwrites the first. Add an optional `expected_version` (the version `get_knowledge` returns); on a mismatch the call fails with a structured conflict and the assistant reloads and merges. The server already re-checks the version inside the transaction, so this only needs the client-side half. Later make it mandatory for assistants through the tool description.
-- **Knowledge types and authority:** "approved" means published, not binding. Add a structured type: binding rule, documented company knowledge, best practice, experience report. Search results and entries show it so that an assistant answers a policy question with the official text and labels tips as non-binding. Publication status and authority stay separate; binding rules may need a separate approval by a named owner.
-- **Validity and review dates:** optional owner, last review, next review, valid from/until. A periodic job (the job runner exists) flags entries whose review is due and informs owners and curators. An overdue entry only produces a warning, it is never hidden or deleted automatically.
+- **Review reminders:** knowledge types, responsible people and review dates are built ([design](docs/design/knowledge-metadata.md)); overdue reviews show in entries, `list_knowledge review=due` and `whats_new`. Still open: telling responsible people and curators actively when a review falls due (needs the notifications below), and recording the last review as its own date.
 - **Systematic permission tests:** a test matrix of roles (reader, author, curator, admin, instance admin) across personal and team spaces and across every tool: drafts, archive, versions, search excerpts, direct ids, counts and error texts must not leak anything. Many negative tests exist in the packages; the matrix makes the gaps visible.
 - **Summarising with `replaces`:** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported.
 
@@ -21,13 +20,24 @@ The guiding question for all knowledge features: does an assistant find the righ
 - consent page before a new client is connected
 - audit log leaving the database (JSON line on stdout, Postgres role with `INSERT` only, optionally a hash chain) and a retention period
 - `SECURITY.md` with a reporting route, an incident runbook (`docs/incident.md`) and a tool that revokes all tokens of the instance
-- supply chain: pin dependencies and images, `govulncheck` and Dependabot in the build
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
 - confirmation when storing into spaces of others
 
+### Security, remainder of the second audit (2026-11-04)
+
+The findings of the second audit (external attack surface, authorisation and integrity) that are fixed are listed in the changelog. Still open:
+
+- **Package cleanup token:** `PACKAGES_PAT` is a classic token with `delete:packages`; replace it with a narrower credential as soon as GitHub offers one for container packages.
+- **Database roles by default:** the separate accounts are opt-in (`scripts/db-roles.sql`); make them part of the compose setup and the install steps, so that new installations start hardened.
+- A client whose `client_name` is shown in `my_sessions` should be marked as data.
+
+### Commercial editions and licence file
+
+A free Community edition (this repository, 8 active accounts) and a Pro edition: the same product plus files of a private repository, switched by an offline-verified signed licence file that lifts limits and enables features without a restart ([docs/licensing.md](docs/licensing.md)). Built: the extension points, the licence code and the guided offboarding in the private repository. Not built: the private pipeline that publishes the official (public) image with signing and SBOM, the licensed ceilings for the quotas, the release mechanics (CI guard for the line file, start-line script, release branches), building the review reminders as Pro features, and the first new Pro features (group sync and SCIM, audit export). Needed before sales: real issuer keys in the Pro repository's `anchors.txt`, the legal review of the licence texts, `SECURITY.md` with a reporting route (the CRA reporting duty applies since 11 September 2026).
+
 ### Documentation and operations
 
-- After the rollout, the user manual in the space "Allgemein" is adjusted to the archive behaviour. The description of "Allgemein" and the instance context are set.
+- The user guides in `docs/user/` exist (Markdown and PDF). Still to do after the rollout: adapt the manual in the space "Allgemein" to them and to the archive behaviour, and set the description of "Allgemein" and the instance context.
 - Make the language of server messages configurable, if customers ask for it. English is the default and only language for now. Comments in the code that refer to a "concept" document by section number should be replaced by a self-contained explanation.
 
 ## Skill registry (strategic)
@@ -65,20 +75,21 @@ Atrium becomes the controlled registry and distribution service for company-wide
 ## Later
 
 - **Roles for customers with high protection needs:** instance admins are admin in every team space today and can read everything there. Some customers need a split between "manage users and operations" and "read content" (for example for management or HR). This includes separate roles, a waiting period with a second admin when transferring personal spaces, and notifications. Personal spaces are already closed to everyone except their owner.
-- **Review notifications:** curators already find waiting drafts with `list_knowledge status=draft`; authors learn of approvals and returns only by looking. Start with a review queue and an optional digest, later e-mail and chat integrations. Notifications must not carry metadata to people who may not see the entry.
+- **Review notifications:** curators already find waiting drafts with `list_knowledge status=draft` and see the counts of all their spaces in `whats_new`; authors learn of approvals and returns only by looking. Start with a review queue and an optional digest, later e-mail and chat integrations. Notifications must not carry metadata to people who may not see the entry.
 - **A draft next to the released version:** authors of spaces that require approval cannot change approved entries today.
 - **Correction reports:** readers flag an entry as wrong, incomplete, unclear or outdated, with a reason and the place concerned. The owners get a reviewable item; reports never overwrite binding knowledge directly.
 - **Citations:** stable, resolvable references that name the version used and the section (the heading path is already stored per chunk and returned by search, the document version is not yet part of a hit), also for older versions and direct links, with the same rights checks. An answer should say "policy X, version 4, section 3.2".
 - **Contradiction hints:** find semantically related entries and show a curator likely conflicts (for example two different hotel limits) with the entries and sections concerned. The assistant does the comparing on request, in the same way as summarising; the server stays free of a model of its own. Nothing is changed automatically, because context such as date or location may explain a difference. Duplicate detection at save time exists already.
 - **Import and export:** Markdown and structured data with titles, tags, provenance and, where possible, versions, for migration from wikis and for portability. Mind rights, duplicates and stable links. The backup script is the only export today.
-- **Search quality:** a test corpus of questions with expected references, run regularly against ranking, recall, synonyms, chunk boundaries, embeddings, rights filters and stale hits. It shares its tooling with the load test below.
+- **Search quality:** a test corpus of questions with expected references, run regularly against ranking, recall, synonyms, chunk boundaries, embeddings, rights filters and stale hits. It shares its tooling with the load test below. With it, compare smaller or newer embedding models with bge-m3 on German content (candidates: Qwen3-Embedding-0.6B, Apache 2.0; EmbeddingGemma-300m, Gemma terms and a gated download) for hits, speed on 2 cores and memory; `admin_reembed` makes a switch possible.
 - **Relations between entries:** "see also", "supplements", "replaces", "requires", "conflicts with". Assistants may suggest, people confirm. `derived_from` from the summarising feature becomes one relation type. Relations survive moving an entry.
-- **Skills and knowledge side by side:** both content types should offer the same functions wherever the difference in trust allows it. Skills now have archive, restore, delete and unblock. Still missing: moving a skill to another space (it has to be reviewed again there, like a knowledge entry in an approval space), searching skills by content, reading an archived skill before restoring it, and the strict space rule for `replaces` between skills. Open question: whether a space admin may delete skills that never left draft, rejected or approved (nothing was ever served).
+- **Skills and knowledge side by side:** both content types should offer the same functions wherever the difference in trust allows it. Skills now have archive, restore, delete, unblock, tags, filters (`tag`, `query`, `status`) and quotas. Moving a skill (`move_skill`, reviewed again in the target space) and the audit filters by skill and client are done. Still missing: searching skills by meaning (embeddings), reading an archived skill before restoring it, a duplicate warning, and the strict space rule for `replaces` between skills. Open question: whether a space admin may delete skills that never left draft, rejected or approved (nothing was ever served).
+- **Server support for the shipped knowledge skills** (`skills/knowledge-ingest`, `skills/knowledge-lint`): a tool that lists the lint candidates of a space (review due, very similar pairs of entries, drafts waiting for long, entries without tags), one that finds the related entries for a long source section by section, and `list_knowledge` paging or sorting by age, so that a lint reaches the oldest entries of a space with more than 100. Deterministic and rights-checked; the reading and writing stays with the user's assistant.
 - **Knowledge gaps:** aggregate frequent searches without a hit into proposals for missing entries. This conflicts with the current decision not to log search texts, so it needs an explicit opt-in, aggregation and no link to a person; it never publishes invented answers.
 - **Usage statistics:** aggregated frequent questions, unused entries, searches without hits, open approvals and due reviews, strictly without watching individual employees.
 - **Groups from the identity provider:** map groups to spaces, with protection against stale groups (never more than reader through groups, reconciliation at every login, visibility for admins).
 - **Client ID Metadata Documents:** the client registration the OAuth specification prefers. Dynamic Client Registration works with Claude and ChatGPT today.
-- **Reranker** for better search results and **re-embedding jobs** when the embedding model changes.
+- **Reranker** for better search results (the configuration section exists, the code does not).
 - **Privacy:** tool to anonymise users in the audit log.
 - Test **Entra login** against a real tenant and **Bedrock** against a real AWS account.
 

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -250,5 +251,92 @@ func TestSkillExport(t *testing.T) {
 	e.mustCall(t, cora, "block_skill", map[string]any{"skill": "code-review", "version": 1, "reason": "wrong advice", "confirm": true})
 	if res, _ := e.exportGet(t, "bob@x.de", "/skills/export/dev/code-review"); res.StatusCode != http.StatusNotFound {
 		t.Errorf("blocked version exported: %d", res.StatusCode)
+	}
+}
+
+// The audit log tells which route a client took: tool, resource read or skills/* method.
+func TestSkillAuditNamesTheRoute(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{
+		"anna@x.de": authz.Author, "cora@x.de": authz.Curator, "bob@x.de": authz.Reader,
+	})
+	anna, cora, bob := e.session(t, "anna@x.de"), e.session(t, "cora@x.de"), e.session(t, "bob@x.de")
+	e.releaseSkill(t, anna, cora, "code-review", nil)
+
+	uri := "skill://dev/code-review/SKILL.md"
+	e.rpc(t, "bob@x.de", "skills/list", map[string]any{})
+	e.rpc(t, "bob@x.de", "skills/get", map[string]any{"uri": uri})
+	if _, err := bob.ReadResource(e.ctx, &mcp.ReadResourceParams{URI: uri}); err != nil {
+		t.Fatal(err)
+	}
+	e.mustCall(t, bob, "get_skill", map[string]any{"skill": "code-review"})
+
+	rows, err := e.srv.Pool.Query(e.ctx, `SELECT action, details->>'via' FROM audit_log
+		WHERE action IN ('skill_list', 'skill_get') AND details ? 'via' AND user_id = (SELECT id FROM users WHERE email = 'bob@x.de') ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var action, via string
+		if err := rows.Scan(&action, &via); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, action+"/"+via)
+	}
+	if want := "skill_list/rpc skill_get/rpc skill_get/resource skill_get/tool"; strings.Join(got, " ") != want {
+		t.Errorf("audit routes: %v, want %s", got, want)
+	}
+}
+
+// skills/list pages by cursor, so every skill can be reached by listing, and a skill with many
+// versions does not take the place of others.
+func TestSkillsListPages(t *testing.T) {
+	old := maxSkillsListed
+	maxSkillsListed = 2
+	t.Cleanup(func() { maxSkillsListed = old })
+	e := setup(t, 0)
+	e.team(t, "dev", "Development", false, map[string]authz.Role{"anna@x.de": authz.Author, "cora@x.de": authz.Curator, "bob@x.de": authz.Reader})
+	anna, cora := e.session(t, "anna@x.de"), e.session(t, "cora@x.de")
+	for _, n := range []string{"alpha", "beta", "gamma", "delta", "omega"} {
+		e.releaseSkill(t, anna, cora, n, nil)
+	}
+	// alpha gets two more released versions
+	for v := 2; v <= 3; v++ {
+		e.mustCall(t, anna, "store_skill", map[string]any{"name": "alpha", "space": "dev", "files": skillPackage("alpha", fmt.Sprintf("Version %d", v), nil)})
+		e.mustCall(t, cora, "review_skill", map[string]any{"skill": "alpha", "version": v, "decision": "approve", "risk_class": "A", "confirm": true})
+		e.mustCall(t, cora, "publish_skill", map[string]any{"skill": "alpha", "version": v, "confirm": true})
+	}
+
+	var names []string
+	cursor, pages := "", 0
+	for {
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		res := e.rpc(t, "bob@x.de", "skills/list", params)["result"].(map[string]any)
+		pages++
+		for _, s := range res["skills"].([]any) {
+			names = append(names, s.(map[string]any)["frontmatter"].(map[string]any)["name"].(string))
+		}
+		next, _ := res["nextCursor"].(string)
+		if len(res["skills"].([]any)) > 2 || pages > 5 {
+			t.Fatalf("page %d: %v", pages, res)
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if got := fmt.Sprint(names); got != "[alpha beta delta gamma omega]" || pages != 3 {
+		t.Errorf("listed %s in %d pages", got, pages)
+	}
+	// a cursor this server did not issue is an invalid parameter
+	for _, bad := range []string{"not-base64!", "Zm9v"} {
+		if c := rpcCode(e.rpc(t, "bob@x.de", "skills/list", map[string]any{"cursor": bad})); c != -32602 {
+			t.Errorf("cursor %q: code %v", bad, c)
+		}
 	}
 }

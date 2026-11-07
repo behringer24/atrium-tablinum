@@ -36,7 +36,7 @@ func setup(t *testing.T, ttl time.Duration) env {
 
 func (e env) user(t *testing.T, email string) users.User {
 	t.Helper()
-	u, err := e.users.Provision(e.ctx, users.Identity{IDP: "g", Subject: email, Email: email})
+	u, err := e.users.Provision(e.ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: email, Email: email})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestDisabledUserHasNoRoles(t *testing.T) {
 	if r := e.roles(t, anna); len(r) != 0 || r.Can(sp.ID, authz.Reader) {
 		t.Errorf("roles of a disabled user: %v", r)
 	}
-	if _, err := e.users.Provision(e.ctx, users.Identity{IDP: "g", Subject: "anna@x.de", Email: "anna@x.de"}); err != users.ErrDisabled {
+	if _, err := e.users.Provision(e.ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "anna@x.de", Email: "anna@x.de"}); err != users.ErrDisabled {
 		t.Errorf("login of disabled user: %v", err)
 	}
 }
@@ -203,7 +203,7 @@ func TestCacheExpiryPicksUpDirectChanges(t *testing.T) {
 	ctx := context.Background()
 	us, ss := users.New(pool, users.Options{PersonalEnabled: true}), spaces.New(pool)
 	ch := authz.NewChecker(pool, 50*time.Millisecond)
-	anna, _ := us.Provision(ctx, users.Identity{IDP: "g", Subject: "a", Email: "a@x.de"})
+	anna, _ := us.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "a@x.de"})
 	sp, _ := ss.CreateTeam(ctx, spaces.CreateParams{Slug: "t1", Name: "T"})
 
 	r, _ := ch.EffectiveRoles(ctx, anna)

@@ -14,6 +14,7 @@ import (
 func (s *Server) registerCuratorTools(ms *mcp.Server) {
 	addTool(s, ms, "review_knowledge", "Review draft", tierCurator, true, s.reviewKnowledge)
 	s.registerCuratorSkillTools(ms)
+	s.registerEditionTools(ms, tierCurator)
 }
 
 type reviewIn struct {

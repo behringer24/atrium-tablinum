@@ -31,7 +31,11 @@ func (s *Store) SaveHandoff(ctx context.Context, a Actor, title, content string,
 	if err != nil {
 		return Document{}, err
 	}
-	if err := s.checkQuota(ctx, a, space, 0, int64(len(n.Content))); err != nil {
+	hsp, err := s.spaces.GetByID(ctx, space)
+	if err != nil {
+		return Document{}, err
+	}
+	if err := s.checkQuota(ctx, hsp, 0, int64(len(n.Content))); err != nil {
 		return Document{}, err
 	}
 	if ttlDays < 1 {
@@ -74,10 +78,7 @@ func (s *Store) ListHandoffs(ctx context.Context, a Actor, limit int) ([]Documen
 		limit = 20
 	}
 	sc := a.Scope()
-	rows, err := s.pool.Query(ctx, `
-SELECT d.id, d.space_id, d.kind, d.title, '', d.tags, d.status, '',
-       d.author_id, au.email::text, d.source, d.version, d.expires_at, d.created_at, d.updated_at
-FROM documents d JOIN users au ON au.id = d.author_id
+	rows, err := s.pool.Query(ctx, `SELECT `+docListColumns+` `+docFrom+`
 WHERE `+visibility.Clause("d", 1, 2, 3)+` AND d.kind = 'handoff' AND d.space_id = $4
 ORDER BY d.created_at DESC LIMIT $5`,
 		nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator), *a.User.PersonalSpaceID, limit)

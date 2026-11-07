@@ -3,6 +3,8 @@ package mcpserver
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -30,7 +32,8 @@ func DevVerifier(store *users.Store, token, email string) auth.TokenVerifier {
 			id = u.ID.String()
 		})
 		if err != nil {
-			return nil, err
+			slog.Error("Dev account could not be provisioned", "error", err)
+			return nil, errors.New("token check failed")
 		}
 		return &auth.TokenInfo{UserID: id, Expiration: time.Now().Add(time.Hour)}, nil
 	}

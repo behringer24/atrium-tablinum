@@ -26,7 +26,7 @@ A package is a set of text files. Limits: at most 40 files, 64 KB per file, 256 
   ---
   ```
 
-  `name` must equal the skill name (lower case letters, digits, single hyphens, at most 64 characters). `description` is required (at most 1024 characters); it is what assistants and users see in the list.
+  The block ends at the first line that is exactly `---` (a line like `----` or `--- x` does not end it), the way common clients read it, so that Atrium and a client see the same name and description. `name` must equal the skill name (lower case letters, digits, single hyphens, at most 64 characters). `description` is required (at most 1024 characters); it is what assistants and users see in the list.
 - Other files are referenced from `SKILL.md`, for example `references/checklist.md`. Allowed types: `.md`, `.txt`, `.json`, `.yaml`, `.yml`, `.csv`.
 - Paths are relative with forward slashes. Empty, hidden (leading dot) and relative (`.`, `..`) segments, a `scripts/` directory and duplicates that differ only in case are refused.
 - The files are scanned for credentials (the same check as for knowledge entries) and rejected if they contain any.
@@ -77,27 +77,41 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 
 | Tool | Who | Purpose |
 |---|---|---|
-| `list_skills` | everyone | Skills the caller can use (released versions); with `all_versions=true` also the drafts and blocked versions the caller may see, with `archived=true` the archive (curators and admins) |
+| `list_skills` | everyone | Skills the caller can use (released versions). Filters: `tag`, `query` (text in name, description or tags), `space`, `name`, `limit` (default 50, at most 200); `status` shows versions in one state (`draft` = waiting for review; drafts are visible to the author and the curators only); `all_versions=true` also the drafts and blocked versions the caller may see; `archived=true` the archive (curators and admins) |
 | `get_skill` | everyone | `SKILL.md`, file list with hashes, version, digest, risk class. Without a version: the newest released one |
 | `get_skill_resource` | everyone | One file of a skill, checked against its hash |
-| `store_skill` | authors and up | Saves the package as a new version or revises the author's own draft |
-| `review_skill` | curators | Approve (with confirmation and risk class) or reject (with note) |
+| `store_skill` | authors and up | Saves the package as a new version or revises the author's own draft. `tags` are applied when the skill is new |
+| `tag_skill` | creator of the skill, curators | Replaces the tags of a skill without a new version or review |
+| `move_skill` | curators of the old space who may also write in the new one | Files the newest released version in another space; a release never travels along (see below) |
+| `review_skill` | curators | Approve (with confirmation, risk class and the digest of the version that was read) or reject (with note). An approval is refused if the author changed the draft after it was read |
 | `publish_skill` | curators | Release an approved version (confirmation required) |
 | `block_skill` | curators | Withdraw a version (reason and confirmation required) |
 | `unblock_skill` | space admins | Lift a block (reason and confirmation required); the version is approved again, not released |
 | `archive_skill`, `unarchive_skill` | curators | Hide a whole skill from everyone else, or bring it back (confirmation required) |
 | `delete_skill` | instance admins, owners of a personal space | Delete a skill with all versions for good (confirmation required) |
 
-All of them work in every MCP client. A client that does not know any skills extension can still use a skill: the assistant loads it through the tools. Released skills are announced in the instructions each connection receives (name, space, description, at most 25 entries), because the assistant would not know otherwise that they exist. It is told to use one only when the user asks or agrees.
+All of them work in every MCP client. A `/name` command a user types (e.g. `/helloworld`) is meant as a skill: the descriptions of `list_skills` and `get_skill` say so in their first words, because clients that load tools on demand show an assistant little more than that before the server instructions arrive (a description overridden with `tools.descriptions` loses the hint). A client that does not know any skills extension can still use a skill: the assistant loads it through the tools. Released skills are announced in the instructions each connection receives (name, space, description, at most 25 entries), because the assistant would not know otherwise that they exist. It is told to use one only when the user asks or agrees.
 
 To stay on the version it started with, an assistant passes the exact version to `get_skill` and `get_skill_resource`. The default (newest released version) is only a lookup aid.
+
+## Names
+
+A name is unique within a space. `store_skill` under the name of a skill the caller can see (one with a released version, one with a version of their own, or any skill of a space they curate) adds a new version to it. If the name is held by something the caller cannot see, an unreleased draft of somebody else or an archived skill, the answer is only that the name is not available: nothing is attached to it, and the message does not say which of the two it is. `move_skill` answers the same way when the target holds the name.
+
+## Tags
+
+A skill has tags like a knowledge entry: normalised (lower case, no duplicates, at most 20 tags of 50 characters), shown by `list_skills` and `get_skill`, and searchable with `list_skills tag=...`. Tags must not contain line breaks, control or invisible characters, and are checked for credentials. They are deliberately not part of the instructions an assistant receives: they are set without a review, and the instruction block only carries what a curator approved. They belong to the skill, not to a version: a version is frozen once it leaves draft, and fixing a keyword must not need a new version and a new review. Tags are no part of the digest and no instruction. `store_skill` applies them when it creates the skill; later changes go through `tag_skill`, which the author of the newest released version (as long as nothing is released: the creator of the skill) and curators and admins of the space (in a personal space the owner) may call. Retagging therefore follows whoever speaks for the skill as it is released. Every change is audited as `skill_tag`.
+
+## Moving a skill
+
+`move_skill` takes a skill to another space. Because a skill is an instruction and the approval of one space says nothing about another space's readers, no release travels with it. Only the newest released version is carried over, as **new skill with the same files and digest in the target space**: a draft that the curators there review and release (the mover cannot approve it, like any author; instance admins can), in a personal space the owner's own copy, released at once. Tags go along. The old skill is archived, not deleted, so its versions and audit trail stay; `keep_source=true` leaves it active as well. The caller needs curator rights in the old space and author rights in the new one, the name must be free there, and the quotas of the target apply. Unreleased versions stay behind with the old skill. The audit log gets `skill_move_out` (old space) and `skill_move_in` (new space), both with name, digest and the other space.
 
 ## MCP Skills extension (SEP-2640)
 
 Atrium declares the extension `io.modelcontextprotocol/skills` and serves released skills as resources, so a client that supports it can list and load them like its own skills without the tools. The tools stay as they are: a client that does not know the extension keeps working.
 
 - **URI:** `skill://<space-slug>/<skill>/<file>`, for example `skill://dev/code-review/SKILL.md`. The space slug is the organisational prefix the extension allows, because a skill name is unique only within one space. `list_spaces` shows the slugs; the slug of a personal space is `personal-<id>`.
-- **`skills/list`** returns the newest released version of every skill the caller may read: the front matter of `SKILL.md` verbatim, and the complete file list with `sha256:` digest and size per file. At most 200 skills are listed; the extension allows a partial list, and every skill stays readable by its URI. **`skills/get`** returns the same entry for one `SKILL.md` URI. Anything unknown, not released, archived, blocked or outside the caller's spaces is the same error (`-32602`).
+- **`skills/list`** returns the newest released version of every skill the caller may read: the front matter of `SKILL.md` verbatim, and the complete file list with `sha256:` digest and size per file. A page holds at most 200 skills, one entry each (the newest released version), in the order of name and space; the result carries `nextCursor` while more follow, and the request takes it back as `cursor`, so every skill can be reached by listing (a cursor the server did not issue is `-32602`). Every skill also stays readable by its URI. **`skills/get`** returns the same entry for one `SKILL.md` URI. Anything unknown, not released, archived, blocked or outside the caller's spaces is the same error (`-32602`).
 - **`resources/read`** returns one file (`text/markdown` for `.md`) with version and digest in `_meta`. Directory reads (`resources/directory/read`) are not offered.
 - **Same rules as the tools:** space rights, released status, archive and block, hash check of every file and rate limit apply to every call, and reads are audited like `get_skill`. Only the newest released version is addressable. A new release changes the digests in the entry, which a host has to approve again; the tools remain the way to ask for an exact old version.
 - **Scripts stay out:** Atrium still stores text only and runs nothing; `resources` is always the complete list, never `"dynamic"`.
@@ -110,13 +124,34 @@ Whether a given client uses the extension is up to the client. The extension has
 
 An export is a copy: blocking or archiving cannot recall it. A client that installs skills pins the version and digest it exported and decides itself when to fetch again (see the roadmap for the planned sync adapter).
 
+## Skills shipped with Atrium
+
+The folder [`skills/`](../skills/README.md) of the repository holds two skills for the care of the knowledge base: `knowledge-ingest` turns a source the user provides into entries (it compares with what Atrium knows, proposes new entries and updates, and saves what the user confirms), and `knowledge-lint` checks a space for outdated entries, duplicates, contradictions, broken references, sensitive content and waiting drafts. Both use only the knowledge tools, never delete or approve, and change nothing without the user's confirmation.
+
+Atrium does **not** install them: an organisation stores a skill with `store_skill` in a space of its choice, a curator other than the one who stored it reviews it (risk class B) and releases it, like any skill of its own. Tests check with every build that each folder is a valid package and that every tool and parameter it names exists. Installation, updates and limits: [skills/README.md](../skills/README.md).
+
 ## Audit
 
-`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept.
+`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept. A refusal because of the caller's role, a required approval or a rate limit is logged as `denied` with the tool and the reason, no arguments, once a minute per user, tool and reason.
 
+Every read carries `via` in its details, the route the client took: `tool` (`get_skill`, `get_skill_resource`), `resource` (`resources/read` of a `skill://` URI), `rpc` (`skills/get`) or `export` (the ZIP download). `skills/list` is written as `skill_list` with the number of skills offered. So `admin_audit_log action=skill_*` shows whether a client uses the SEP-2640 methods or the tools. Calls through `skills/*` carry the client `mcp-skills`, as that route has no MCP session to read the client name from.
+
+To see the requests themselves, set `instance.log_level: debug`: the server then logs one line per MCP request (`MCP request`, with `method`, `tool`, `uri`, `client_info` on `initialize` and `user_agent`), e.g. `docker logs <container> 2>&1 | grep 'MCP request' | grep -E 'skills/|resources/read|get_skill'`.
+
+
+### Watching skills
+
+Instance admins query the log with `admin_audit_log`; besides user, action, space and time it filters by `skill` (the skill name, team spaces only: actions in personal spaces carry no names) and `client` (`chatgpt`, `claude`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`). Useful questions:
+
+- Everything that happened to one skill: `skill=code-review`.
+- Who released what, and who approved their own: `action=skill_publish`, `action=skill_approve` (look for `self_approved`).
+- Who reads skills and by which route: `action=skill_get` or `skill_*` with `client=...`, and `via` in the details.
+- What left or entered a space by moving: `action=skill_move*`.
+- Blocks and deletions: `action=skill_block`, `skill_unblock`, `skill_delete`.
 ## Limits to know
 
 - Blocking, archiving and deleting stop new reads. A client that already holds a copy keeps it until it fetches again; Atrium cannot recall it.
 - How reliably a given assistant follows a skill it loaded through a tool is up to the client and has to be tested per client. Models usually treat tool results as data, which is why the tool descriptions and notices say when a skill is to be followed.
-- Skills have no search: find them with `list_skills` or the instructions.
+- Skills have no semantic search: find them with `list_skills` (`query`, `tag`, `status`) or the instructions.
+- **Quotas** (0 = unlimited): a space holds at most a number of skills and a number of bytes of skill files over all versions, and one skill has at most a number of versions (drafts and blocked ones count, a draft the author revises in place adds none). The defaults are in `config.yaml` (`skills:` `personal_max_skills` 50, `personal_max_bytes` 5 MB, `team_max_skills` 300, `team_max_bytes` 50 MB, `max_versions_per_skill` 100). An **instance admin changes them at runtime** with `admin_quotas` for all personal spaces, all team spaces, one user (personal space) or one space, without a restart; the change applies to the next save. A save over the limit is refused with the reason. Old versions cannot be removed one by one; a skill that reaches the version limit can only continue under a new name after an instance admin raises the limit or deletes the old skill.
 - Planned next: a sync adapter for clients that install skills (with update and revocation rules), and scripts. See the [roadmap](../ROADMAP.md).
