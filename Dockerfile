@@ -1,6 +1,6 @@
 # The build runs on the builder's platform and cross-compiles for the target platform, so that
 # arm64 images are produced without emulating the Go compiler (docker buildx --platform ...).
-FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
 ARG TARGETOS TARGETARCH
 # Release version for server_info; without a value the binary reports "dev".
 ARG VERSION=dev
