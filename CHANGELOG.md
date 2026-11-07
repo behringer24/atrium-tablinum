@@ -4,6 +4,8 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-07
+
 ### Added
 - **Changing the embedding model** (migration 12): vector search and the duplicate check use only vectors of the configured model; sections of another model are found by full text until they are rebuilt. New tool `admin_reembed` (instance admin): `status` shows how many sections are not embedded with the configured model, `start` (after confirmation, audited) rebuilds them in the background with the periodic task `reembed`, batch by batch and across restarts, `stop` pauses it. `admin_health` has an informational check `embeddings`, and the server log warns at start. A model with another dimension needs the new setting `embedding.allow_dimension_change: true` for one start, which rebuilds the vector column and drops every vector (contents stay). See [docs/embedding.md](docs/embedding.md#dimension-and-changing-the-model).
 - **Knowledge types, responsible people and review dates** (migration 11): an entry has a `type`, `rule` (binding), `documentation` (default), `recommendation` or `experience`, shown in search hits, entries, lists and `whats_new` and filterable (`search_knowledge types`, `list_knowledge type`); assistants are told to name it, a rule being binding and the last two not. Only curators and admins of a team space set or remove `rule` and change or move an entry of type rule, also in spaces without approval; the type is recorded in every version. An entry can name a responsible person (`owner`, team spaces, active and able to read the space; never derived from the author) and a review date (`review_due`); overdue reviews show as `review_overdue`, in `list_knowledge review=due` and as `reviews_due` per space in `whats_new` for curators, and nothing is hidden or deleted. Changing only these two writes no version. New tool `reassign_owner` (space admins for their spaces, instance admins for all team spaces, with confirmation) hands every entry of one person to another, skipping spaces the new person cannot read; audited as `owner_reassign`. See [docs/design/knowledge-metadata.md](docs/design/knowledge-metadata.md).
@@ -34,6 +36,10 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 ### Changed
 - **Images are built by the maintainer's build pipeline:** the workflow of this repository (`.github/workflows/test.yml`) runs the tests and reports a passed run to that pipeline; it no longer builds or prunes images itself, and `cleanup.yml` is gone. Tags of the form `vX.Y.Z` and pushes to `dev` work as before. `docs/release.md` describes the flow.
 - **The guided offboarding is a Pro feature** (licence feature `offboarding`): `admin_transfer_personal_space` and `reassign_owner` and the hints and the `responsible_for` count in the answer of `admin_offboard_user` now belong to the Pro build. The Community edition keeps `admin_offboard_user` (locks the account, ends its sessions, deletes its handoffs, reports the personal space and its deletion date) and `admin_reactivate_user`; the responsible person of an entry is changed entry by entry with `update_knowledge`. A Pro build without the feature refuses the two tools with a message. New hook `editionOffboarded`; `editionTools` are now called once for every tier of tools.
+- Everything is English now: documentation, code comments, tool descriptions, the MCP instructions, error and confirmation messages, log texts and the browser pages of the login flow. Assistants still answer users in the user's language.
+- The displayed name of a personal space is "My personal space". The space matcher keeps accepting the German aliases ("mein persönlicher Bereich" and others) and also accepts English ones ("my personal space", "my space", "private").
+- Log attribute keys are English (`duration`, `count`, `stored`, `configured`). Adjust log searches and alerts that used the German keys.
+- The reason of `login_denied` audit entries is English. Existing entries and stored data keep their German text.
 
 ### Fixed
 - **A changed TEI model went unnoticed:** TEI takes its model from `--model-id`, and Atrium recorded the name from `embedding.model` with every vector, so changing one without the other stored vectors of one model under the name of another, and `admin_reembed` found nothing to rebuild. With the `tei` backend Atrium now asks the server which model it serves (`GET /info`, at most once a minute) before embedding and with every readiness check. While the names differ, it embeds nothing: saving fails with a hint to tell an instance admin, search falls back to full text, `/readyz` is not ready and `admin_health` (check `embedder`) names both models. Servers that do not name their model are accepted; `embedding.options.check_model: false` switches the check off. See [docs/embedding.md](docs/embedding.md#tei).
@@ -69,12 +75,6 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - Migration `00010` creates the `quotas` table and moves the per-user limits of the `users` table into it. **Team spaces are limited from now on** (defaults: 5000 entries, 200 MB, 300 skills, 50 MB of skill files per space). A team space that already holds more cannot take new content until an instance admin raises its limit with `admin_quotas` or you change `spaces.team` and `skills.team_*` in `config.yaml`; nothing is deleted.
 - Operators of an **Entra** provider who rely on `bootstrap_admins` or `link_accounts_by_email` must set `email_trusted: true` on that provider (only for a tenant without guests and without self-editable mail attributes), otherwise those logins are refused. Google and OIDC providers that send `email_verified` are unaffected.
 - The server now refuses to start with `dev_mode` on a non-loopback `instance.listen` or with an `allowed_redirect_uris` entry that has a `*` without a `/` before it (see the security notes). `/readyz` no longer says whether the database or the embedder is the problem; look at `admin_health` or the log.
-
-### Changed
-- Everything is English now: documentation, code comments, tool descriptions, the MCP instructions, error and confirmation messages, log texts and the browser pages of the login flow. Assistants still answer users in the user's language.
-- The displayed name of a personal space is "My personal space". The space matcher keeps accepting the German aliases ("mein persönlicher Bereich" and others) and also accepts English ones ("my personal space", "my space", "private").
-- Log attribute keys are English (`duration`, `count`, `stored`, `configured`). Adjust log searches and alerts that used the German keys.
-- The reason of `login_denied` audit entries is English. Existing entries and stored data keep their German text.
 
 Planned work is listed in the [ROADMAP.md](ROADMAP.md).
 
@@ -120,7 +120,8 @@ Planned work is listed in the [ROADMAP.md](ROADMAP.md).
 
 First release: MCP server in Go with spaces and roles, hybrid search (pgvector and full text), OAuth 2.1 with Google, Entra and generic OIDC, approval workflow, audit log, offboarding and a selectable embedding backend (TEI, OpenAI compatible, Bedrock). The image is published to the GitHub Container Registry.
 
-[Unreleased]: https://github.com/behringer24/atrium-tablinum/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/behringer24/atrium-tablinum/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/behringer24/atrium-tablinum/compare/v0.1.0...v0.1.1
