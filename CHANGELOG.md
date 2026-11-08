@@ -5,6 +5,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 ## [Unreleased]
 
 ### Added
+- **Guide for Pro licensees:** `docs/pro/pro-edition.md` (with PDF) describes what a licensee needs: reading, installing, renewing and removing the licence, what `not covered` and the reminders mean, the user limit and the guided offboarding with `admin_transfer_personal_space` and `reassign_owner`.
 - **Build from source:** `docs/release.md` describes how to build the Community edition from a checkout, with Docker or with Go.
 
 ### Changed

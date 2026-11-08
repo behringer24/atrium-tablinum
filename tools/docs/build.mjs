@@ -1,4 +1,4 @@
-// Builds a PDF next to every Markdown file given on the command line (default: docs/user/*.md).
+// Builds a PDF next to every Markdown file given on the command line (default: docs/user/*.md and docs/pro/*.md).
 // Markdown is the source; the PDF is generated from it with marked and the headless print
 // function of Chrome or Edge. Run it with scripts/build-docs.sh.
 import { Marked } from "marked";
@@ -113,7 +113,7 @@ function render(mdFile) {
 }
 
 const args = process.argv.slice(2);
-const files = (args.length ? args : readdirSync(path.join(root, "docs", "user")).filter((f) => f.endsWith(".md")).map((f) => path.join("docs", "user", f)))
+const files = (args.length ? args : ["user", "pro"].flatMap((d) => readdirSync(path.join(root, "docs", d)).filter((f) => f.endsWith(".md")).map((f) => path.join("docs", d, f))))
   .map((f) => path.resolve(root, f));
 const exe = browser();
 const tmp = mkdtempSync(path.join(tmpdir(), "atrium-docs-"));

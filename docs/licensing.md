@@ -21,7 +21,7 @@ Atrium Tablinum comes in two editions.
 | Guided offboarding (handing a personal space on, reassigning responsibilities) | | yes |
 | Further features for scale, integration and governance | | planned, see the [roadmap](../ROADMAP.md) |
 
-Each feature of the guides says which edition has it.
+Each feature of the guides says which edition has it. How a Pro licence is installed and what the guided offboarding does: [Atrium Pro](pro/pro-edition.md).
 
 ## FAQ
 

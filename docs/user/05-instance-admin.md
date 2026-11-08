@@ -116,7 +116,7 @@ The full procedure and the data protection notes are in [Offboarding](../offboar
 
 1. **Before the last day:** the person moves what belongs to the team out of their personal space.
 2. **Lock:** *"Offboard anna@example.com."* (`admin_offboard_user`, after confirmation). The account is locked at once, all tokens are revoked, handoffs are deleted. The personal space stays private; you see counts and the deletion date.
-3. **Hand the content on:** in the Community edition a personal space cannot be handed on by an admin, so ask the person to move what belongs to the team before the last day, or lengthen the deadline of step 4. The Pro edition adds guided help for it.
+3. **Hand the content on:** in the Community edition a personal space cannot be handed on by an admin, so ask the person to move what belongs to the team before the last day, or lengthen the deadline of step 4. The Pro edition adds guided help for it ([Atrium Pro](../pro/pro-edition.md#guided-offboarding)).
 4. **Deadline:** personal spaces of locked accounts are deleted after `spaces.personal.retention_days_after_offboarding` days (default 30). `admin_reactivate_user` lifts the lock again and ends the deadline.
 5. **Responsibilities:** entries that name the person as responsible keep the name, marked `former`, until somebody takes over. A curator or the author changes the responsible person entry by entry (`update_knowledge` with `owner`); the Pro edition can hand them all on in one step.
 
@@ -249,7 +249,7 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 
 The **Community** edition is for **8 active accounts** and needs nothing else. It counts registered accounts that are active at the same time, not connected assistants. Locked accounts (after `admin_offboard_user`) do not count, so offboarding frees the seat, and reactivating needs room again. A new account beyond the limit is refused with a message; existing accounts are never affected, so nobody is locked out. The content stays readable and exportable in every case.
 
-For more users and extra features, see [Editions](../licensing.md).
+For more users and extra features, see [Editions](../licensing.md); with a Pro licence, [Atrium Pro](../pro/pro-edition.md) describes installing and renewing it.
 
 ### Separate database accounts
 

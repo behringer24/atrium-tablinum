@@ -119,7 +119,7 @@ Ask an instance admin when you need to:
 **Changing someone's role.** Add them again with the new role. For promotion to curator, check that they know the review rules ([curator guide](03-curator.md)).
 
 **When someone leaves the team.**
-1. Hand over what they answer for: *"Which entries in Support is maria@example.com responsible for?"* (`list_knowledge` with `owner`). A curator or the author then changes the responsible person entry by entry (`update_knowledge` with `owner`); the Pro edition can hand them all on in one step.
+1. Hand over what they answer for: *"Which entries in Support is maria@example.com responsible for?"* (`list_knowledge` with `owner`). A curator or the author then changes the responsible person entry by entry (`update_knowledge` with `owner`); the Pro edition can hand them all on in one step ([Atrium Pro](../pro/pro-edition.md#handing-on-responsibilities-space-admin-instance-admin)).
 2. Remove them from the space.
 3. If they leave the organisation, an instance admin locks the account and decides about their personal space ([Offboarding](../offboarding.md)). Ask them to move team knowledge out of their personal space first. Locked people stay members (so that a reactivation restores everything) but have no rights; `space_members` and `space_contacts` mark them `former`. Entries that name them as responsible keep the name, marked `former`, until you reassign them.
 4. Check that the space still has two **active** curators and an admin.
