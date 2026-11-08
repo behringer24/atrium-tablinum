@@ -235,7 +235,7 @@ type serverInfoOut struct {
 	Line      string `json:"line,omitempty"`
 	LineDate  string `json:"line_date,omitempty"`
 	BuildDate string `json:"build_date,omitempty"`
-	// Edition in effect: community, or the edition of the Pro build.
+	// Edition in effect.
 	Edition string `json:"edition,omitempty"`
 }
 

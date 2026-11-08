@@ -250,7 +250,7 @@ const AREAS = [
 
 const TABLES = [
 {name:"meta", area:"meta", mig:[1],
- purpose:"Key-value table for instance-wide settings: embedding model and dimension, the licence installed at runtime (Pro build only) and the instance admin's context text.",
+ purpose:"Key-value table for instance-wide settings: embedding model and dimension and the instance admin's context text.",
  code:["internal/db/db.go","internal/mcp/context.go"],
  cols:[
   {n:"key", t:"text", nn:1, pk:1},
@@ -259,7 +259,6 @@ const TABLES = [
  idx:[{impl:1, d:"PRIMARY KEY (key)"}],
  notes:[
   "<code>embedding_dimensions</code> and <code>embedding_model</code> are written by <code>internal/db</code> at the first start. Every start compares the stored dimension with <code>embedding.dimensions</code>; if they differ, the server does not start.",
-  "<code>license</code> holds the licence installed at runtime; only the Pro build writes it (<code>admin_license</code> installs or removes it, code in the private repository). The Community build never creates this row.",
   "<code>instance_context</code> is the instance admin's context text for the assistants, at most 2000 characters (<code>admin_context</code>)."]},
 
 {name:"users", area:"users", mig:[1,10],

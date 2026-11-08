@@ -182,7 +182,7 @@ Your personal skills are released at once and visible only to you. This is a goo
 3. File the same package in the team space. Message a curator.
 4. After approval, announce the skill to your team and collect feedback; ship fixes as new versions.
 
-**Handing over before you leave or change teams.** Move your team-relevant entries to the right space (*"Move all entries about X to Operations"*, one at a time with confirmation), or ask a curator or your administrator to arrange a transfer.
+**Handing over before you leave or change teams.** Move your team-relevant entries to the right space (*"Move all entries about X to Operations"*, one at a time with confirmation). What stays in your personal space is deleted after you leave.
 
 **Keeping content fresh.** Once a quarter ask *"List my entries in Support"*, check the dates and update or archive the stale ones.
 

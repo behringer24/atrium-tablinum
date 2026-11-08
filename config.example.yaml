@@ -10,7 +10,7 @@ instance:
   base_url: "https://knowledge.example.com"   # public address, no matter which proxy sits in front
   listen: ":8080"
   dev_mode: false                         # local only (base_url on localhost and listen on 127.0.0.1); static test token
-  # dev_token: "mindestens-16-zeichen"   # mandatory with dev_mode, is neither generated nor logged
+  # dev_token: "at-least-16-characters"   # mandatory with dev_mode, is neither generated nor logged
   # Proxies whose X-Forwarded-* headers are trusted (IP or CIDR).
   # Leave empty if the server is reachable directly.
   # Bundled nginx in the Compose network: ["172.30.0.0/24"]; own proxy: its IP.
@@ -134,12 +134,6 @@ skills:
   # All limits in this file are defaults. An instance admin overrides them at runtime (tool
   # admin_quotas) for all personal spaces, all team spaces, one user or one space; the change
   # applies to the next write and survives a restart. docs/user/05-instance-admin.md.
-
-# The licence of the Pro edition (docs/licensing.md). Only the Pro build reads this section.
-# A licence an instance admin installs at run time (admin_license) takes precedence and needs no
-# restart; without any licence the Pro build runs as Community (8 active accounts).
-# license:
-#   file: "/etc/atrium/licence.txt"
 
 tools:
   descriptions: {}

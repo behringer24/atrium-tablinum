@@ -1,9 +1,8 @@
-// Package edition is the seam between this public build (Community) and the Pro build, which is
-// the same tree with extra files laid over it by a private pipeline.
+// Package edition is the extension point of the build: it names the edition in effect and the number
+// of active user accounts it is for.
 //
-// The public tree is complete and tested on its own: every hook here has a free default. The Pro
-// files register themselves from init() functions and replace the defaults; nothing in the public
-// tree knows what they do. Keep the hooks few: every hook is a promise to the private side.
+// This tree is complete and tested on its own: every hook has a default that needs nothing else.
+// Keep the hooks few.
 package edition
 
 import (
@@ -28,7 +27,7 @@ type Env struct {
 	BaseURL string // instance.base_url
 	Log     *slog.Logger
 	// HasSection says whether config.yaml has a "license" section; Section decodes it into a struct.
-	// The section is opaque to the public build: only the Pro build knows its keys.
+	// The section is opaque here.
 	HasSection bool
 	Section    func(into any) error
 }
@@ -60,7 +59,7 @@ type StartFunc func(ctx context.Context, env Env) (Running, error)
 
 var start StartFunc = startCommunity
 
-// Register replaces the Community edition. Only the Pro files call it, from init().
+// Register replaces the default edition. It is meant to be called from init().
 func Register(f StartFunc) { start = f }
 
 // Start starts the edition of this build.
@@ -73,7 +72,7 @@ func (community) MaxUsers() int { return CommunityMaxUsers }
 
 func startCommunity(_ context.Context, env Env) (Running, error) {
 	if env.HasSection {
-		return nil, errors.New("config: the \"license\" section is read by the Pro build only (remove the section, or run the Pro build)")
+		return nil, errors.New("config: the \"license\" section is not supported by this build (remove the section)")
 	}
 	return community{}, nil
 }

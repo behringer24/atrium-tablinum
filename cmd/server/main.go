@@ -102,7 +102,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	}
 	log.Info("Embedding backend", "backend", cfg.Embedding.Backend, "model", cfg.Embedding.Model, "dimensions", cfg.Embedding.Dimensions)
 
-	// The edition of this build: Community, or what the Pro files register (internal/edition).
+	// The edition of this build (internal/edition).
 	ed, err := edition.Start(ctx, edition.Env{Pool: pool, BaseURL: cfg.Instance.BaseURL, Log: log,
 		HasSection: !cfg.License.IsZero(), Section: cfg.License.Decode})
 	if err != nil {

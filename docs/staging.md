@@ -41,4 +41,4 @@ In addition, check once that the HNSW index is used (`EXPLAIN` of the search que
 
 ## Known open points
 
-Client ID Metadata Documents, reranker and re-embedding jobs are not implemented. The approval workflow covers drafts, curator review and returning entries (see [approval.md](approval.md)); a draft alongside the approved version and notifications are still missing. Planned work is listed in the [roadmap](../ROADMAP.md).
+Client ID Metadata Documents and the reranker are not implemented. The approval workflow covers drafts, curator review and returning entries (see [approval.md](approval.md)); a draft alongside the approved version and notifications are still missing. Planned work is listed in the [roadmap](../ROADMAP.md).

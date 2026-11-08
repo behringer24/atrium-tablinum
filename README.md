@@ -22,7 +22,7 @@ The first model load of `tei-embed` takes a few minutes; until then `/readyz` re
 
 Releases and the prebuilt image from the GitHub Container Registry: [docs/release.md](docs/release.md).
 
-Editions (Community and Pro, what each has, how a licence works): [docs/licensing.md](docs/licensing.md).
+Editions (Community and Pro, what each has): [docs/licensing.md](docs/licensing.md). Building the Community edition yourself: [docs/release.md](docs/release.md#build-from-source-community).
 
 Contributing: [CONTRIBUTING.md](CONTRIBUTING.md); contributions need the [Contributor License Agreement](CLA.md).
 

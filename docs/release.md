@@ -1,6 +1,6 @@
 # Releases and image
 
-A release is a tag of the form `vX.Y.Z` on this repository, also as a pre-release (`v1.2.0-rc1`). The workflow `.github/workflows/test.yml` runs `gofmt`, `go vet`, `go test ./...` against a Postgres with pgvector and `govulncheck` for every tag and every push to `dev`. The container images are built and published by the maintainer's build pipeline once these checks have passed, for `linux/amd64` and `linux/arm64`, as `ghcr.io/behringer24/atrium-tablinum`.
+A release is a tag of the form `vX.Y.Z` on this repository, also as a pre-release (`v1.2.0-rc1`). The workflow `.github/workflows/test.yml` runs `gofmt`, `go vet`, `go test ./...` against a Postgres with pgvector and `govulncheck` for every tag and every push to `dev`. The container images are built and published by the maintainer once these checks have passed, for `linux/amd64` and `linux/arm64`, as `ghcr.io/behringer24/atrium-tablinum`.
 
 | Tag in the repo | Image tags |
 |---|---|
@@ -16,10 +16,6 @@ git push origin v0.1.0
 ```
 
 The progress of the tests is visible under "Actions" in this repo. The finished package appears under "Packages" and is linked to the repo through the label `org.opencontainers.image.source`.
-
-## Release lines and the licence
-
-Every build knows the release line it belongs to from `internal/product/line.txt` (embedded; the line, the day it was released, optionally an epoch). A licence covers builds whose line is dated on or before its `maintenance_until`, so patch releases of a line carry the date of `X.Y.0`. **When a new line starts, set `line` and `date` in the commit that gets the tag `vX.Y.0`; a patch branch keeps the file and a backport never takes it along.** Forgetting it would give the new line away to every customer of the previous one. The image build also passes the commit date (`BUILD_DATE`), shown by `server_info` for support and never used for licensing. Details: [licensing](licensing.md).
 
 ## Canary builds
 
@@ -51,9 +47,33 @@ Things to know:
 - Every build leaves a `canary-<short sha>` version behind, plus one untagged entry per platform (amd64, arm64) that belongs to it. Those untagged entries are the per-platform images of the tagged one, not garbage: never delete them by hand or with a rule for "all untagged", the tagged image would stop working.
 - A canary build is untested by users. Run it on a test server, not where people work.
 
+## Build from source (Community)
+
+This repository is complete: a build of it is the Community edition. You need Git and either Docker or Go (the version in `go.mod`, currently 1.26).
+
+With Docker, from a checkout of a release tag (use `main` or `dev` only for testing):
+
+```bash
+git clone https://github.com/behringer24/atrium-tablinum.git
+cd atrium-tablinum
+git checkout v0.4.0
+docker build --build-arg VERSION=0.4.0 -t atrium-tablinum:0.4.0 .
+```
+
+`docker compose up -d` builds the same image by itself (`build: .` in `docker-compose.yml`), so a separate `docker build` is only needed to name or reuse the image. Without `VERSION`, `server_info` reports `dev`. `docker buildx build --platform linux/amd64,linux/arm64 ...` builds for both platforms.
+
+Without Docker:
+
+```bash
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o atrium-tablinum ./cmd/server
+./atrium-tablinum -config config.yaml
+```
+
+The database migrations are part of the binary; Postgres with pgvector and an embedding backend must be reachable as described in the [README](../README.md). Run `go vet ./...` and `go test ./...` first if you want to check the build (the database tests need a Postgres with pgvector, see the README).
+
 ## Using the image
 
-In the Compose file, instead of `build: .` put the address with a fixed version, e.g. `ghcr.io/behringer24/atrium-tablinum:0.1.0`. A fixed version is better than `latest` because an update then happens deliberately.
+In the Compose file, instead of `build: .` put the address with a fixed version, e.g. `ghcr.io/behringer24/atrium-tablinum:0.4.0`. A fixed version is better than `latest` because an update then happens deliberately.
 
 If pulling needs a login, use a token (personal access token classic with `read:packages`):
 

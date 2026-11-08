@@ -463,7 +463,7 @@ type offboardOut struct {
 	RevokedTokens   int64         `json:"revoked_tokens"`
 	HandoffsDeleted int64         `json:"handoffs_deleted"`
 	Personal        *personalMeta `json:"personal_space,omitempty"`
-	// ResponsibleFor and the longer part of Next are filled by the Pro build (editionOffboarded): the
+	// ResponsibleFor and the longer part of Next are filled by an edition hook (editionOffboarded): the
 	// entries in team spaces that name the user as responsible person, and what to do about them.
 	ResponsibleFor int    `json:"responsible_for,omitempty"`
 	Next           string `json:"next,omitempty"`

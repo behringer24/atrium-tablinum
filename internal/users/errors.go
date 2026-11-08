@@ -18,7 +18,7 @@ func mapNoRows(err error) error {
 var ErrEmailTaken = errors.New("e-mail belongs to a different login")
 
 // ErrUserLimit means that creating one more account would exceed the number of users the instance
-// may have (the licence, or the Community limit). Existing accounts are never affected.
+// may have. Existing accounts are never affected.
 var ErrUserLimit = errors.New("the number of users this instance may have is reached")
 
 // ErrEmailUnverified means the identity provider does not vouch for the e-mail address, and the
