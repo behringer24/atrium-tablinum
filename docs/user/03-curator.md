@@ -215,6 +215,8 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 
 **How do I review the skills shipped with Atrium?** Like any skill: read every file, approve as risk class B (they use tools and write entries only after the user's confirmation), then publish. The one who stored them cannot approve them.
 
+**Who decides what is still valid?** The curators of the space, together with the responsible person named on the entry (`owner`) and its review date (`review_due`). *"Which reviews are overdue in Support?"* lists what is due. Outdated entries are archived, not deleted, so they can be restored. If the skill `knowledge-lint` is released, it also reports outdated and contradictory entries. An assistant never replaces an entry on its own initiative.
+
 **Does the space need a second curator?** Yes, whenever possible. A single curator can neither approve their own drafts nor their own skill versions.
 
 **A skill uses tools and I am not sure of the class.** Choose the higher class. Ask an instance admin if class C is possible; they publish those anyway.

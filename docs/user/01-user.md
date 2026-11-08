@@ -210,6 +210,8 @@ You can create your own private skills. Say *"File this as a skill called weekly
 
 **How do I stop an assistant from using Atrium?** Remove the connector in the assistant, and end its session with `revoke_my_sessions`.
 
+**How much does the assistant read at once?** A search returns the best matching sections, five by default and at most twenty, not whole documents. A full entry is loaded only when the assistant opens it by its ID.
+
 **Where is my data stored?** On the Atrium server of your organisation. Search indexing may use an embedding service chosen by your administrator.
 
 **How do I find out what changed while I was away?** Ask *"What is new in Atrium since 1 March?"*. It lists new and changed entries and released skills of your team spaces since that date.

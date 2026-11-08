@@ -1,6 +1,6 @@
 # Embedding backends
 
-Search compares vectors (embeddings). The `embedding.backend` setting decides where they come from. Each instance chooses its own backend; several instances with different backends are independent of each other.
+Search combines full text with a comparison of vectors (embeddings); without a working embedding backend it falls back to full text. The `embedding.backend` setting decides where they come from. Each instance chooses its own backend; several instances with different backends are independent of each other.
 
 | Backend | Service | Data leaves the server | Operation |
 |---|---|---|---|
