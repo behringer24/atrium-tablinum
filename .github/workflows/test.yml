@@ -1,6 +1,6 @@
 # Tests: gofmt, vet, the tests against a Postgres with pgvector and govulncheck, for pushes to the dev branch
-# and for tags of the form vX.Y.Z. The container images are built and published by the maintainer's build
-# pipeline, which is told about each successful run (job "notify"). Description: docs/release.md
+# and for tags of the form vX.Y.Z. The container images are built and published by the maintainer's
+# build, which is told about each successful run (job "notify"). Description: docs/release.md
 name: test
 
 on:
@@ -55,8 +55,8 @@ jobs:
       # Known vulnerabilities in the standard library and in the dependencies that the code reaches.
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
-  # Tells the maintainer's build pipeline that this ref passed. Without the secret (forks, other
-  # clones) the job does nothing.
+  # Tells the maintainer's build pipeline that this ref passed. Without the two secrets
+  # (forks, other clones) the job does nothing.
   notify:
     needs: test
     runs-on: ubuntu-latest
@@ -64,12 +64,13 @@ jobs:
     steps:
       - env:
           TOKEN: ${{ secrets.PRO_DISPATCH_TOKEN }}
+          TARGET: ${{ secrets.BUILD_NOTIFY_URL }}
           REF: ${{ github.ref_name }}
           REF_TYPE: ${{ github.ref_type }}
           SHA: ${{ github.sha }}
         run: |
-          if [ -z "$TOKEN" ]; then echo "no token, nothing to notify"; exit 0; fi
+          if [ -z "$TOKEN" ] || [ -z "$TARGET" ]; then echo "no token, nothing to notify"; exit 0; fi
           curl -fsS -X POST \
             -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/behringer24/atrium-tablinum-pro/dispatches \
+            "$TARGET" \
             -d "{\"event_type\":\"public-build\",\"client_payload\":{\"ref\":\"$REF\",\"ref_type\":\"$REF_TYPE\",\"sha\":\"$SHA\"}}"

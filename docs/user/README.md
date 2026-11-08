@@ -14,6 +14,7 @@ You do not operate Atrium through a screen of its own. You talk to your AI assis
 | [3. Curators](03-curator.md) | People who review and approve | Review knowledge and skills, judge risk, publish, block, keep a space tidy |
 | [4. Space admins](04-space-admin.md) | People who manage one space | Members, roles and groups, access reviews, unblocking, deleting |
 | [5. Instance admins](05-instance-admin.md) | The people who run the Atrium instance | Spaces, users, offboarding, login rules, context, audit, health, security and operations |
+| [Atrium Pro](../pro/pro-edition.md) | Instance admins (and space admins) of an organisation with a Pro licence | Install and renew the licence, updates with a licence, the user limit, guided offboarding |
 
 Each guide builds on the one before it: a curator is also an author and a reader, a space admin is also a curator, and so on. Read the guides in order if you are new to a role. Every guide ends with a short FAQ.
 
@@ -55,6 +56,7 @@ The role you have can differ from space to space. Your assistant can show your r
 
 - Markdown (`.md`) is the source. A PDF with the same name sits next to every guide for printing and offline reading.
 - The guides describe the behaviour of the current development version. Features that are planned but not built are marked as such, and the [roadmap](../../ROADMAP.md) lists what is coming.
+- Organisations with a Pro licence also read [Atrium Pro](../pro/pro-edition.md) (licence and guided offboarding, in `docs/pro/`).
 - Technical reference for operators lives in the other documents of this repository: [skills](../skills.md), [approval](../approval.md), [archive and context](../archive-and-context.md), [offboarding](../offboarding.md), [login and OAuth](../auth.md), [deployment](../deployment.md), [embedding](../embedding.md), [releases](../release.md).
 
 Every PDF carries the same branding: the Atrium icon and the behringer24 logo in a header block on the first page, a running header on every other page, and a footer with the names and the page number. To rebuild the PDFs after editing a guide, run `scripts/build-docs.sh` (needs Node.js and Chrome, Chromium or Edge); pass the changed file to rebuild only that one.

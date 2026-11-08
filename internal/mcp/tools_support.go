@@ -13,7 +13,7 @@ var started = time.Now()
 
 type supportIn struct{}
 
-// supportOut is what a support request needs: versions, licence, health, counts and settings. It
+// supportOut is what a support request needs: versions, health, counts and settings. It
 // holds no content, no names of people or spaces and no secrets, so that an admin can pass it on.
 type supportOut struct {
 	Notice      string         `json:"notice"`
@@ -22,7 +22,7 @@ type supportOut struct {
 	Runtime     map[string]any `json:"runtime"`
 	Database    map[string]any `json:"database"`
 	Counts      map[string]any `json:"counts"`
-	// Edition holds what the edition adds, for example the licence state of the Pro build.
+	// Edition holds what the edition adds.
 	Edition       map[string]any `json:"edition,omitempty"`
 	Health        healthOut      `json:"health"`
 	Configuration map[string]any `json:"configuration,omitempty"`
@@ -32,7 +32,7 @@ func (s *Server) adminSupportBundle(ctx context.Context, c *call, _ supportIn) (
 	now := time.Now().UTC()
 	line := product.CurrentLine()
 	out := supportOut{
-		Notice: "For a support request: versions, licence state, health, counts and settings. It contains no content, " +
+		Notice: "For a support request: versions, health, counts and settings. It contains no content, " +
 			"no names of people or spaces and no secrets. Show it to the user before they pass it on.",
 		GeneratedAt: now.Format(time.RFC3339),
 		Product: map[string]any{"name": s.set.ProductName, "version": product.Version, "commit": product.Commit(),

@@ -60,7 +60,7 @@ type Options struct {
 	// including an instance admin from bootstrap_admins.
 	LinkByEmail bool
 	// MaxUsers returns the number of active users the instance may have; nil or 0 = unlimited. It is
-	// asked when a new account would be created, so a change (a licence installed) applies at once.
+	// asked when a new account would be created, so a change applies at once.
 	// Instance admins from bootstrap_admins are exempt, so that a limit can never lock them out.
 	MaxUsers func() int
 }

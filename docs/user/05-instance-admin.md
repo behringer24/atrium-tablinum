@@ -26,7 +26,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock, reactivate and transfer; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context; query the audit log; set storage limits (quotas); install the licence (Pro); check health.
+- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context; query the audit log; set storage limits (quotas); check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -51,7 +51,7 @@ A checklist for the first days. The technical steps are in the [README](../../RE
 7. **Appoint curators** (two per space) and space admins.
 8. **Pilot.** Let a few people try it, collect questions, then roll out with the [everyday-use guide](01-user.md).
 9. **Backups.** Schedule `scripts/backup.sh` and test a restore into an empty database once.
-10. **Tell people the rules**, including that personal spaces are private but may be handed over when someone leaves (see [Offboarding](../offboarding.md); agree this with your data protection officer and, where applicable, the works council).
+10. **Tell people the rules**, including that personal spaces are private but are deleted after a deadline when someone leaves and that team knowledge has to be moved out before the last day (see [Offboarding](../offboarding.md); agree this with your data protection officer and, where applicable, the works council).
 
 ## Spaces
 
@@ -116,15 +116,13 @@ The full procedure and the data protection notes are in [Offboarding](../offboar
 
 1. **Before the last day:** the person moves what belongs to the team out of their personal space.
 2. **Lock:** *"Offboard anna@example.com."* (`admin_offboard_user`, after confirmation). The account is locked at once, all tokens are revoked, handoffs are deleted. The personal space stays private; you see counts and the deletion date.
-3. **Decide (Pro, feature `offboarding`):** `admin_transfer_personal_space` works only for locked accounts. The Community edition has no such tool: there a personal space cannot be handed on, so ask the person to move what belongs to the team before the last day, or lengthen the deadline of step 4.
-   - `mode=space` turns the personal space into a **team space** (slug, name, members, for example supervisor as admin, successor as curator). Entries keep IDs and history. **Skills the owner had released alone are blocked** at this point because nobody reviewed them; a space admin lifts a block and a curator releases it again.
-   - `mode=merge` moves the entries into the successor's personal space (their quota applies, see [Quotas](#quotas)). You cannot merge into your own space (four-eyes). **Skills are not carried over**: they stay in the old personal space and are deleted with it. Use `mode=space` if skills must survive; they come back blocked and need a new release.
-4. **Deadline:** unconverted personal spaces of locked accounts are deleted after `spaces.personal.retention_days_after_offboarding` days (default 30). `admin_reactivate_user` lifts the lock again and ends the deadline.
-5. **Responsibilities:** entries that name the person as responsible keep the name, marked `former`, until somebody takes over. With the Pro feature `offboarding` the answer of `admin_offboard_user` counts them (`responsible_for`) and names the next steps, and one call hands them on: *"Make tom@example.com responsible for everything anna@example.com was responsible for."* (`reassign_owner`; as instance admin it covers all team spaces, space admins do it for their spaces). Spaces the successor cannot read are skipped and reported. Without Pro, a curator or the author changes the responsible person entry by entry (`update_knowledge` with `owner`).
+3. **Hand the content on:** in the Community edition a personal space cannot be handed on by an admin, so ask the person to move what belongs to the team before the last day, or lengthen the deadline of step 4. The Pro edition adds guided help for it ([Atrium Pro](../pro/pro-edition.md#guided-offboarding)).
+4. **Deadline:** personal spaces of locked accounts are deleted after `spaces.personal.retention_days_after_offboarding` days (default 30). `admin_reactivate_user` lifts the lock again and ends the deadline.
+5. **Responsibilities:** entries that name the person as responsible keep the name, marked `former`, until somebody takes over. A curator or the author changes the responsible person entry by entry (`update_knowledge` with `owner`); the Pro edition can hand them all on in one step.
 
 **What stays after a lock.** Nothing is deleted: the account stays, entries keep their author, versions keep who changed them, and memberships stay so that a reactivation restores them. The locked person has no rights at all, and `space_members` and `space_contacts` mark them `former` so that nobody is sent to ask them.
 
-Document the decision for each leaver and prefer to involve a second person. A transfer makes private content readable for others.
+Document the decision for each leaver and prefer to involve a second person.
 
 ## The context for assistants
 
@@ -187,7 +185,7 @@ Skills are the highest-trust content in Atrium: assistants follow them. Your rol
 - **Who may be curator** decides how careful the review is. Appoint people who understand the subject and the risk, and brief them with the [curator guide](03-curator.md).
 - **Configuration** in `config.yaml` (`skills:`): `allow_self_approval` (default off, only for tiny installations). The storage limits for skills are quotas, see [Quotas](#quotas).
 - **Moving** a skill to another space copies only the newest released version as a draft for the target's curators; nothing carries its release along. `move_skill` is for curators; you can do it too.
-- **Personal skills** are private and released by the owner alone. Leavers' personal skills are blocked when a space is converted.
+- **Personal skills** are private and released by the owner alone. Skills in a personal space are deleted with it when the deadline after offboarding passes.
 - **Skills shipped with Atrium:** the repository folder `skills/` holds `knowledge-ingest` (file a source as entries) and `knowledge-lint` (check a space). Atrium never installs them by itself. To offer them, store each folder with `store_skill` in a space everybody reads, have a curator review it as class B and release it; after an update of Atrium store the new files as a new version. Details in [skills/README.md](../../skills/README.md).
 - **Distribution:** assistants load skills through the tools in every client. A client that supports the MCP skills extension (SEP-2640) can load them natively; a ZIP export of a released version is available at `/skills/export/<space>/<skill>`. Which clients use the extension has to be tested per client; the audit log shows which route a client takes (`via`).
 
@@ -204,9 +202,9 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 | Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
-| Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `admin_transfer_personal_space`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
+| Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
-| Instance | `admin_context_set`, `admin_context_clear`, `admin_quota_set`, `license_install`, `license_remove` (scope, target, old and new values) |
+| Instance | `admin_context_set`, `admin_context_clear`, `admin_quota_set` (scope, target, old and new values) |
 
 Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
 
@@ -231,11 +229,11 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 
 ### Health
 
-*"Show the Atrium health."* (`admin_health`) reports the database, the embedding service, background jobs and tasks, and the edition (in the Pro build with the licence state and its notice). The TLS certificate is managed by the proxy and not checked by Atrium, so monitor its expiry there. `/healthz` and `/readyz` are for monitoring tools; `/readyz` answers only `ok` or `not ready`, and the reason is in the log and in `admin_health`.
+*"Show the Atrium health."* (`admin_health`) reports the database, the embedding service, background jobs and tasks, and the edition. The TLS certificate is managed by the proxy and not checked by Atrium, so monitor its expiry there. `/healthz` and `/readyz` are for monitoring tools; `/readyz` answers only `ok` or `not ready`, and the reason is in the log and in `admin_health`.
 
 ### Support information
 
-*"Collect the Atrium support information."* (`admin_support_bundle`) gathers what support needs in one answer: version, release line and build, the licence state and notice (Pro build), health, the versions of Go, Postgres and pgvector, the migration, the database size, counts of users, spaces, entries, skills and audit entries, and the settings of `config.yaml`. It contains **no content, no names of people or spaces and no secrets**: settings appear by a fixed list, without passwords, keys, client IDs, addresses of other systems, allowed domains or the organisation's texts. Read it before you pass it on. Each call is audited as `support_bundle`.
+*"Collect the Atrium support information."* (`admin_support_bundle`) gathers what support needs in one answer: version and build, health, the versions of Go, Postgres and pgvector, the migration, the database size, counts of users, spaces, entries, skills and audit entries, and the settings of `config.yaml`. It contains **no content, no names of people or spaces and no secrets**: settings appear by a fixed list, without passwords, keys, client IDs, addresses of other systems, allowed domains or the organisation's texts. Read it before you pass it on. Each call is audited as `support_bundle`.
 
 ### Backups
 
@@ -247,17 +245,11 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 - Read the **Upgrade notes** in the [changelog](../../CHANGELOG.md) before every update: the server refuses to start with some old settings, and new limits may apply.
 - Configuration changes need a restart; the allowlist, context, groups, spaces and members change at runtime.
 
-### The licence (Pro edition)
+### Editions and user limit
 
-The free **Community** edition is for **8 active accounts** and needs no licence. The rest of this section is about the **Pro** build (the official image), which runs with the Community limits until a licence is installed. A licence is a signed line of text that switches limits and features on, is bound to the host of `instance.base_url`, and is checked **offline**: nothing calls anybody. Ask *"Show the Atrium licence."* (`admin_license action=get`) to see the state (`none`, `valid`, `not covered`, `expired`, `wrong domain`, `invalid`), what the licence covers (features, limits, the maintenance date), the release line of the running build and how many accounts are active against the user limit in force, with a warning when the limit is reached; *"Install this licence: atrium-license-v1.…"* installs one without a restart (after your confirmation), *"Remove the installed licence."* deletes it after telling you how many accounts are active and what the Community limit means for them. Every change is audited (`license_install`, `license_remove`), the licence text itself is not.
+The **Community** edition is for **8 active accounts** and needs nothing else. It counts registered accounts that are active at the same time, not connected assistants. Locked accounts (after `admin_offboard_user`) do not count, so offboarding frees the seat, and reactivating needs room again. A new account beyond the limit is refused with a message; existing accounts are never affected, so nobody is locked out. The content stays readable and exportable in every case.
 
-- **Maintenance, not an expiry.** A licence carries a date, `maintenance_until`. A build is covered, for ever, when the release line it comes from was released on or before that date. You can run the version you have indefinitely; patch releases of your line are always covered; a **newer line** needs a licence with a later date, which you install once, in the running instance, usually once a year. After an update that says `not covered`, either go back to the covered version or renew the maintenance.
-- **Notice ahead of time.** From 60 days before the end of maintenance, and before the `expires` date of a trial or subscription licence, the licence report, `admin_health` and the server log at start carry a notice with the date. After the end of maintenance the notice stays as a reminder that newer lines need a renewed licence; the running build is not affected.
-- **Nothing is ever blocked.** In every state other than `valid` the instance runs as Community, and the content stays readable and exportable. The one limit built so far is the **number of users**: a new account beyond the limit is refused with a message, existing accounts and the administrators in `bootstrap_admins` are never affected. Without a licence that sets it, the limit is **8 active accounts**. It counts registered accounts that are active at the same time, not connected assistants; locked accounts (after `admin_offboard_user`) do not count, so offboarding frees the seat, and reactivating needs room again. Administrators from `bootstrap_admins` count but are never refused.
-- **Removing a licence by mistake locks nobody out.** If more accounts are active than the limit then in force (after a removal, an expiry, or an update beyond the maintenance), everybody keeps working; the licence report shows `over_limit` and a warning, and only new accounts and reactivations wait until there is room or a covering licence is installed again.
-- A licence file named in the `file:` key of the `license:` section of `config.yaml` works too; one you install at run time takes precedence.
-
-See [Editions](../licensing.md).
+For more users and extra features, see [Editions](../licensing.md); with a Pro licence, [Atrium Pro](../pro/pro-edition.md) describes installing and renewing it.
 
 ### Separate database accounts
 
@@ -345,11 +337,11 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 | Search finds nothing new | Indexing is asynchronous; check the embedding service and the health of background tasks |
 | Limits trigger for many users at once | Check `trusted_proxies`: if wrong, all users share one address |
 | A class C skill is stuck | Only an instance admin can publish it: review and publish, or ask the curators to fix it |
-| You cannot read a personal space | By design; use the offboarding transfer for leavers |
+| You cannot read a personal space | By design; ask leavers to move team knowledge out before their last day |
 
 ## FAQ
 
-**Can I read an employee's personal space?** No. Not even for investigations. For leavers, transfer it after locking the account.
+**Can I read an employee's personal space?** No. Not even for investigations. For leavers, ask them to move team knowledge out before the last day.
 
 **Can I see who searched for what?** Searches are logged, but with the query text only when the search did not include the user's personal space (for example when the assistant restricted it to team spaces); otherwise only the number of hits is kept. Search events are not tied to a space, and reads of single entries are not logged.
 
@@ -371,10 +363,8 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 
 **Is there a notification when drafts wait for review?** Not yet. Agree turnaround times with curators.
 
-**I removed the licence and have more users than Community allows. Are they locked out?** (Pro build) No. Every active account keeps working; only new accounts and reactivations are refused until there is room. *"Show the Atrium licence."* shows the active accounts against the limit; installing the licence again lifts it at once.
+**I have more users than Community allows. Are they locked out?** No. Every active account keeps working; only new accounts and reactivations are refused until there is room.
 
 **What do I send when I ask for support?** The answer of *"Collect the Atrium support information."* (`admin_support_bundle`), the time of the problem and what you asked. It holds no content, names or secrets; read it before you send it.
-
-**How do I know that maintenance is about to end?** The licence report and `admin_health` show a notice from 60 days before, and the server log warns at start. Renew in time if you want the next release line.
 
 **Can I switch to another embedding model later?** Yes. Change the model in `config.yaml` (with your own TEI server also its `--model-id`), restart, and start *"Rebuild the Atrium search vectors."* (`admin_reembed`); search keeps working by full text until the rebuild is done. A model with another dimension also needs `embedding.allow_dimension_change: true` for that one start. See [Embedding](../embedding.md#dimension-and-changing-the-model).

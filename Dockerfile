@@ -4,9 +4,9 @@ FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44
 ARG TARGETOS TARGETARCH
 # Release version for server_info; without a value the binary reports "dev".
 ARG VERSION=dev
-# Commit date (YYYY-MM-DD) for support and diagnosis; never used for licensing.
+# Commit date (YYYY-MM-DD) for support and diagnosis.
 ARG BUILD_DATE=
-# Go build tags; the private pipeline of the Pro edition sets "pro".
+# Optional Go build tags; empty for the Community edition.
 ARG GO_TAGS=
 WORKDIR /src
 COPY go.mod go.sum ./

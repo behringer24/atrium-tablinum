@@ -8,7 +8,7 @@ The guiding question for all knowledge features: does an assistant find the righ
 
 ## Next
 
-### Reliable knowledge (candidate for 0.4)
+### Reliable knowledge (candidate for 0.5)
 
 - **Optimistic locking for updates:** `update_knowledge` replaces the complete content, but a client cannot say which version it started from. If two assistants load version 3 and both save, the second silently overwrites the first. Add an optional `expected_version` (the version `get_knowledge` returns); on a mismatch the call fails with a structured conflict and the assistant reloads and merges. The server already re-checks the version inside the transaction, so this only needs the client-side half. Later make it mandatory for assistants through the tool description.
 - **Review reminders:** knowledge types, responsible people and review dates are built ([design](docs/design/knowledge-metadata.md)); overdue reviews show in entries, `list_knowledge review=due` and `whats_new`. Still open: telling responsible people and curators actively when a review falls due (needs the notifications below), and recording the last review as its own date.
@@ -31,9 +31,9 @@ The findings of the second audit (external attack surface, authorisation and int
 - **Database roles by default:** the separate accounts are opt-in (`scripts/db-roles.sql`); make them part of the compose setup and the install steps, so that new installations start hardened.
 - A client whose `client_name` is shown in `my_sessions` should be marked as data.
 
-### Commercial editions and licence file
+### Editions and release
 
-A free Community edition (this repository, 8 active accounts) and a Pro edition: the same product plus files of a private repository, switched by an offline-verified signed licence file that lifts limits and enables features without a restart ([docs/licensing.md](docs/licensing.md)). Built: the extension points, the licence code and the guided offboarding in the private repository. Not built: the private pipeline that publishes the official (public) image with signing and SBOM, the licensed ceilings for the quotas, the release mechanics (CI guard for the line file, start-line script, release branches), building the review reminders as Pro features, and the first new Pro features (group sync and SCIM, audit export). Needed before sales: real issuer keys in the Pro repository's `anchors.txt`, the legal review of the licence texts, `SECURITY.md` with a reporting route (the CRA reporting duty applies since 11 September 2026).
+Community (this repository, up to 8 active accounts) and Pro are built from one code base ([docs/licensing.md](docs/licensing.md)). Still open on the public side: `SECURITY.md` with a reporting route (the CRA reporting duty applies since 11 September 2026).
 
 ### Documentation and operations
 

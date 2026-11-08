@@ -13,7 +13,7 @@ import (
 //
 //	line 3.4
 //	date 2022-05-10
-//	epoch 2022-01-01     # optional: an amnesty release is covered by licences valid from this date
+//	epoch 2022-01-01     # optional
 //
 //go:embed line.txt
 var lineFile string
@@ -22,7 +22,7 @@ var lineFile string
 //
 //	-ldflags "-X github.com/behringer24/atrium-tablinum/internal/product.BuildDate=2026-11-05"
 //
-// It is for support and diagnosis and is never used for licensing. Empty for a plain `go build`.
+// It is for support and diagnosis only. Empty for a plain `go build`.
 var BuildDate = ""
 
 const dateLayout = "2006-01-02"

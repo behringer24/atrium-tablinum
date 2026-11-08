@@ -98,7 +98,7 @@ This has three practical consequences:
 
 ## What it brings the organisation
 
-**Knowledge that stays when people leave.** Entries and skills belong to the organisation, not to a laptop. When someone leaves, the account is locked and their personal space can be handed to a successor under a documented procedure; team knowledge was never in their head only.
+**Knowledge that stays when people leave.** Entries and skills belong to the organisation, not to a laptop. When someone leaves, the account is locked and, after a deadline, their personal space is deleted; team knowledge was never in their head only.
 
 **Consistency at scale.** Skills mean that the quality of a customer reply or a review does not depend on who happens to do it. A fix to a procedure is one new version, reviewed once, available to all.
 

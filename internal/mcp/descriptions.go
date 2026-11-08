@@ -183,7 +183,7 @@ var defaultDescriptions = map[string]string{
 		`ONLY on explicit instruction: start sends every such section to the embedding service again, which costs money with a paid service; ` +
 		`tell the user how many sections are concerned and call with confirm=true only after their confirmation.`,
 
-	"admin_support_bundle": `Collects what support needs to help with a problem (instance admin): version and build, licence state, health, ` +
+	"admin_support_bundle": `Collects what support needs to help with a problem (instance admin): version and build, health, ` +
 		`database and runtime versions, counts of users, spaces, entries and skills, and the settings of config.yaml without secrets, ` +
 		`addresses of other systems or names. It contains no content and no names of people or spaces. ` +
 		`Call it when the user wants to report a problem or asks for support information; show the result to the user before they pass it on. ` +
