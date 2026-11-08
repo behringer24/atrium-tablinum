@@ -9,6 +9,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **Build from source:** `docs/release.md` describes how to build the Community edition from a checkout, with Docker or with Go.
 
 ### Changed
+- **User guides:** the introduction gains a section "What it takes to run" (free Community edition, parts, memory, prerequisites), a point on working from any device without syncing, a note on how rights are enforced inside the search and an honest note on the context that tool descriptions use. The user guide explains how much one search returns, the curator guide answers who decides what is still valid, and the embedding page says that search is hybrid.
 - **Public texts say what Community is and no more:** the editions page, the instance admin guide, the offboarding notes, the configuration example, the workflow and code comments no longer describe the Pro internals. The build notification of `.github/workflows/test.yml` now reads its target from the repository secret `BUILD_NOTIFY_URL` (no value, no notification).
 - `docs/staging.md` no longer lists re-embedding as missing (`admin_reembed` exists since 0.4.0).
 

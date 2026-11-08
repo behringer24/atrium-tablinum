@@ -18,6 +18,7 @@ This document is for everyone who wonders whether it is worth the effort to star
 - [Why you can trust it](#why-you-can-trust-it)
 - [Try it today: your first ten minutes](#try-it-today-your-first-ten-minutes)
 - [The honest part: what Atrium does not do](#the-honest-part-what-atrium-does-not-do)
+- [What it takes to run](#what-it-takes-to-run)
 - [Rolling it out](#rolling-it-out)
 - [Questions people ask](#questions-people-ask)
 
@@ -90,11 +91,12 @@ Atrium sits **underneath** all of them:
 | Claude Code and other MCP assistants | The same again, inside your development workflow |
 | Several at once | One memory that none of them owns |
 
-This has three practical consequences:
+This has four practical consequences:
 
 1. **No lock-in.** Your knowledge is not trapped in one vendor's chat history. If a better assistant appears next year, you connect it and everything you saved is already there.
 2. **Mixed teams work.** One colleague prefers Claude, another ChatGPT. They draw on the same entries and run the same skills.
 3. **Personal continuity.** Your handoffs and notes follow *you*, not the chat window.
+4. **Every device, nothing to sync.** The memory lives on your organisation's server, not on a device. Phone, laptop and the desk in the office all see the same state the moment you log in. There is nothing to install or update on the device, nothing to pull and nothing to merge, so it works the same for everybody, whatever their technical background.
 
 ## What it brings the organisation
 
@@ -135,7 +137,7 @@ None of these moments is large. Together they are the difference between assista
 - **You decide what is filed.** Nothing is saved on the assistant's initiative. Destructive actions ask you first.
 - **Knowledge is data, skills are reviewed.** Text inside an entry can never steer an assistant. A skill is an instruction, so it is read by a curator, approved at a specific fingerprint (digest), released deliberately, and can be withdrawn at once.
 - **Your private notes are private.** Nobody can read your personal space through Atrium, administrators included.
-- **Rights are checked on every request.** Roles, locked accounts and revoked sessions take effect immediately.
+- **Rights are checked on every request.** Roles, locked accounts and revoked sessions take effect immediately. The check is part of the search itself: an assistant is never handed an entry that its user may not read, so nothing depends on the assistant behaving well.
 - **Everything important leaves a trace.** Approvals, releases, blocks, moves and deletions are in the audit log.
 - **No lock-in.** Your knowledge is plain Markdown text in a database you control and back up yourself.
 
@@ -159,11 +161,23 @@ Atrium is a memory, not magic. It helps you most when you are clear about what i
 
 - **It is only as good as what is in it.** An empty Atrium helps nobody. The value grows with contributions, so the habit above matters more than any feature.
 - **It does not replace judgement.** Assistants quote entries; entries can be outdated or wrong. Atrium shows the source and date so you can check, and curators exist to keep important spaces clean.
+- **Tools use a little of an assistant's working memory.** Every connected tool brings a short description that the assistant has to keep in mind. Assistants that load tools only when they are needed use very little; others use more. A search returns the best matching sections, five by default and at most twenty, never whole libraries.
 - **It does not run programs.** Skills are text. They guide an assistant; they do not execute code on their own.
 - **Assistants differ.** How closely a given assistant follows a skill, or how it reacts to a `/name` command, depends on the assistant. The tools work in every MCP client; some clients are smoother than others.
 - **Some conveniences are still missing.** There are no notifications yet (curators find drafts by asking), no browsing of old versions of an entry, and no attachments: entries are text. These are on the [roadmap](../../ROADMAP.md).
 - **Privacy has a boundary.** Your personal space is private inside the application. Whoever administers the database or its backups could technically read everything, so your organisation should restrict that access and tell people the rules. Search uses an embedding service that your administrator chooses; with a cloud service, content is sent there to be indexed. What an assistant's vendor does with your chats is governed by that vendor's terms, not by Atrium.
 - **It asks a little of you.** A sentence to file, a sentence to find, and the discipline to keep entries current. In return you get the compound interest of everybody doing the same.
+
+## What it takes to run
+
+The **Community** edition is free for up to 8 active user accounts. It sends no telemetry and calls nobody. A small team can run it on one modest server:
+
+- **Parts:** Atrium itself, a Postgres database with the pgvector extension, and an embedding service that makes the search understand meaning. They come together in one Docker Compose setup.
+- **Memory:** the embedding service is the largest part. A self-hosted one measured about 1.7 GB of RAM on two cores with the small-server settings (details in [embedding.md](../embedding.md)); the default settings need about 12 GB. Instead of running your own, you can connect an OpenAI-compatible service or Amazon Bedrock, which costs the provider's fees and sends the text of entries to that provider.
+- **Also needed:** a domain name with a TLS certificate, and a login through Google, Microsoft Entra or another OpenID Connect provider. Backups and updates are yours; the effort is small once it runs.
+- **Platform:** the self-hosted embedding image runs on x86 servers only.
+
+Details for administrators are in the [README](../../README.md) and the [instance admin guide](05-instance-admin.md).
 
 ## Rolling it out
 
@@ -172,7 +186,7 @@ For team leads and administrators, a pace that works:
 | When | What |
 |---|---|
 | Week 0 | Install, connect the login, create two or three spaces, name two curators per space, set the instance context that tells assistants what Atrium is for |
-| Week 1 | A pilot group of five to ten people. Seed each space with ten genuinely useful entries and one or two skills |
+| Week 1 | A pilot group of five to ten people. Seed each space with ten genuinely useful entries and one or two skills. Start with what only a few long-serving colleagues know, and ask them to tell it to their assistant and file it |
 | Week 2 | Collect questions and fix the rough spots. Share this document and the [everyday-use guide](01-user.md) |
 | Week 3 to 4 | Roll out to the whole team. Ask everybody to file one thing a week. Curators review twice a week |
 | Month 2 on | Review what is read and used. Retire what is stale, grow the skills that people actually run, and add spaces where there is demand |
