@@ -199,7 +199,7 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 
 | Area | Actions |
 |---|---|
-| Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
+| Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
@@ -238,6 +238,20 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 ### Backups
 
 `scripts/backup.sh` writes a compressed `pg_dump` and removes old dumps; schedule it daily. The dump contains personal spaces, so protect it like the database. Restore into an empty database and test it once. Embeddings are in the dump; changing the embedding model needs a reindex.
+
+### Exporting knowledge
+
+As instance admin you can take everything out, not only a backup. *"Export all Atrium spaces."* (`export_knowledge` without a space) returns a link that works for ten minutes and once. It leads to a ZIP file with one folder per team space, one Markdown file per entry (with type, tags, state, author, owner, review date and version in the header) and an `index.md` for each folder and for the whole export. The archive follows the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format) (OKF, version 0.2), so tools that read that format can use it; what only Atrium knows is under the key `atrium` in each header. *"Export the space Support."* does the same for one space.
+
+- **Rights:** the export follows the admin role. Instance admins hold it in every team space, archived ones included. **Personal spaces are never part of the export** and nobody but their owner can export one.
+- **What it contains:** entries in every state (approved, draft, returned, archived). Not included: older versions of an entry, handoffs, skills (each released skill has its own ZIP export, see [Skills](../skills.md)) and the audit log.
+- **The link is a credential.** It is signed, valid for ten minutes, works once and is checked again when it is opened: a locked account or a lost admin role gets nothing. Links do not survive a restart of the server. Up to two exports run at the same time; a third is turned away with the request to try again shortly.
+- **Behind a proxy:** the link points to `/export/…` on the public address (`instance.base_url`). Like `/mcp`, it needs no login in the browser and must reach the server unchanged.
+- **Large instances:** the archive is built while it is sent, so it does not fill the server's memory, but a very large export takes time. Do not close the browser tab; an interrupted download does not open as a ZIP.
+- **Trace:** one audit entry `knowledge_export` per space with the number of entries.
+- **Protect the file.** It holds the knowledge of all team spaces, drafts and archived entries included. Store and share it like a database backup.
+
+For a complete copy that can be restored into Atrium, use the backup above; the export is the readable copy for other uses.
 
 ### Updates
 

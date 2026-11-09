@@ -139,7 +139,7 @@ None of these moments is large. Together they are the difference between assista
 - **Your private notes are private.** Nobody can read your personal space through Atrium, administrators included.
 - **Rights are checked on every request.** Roles, locked accounts and revoked sessions take effect immediately. The check is part of the search itself: an assistant is never handed an entry that its user may not read, so nothing depends on the assistant behaving well.
 - **Everything important leaves a trace.** Approvals, releases, blocks, moves and deletions are in the audit log.
-- **No lock-in.** Your knowledge is plain Markdown text in a database you control and back up yourself.
+- **No lock-in.** Your knowledge is plain Markdown text in a database you control and back up yourself, and you can take it out at any time: admins export a space or all team spaces, and everybody exports their own personal space, as a ZIP of Markdown files in the open Open Knowledge Format, with the metadata of every entry.
 
 ## Try it today: your first ten minutes
 

@@ -56,6 +56,8 @@ type Settings struct {
 	// non-local Host header on loopback connections. Needed when a reverse proxy on the
 	// same host forwards to 127.0.0.1.
 	DisableHostProtection bool
+	// BaseURL is the public address of the instance; export links are built from it.
+	BaseURL string
 	// IconURL is the public address of the icon, sent to clients in the server info; empty = none.
 	IconURL  string
 	IconMIME string
@@ -118,6 +120,11 @@ type Server struct {
 	limiter *limiter
 	reads   *limiter
 
+	// exports signs the download links of export_knowledge; exportSlots bounds the exports
+	// running at once.
+	exports     *exportLinks
+	exportSlots chan struct{}
+
 	// deniedAt remembers when a refusal was last audited (see denied).
 	deniedMu sync.Mutex
 	deniedAt map[string]time.Time
@@ -125,7 +132,8 @@ type Server struct {
 }
 
 func New(d Deps, set Settings) *Server {
-	s := &Server{Deps: d, set: set, limiter: newLimiter(set.WritesPerMinute, time.Minute), reads: newLimiter(set.ReadsPerMinute, time.Minute)}
+	s := &Server{Deps: d, set: set, limiter: newLimiter(set.WritesPerMinute, time.Minute), reads: newLimiter(set.ReadsPerMinute, time.Minute),
+		exports: newExportLinks(), exportSlots: make(chan struct{}, maxParallelExports)}
 	s.desc = s.renderDescriptions()
 	return s
 }
