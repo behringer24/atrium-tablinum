@@ -52,7 +52,7 @@ embedding:
 | `--max-batch-tokens 1024 --auto-truncate` | 8 | about 3.0 GB |
 | `--max-batch-tokens 1024 --auto-truncate` | 2 | about 1.7 GB |
 
-For values smaller than 8192, TEI requires `--auto-truncate`. Atrium's sections are at most 800 tokens long (`chunking.max_tokens`), so nothing gets cut off. On 2 cores a section of about 500 tokens takes roughly 2.5 s, a search query roughly 0.15 s. For small servers, `.env` sets the arguments:
+For values smaller than 8192, TEI requires `--auto-truncate`. Atrium's sections are at most 800 tokens long (`chunking.max_tokens`), so nothing gets cut off. On 2 cores a section of about 500 tokens takes roughly 2.5 s, a search query roughly 0.15 s. More RAM improves neither the results nor the speed: the vectors depend on the model, and the speed follows the CPU cores (4 cores: about 2.1 GB RAM and about 1 s per section). The memory only has to be large enough for the model and the batch buffer. For small servers, `.env` sets the arguments:
 
 ```
 TEI_ARGS=--model-id BAAI/bge-m3 --max-batch-tokens 1024 --auto-truncate
