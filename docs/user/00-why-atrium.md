@@ -144,21 +144,27 @@ None of these moments is large. Together they are the difference between assista
 
 ## How Atrium compares
 
-There are good tools for keeping notes and knowledge. Most of them were built for one person, one project or one agent. Atrium was built for a group of people and all the assistants they use, and that is where it differs. The tools below are neighbours rather than rivals: you can keep your Git repository or your Obsidian vault and still give your organisation one shared memory.
+There are good ways to keep notes and knowledge. A popular one is a central Git repository with Markdown files in folders that everybody clones: simple, versioned and under your control. Others grew out of one person's notes (Obsidian) or one agent's memory (Hindsight) and can be shared within the limits of that model. Atrium was built from the start for a whole organisation and all the assistants its people use, and that is where it differs. The tools below are neighbours rather than rivals: your Git repository stays the home of your code and its documentation, your Obsidian vault stays your own thinking space, and the organisation gets one shared memory on top.
 
-| | **Atrium** | **A local Git checkout** | **Obsidian** | **Hindsight** |
+| | **Atrium** | **Markdown files in a central Git repository** | **Obsidian** | **Hindsight** |
 |---|---|---|---|---|
-| **Built for** | A team or organisation and all its assistants | The files of one project | One person's notes | The memory of one AI agent |
-| **Who can use it** | Any assistant that speaks MCP: Claude, ChatGPT, Claude Code and others, on desktop and phone | Assistants that can read files on your machine, typically coding assistants | Assistants through third-party add-ons you set up yourself | Agents that you connect to it |
-| **One state for everybody** | Yes: one server, nothing to pull, sync or merge | Everybody pulls and merges | Each vault lives on its own device; sharing means sync or Git | Per memory bank |
-| **Who may read what** | Roles per space; personal spaces private even from administrators; checked on every search | Per repository | Whatever the file system allows | Per memory bank |
-| **Quality control** | Drafts, curators, four-eyes review, audit log | Pull requests, if you set them up | Your own discipline | Extracted automatically |
-| **Reviewed working instructions** | Skills with approval, release and instant block | Files only | No | No |
+| **Built for** | A team or organisation and all its assistants | Code and documentation, here used as a shared folder for company knowledge | Personal notes, shareable as vaults | The memory of AI agents, per user or per team |
+| **Who can use it** | Any assistant that speaks MCP: Claude, ChatGPT, Claude Code and others, on desktop and phone | Assistants that can read a local checkout, typically coding assistants | Assistants through third-party add-ons you set up yourself | Agents that you connect to it |
+| **One state for everybody** | Yes: one server, nothing to clone, pull or merge | Everybody keeps a checkout and pulls; knowledge is as current as the last pull | Each vault lives on its own device; shared vaults through Obsidian Sync, each member with a subscription | A bank can be shared across tools, one per user or one per team |
+| **Who may read what** | Roles per space, tied to your user account so they follow you to every device; personal spaces private even from administrators; checked on every search | Per repository: all or nothing; finer rights mean more repositories | In a shared vault everybody has the same permissions; no fine-grained rights | Per memory bank; team knowledge separated by tags |
+| **Finding things** | Search by meaning and exact words; the assistant gets the best matching sections with their source | File names and text search; the assistant reads whole files into its working memory | Text search in the vault | Its own retrieval over what it has extracted |
+| **Quality control** | Drafts, curators, four-eyes review, audit log | Pull requests and reviews, if you set them up: natural for developers, a hurdle for everybody else | Your own discipline | Extracted automatically |
+| **Reviewed working instructions** | Skills with approval, release and instant block | Files; everybody runs what they last pulled | No | No |
 | **What gets stored** | Only what a person asks to be filed | Whatever is committed | Whatever you write | What the memory extracts from conversations |
-| **Setup** | One Docker Compose file | None | None | A server plus a language model of its own |
+| **Setup** | One Docker Compose file | A Git host, access rights, and a checkout on every device | None | A server plus a language model of its own |
+| **What it asks of hardware** | One modest server, from about 2 GB RAM on two cores for the search service, more cores for faster imports; no language model, no GPU; nothing on the devices | A Git host, plus a checkout on every device | Nothing beyond the device; Sync is a paid service | A server, plus a language model for extracting facts: a cloud API (paid per use) or one you host yourself on suitable hardware |
+| **Across devices and phone** | Same login, same state, same rights on every device; assistants on desktop and phone reach the same server | A checkout and credentials on every device; hardly practical on a phone | Apps for desktop and phone with sync; letting an assistant use the vault depends on add-ons, some of them desktop-only | Reachable over the network once the server runs; access is tied to keys or sign-in per bank rather than to one user account |
 
 What that means in practice:
 
+- **A shared folder of Markdown, without the Git.** A central repository of Markdown files is the most common alternative to Atrium, and a fair one for a team of developers. For everybody else it means installing Git, cloning, pulling, resolving merge conflicts and living with rights per repository, while assistants outside the IDE cannot see it at all. Atrium keeps what is good about it, plain Markdown and versions, and removes the synchronising: you log in, and you and your assistants see the same state. Your content stays portable, because everything can be exported as Markdown files, for example into a repository.
+- **One account, every device.** Your rights hang on your user account, not on a device, a key or a checkout. Log in on the laptop, the phone or a colleague's machine and you see the same spaces, the same roles and the same personal space. Lock the account and every device loses access at once.
+- **Light on hardware, no language model to feed.** Atrium does not run a language model of its own. It needs only an embedding service for the search, which a modest server can host (from about 1.7 GB of RAM on two cores; more cores make bulk imports faster) or which you can take from a provider with no local memory needed at all. No GPU, and no token bill for filing something.
 - **You decide what goes in.** Atrium does not learn behind your back. Nothing is filed unless a person asks for it, so passwords, private data and customer information do not end up in the shared memory by accident, and nothing is picked up from a chat that nobody meant to keep. Atrium also rejects text that looks like a password or key. This is full control by design.
 - **One file, a few minutes.** Everything comes up from a single Docker Compose file. For an IT professional the setup takes minutes, not days. There is nothing to install on anybody's device.
 - **The lowest possible threshold.** Filing something is a sentence in the chat you are already in, and it is available to everybody the moment it is saved. No new app, no new routine. That is how a shared memory grows: by being used, not by being maintained.
@@ -166,7 +172,7 @@ What that means in practice:
 - **Skills, not only notes.** Your best procedures become reviewed, versioned instructions that run the same way for everybody, in any assistant. A notes app or a repository keeps files; Atrium makes them usable.
 - **Your knowledge stays yours.** It is plain Markdown in a database you control, and it can be exported at any time.
 
-Use each tool for what it does best: Git for code, Obsidian for your own thinking, a memory engine like Hindsight inside agents you build, and Atrium for what the whole organisation should know and what all its assistants should be able to find.
+Use each tool for what it does best: Git for code and its documentation, Obsidian for your own thinking, a memory engine like Hindsight inside agents you build, and Atrium for what the whole organisation should know and what all its assistants should be able to find.
 
 *Product names are trademarks of their respective owners; Atrium is not affiliated with them. The comparison reflects publicly documented features as of November 2026.*
 
@@ -202,7 +208,7 @@ Atrium is a memory, not magic. It helps you most when you are clear about what i
 The **Community** edition is free for up to 8 active user accounts. It sends no telemetry and calls nobody. A small team can run it on one modest server. Everything comes together in one Docker Compose file, and for an IT professional the setup takes minutes:
 
 - **Parts:** Atrium itself, a Postgres database with the pgvector extension, and an embedding service that makes the search understand meaning. They come together in one Docker Compose setup.
-- **Memory:** the embedding service is the largest part. A self-hosted one measured about 1.7 GB of RAM on two cores with the small-server settings (details in [embedding.md](../embedding.md)); the default settings need about 12 GB. Instead of running your own, you can connect an OpenAI-compatible service or Amazon Bedrock, which costs the provider's fees and sends the text of entries to that provider.
+- **Memory and speed:** the embedding service is the largest part, and you choose how big it is. With the small-server settings it measured about 1.7 GB of RAM and 2.5 seconds per section on two cores, and about 2.1 GB and 1 second per section on four cores (details in [embedding.md](../embedding.md)). More memory does not improve the results; more cores make bulk imports, such as a first import from a wiki, faster. The default arguments of the Compose file reserve about 12 GB, which Atrium's sections never fill, so set the small-server arguments in `.env`. Instead of running your own, you can connect an OpenAI-compatible service or Amazon Bedrock: no local memory is needed, it costs the provider's fees and it sends the text of entries to that provider.
 - **Also needed:** a domain name with a TLS certificate, and a login through Google, Microsoft Entra or another OpenID Connect provider. Backups and updates are yours; the effort is small once it runs.
 - **Platform:** the self-hosted embedding image runs on x86 servers only.
 
@@ -226,7 +232,7 @@ Three things make the difference: **seed it with real content**, **make the habi
 
 **Is this just another wiki?** A wiki waits for you to visit it. Atrium is where your assistants already are: you ask in the chat you are in, and the answer comes from your organisation's knowledge. It also carries skills and handoffs, which a wiki does not.
 
-**Why not just use a Git repository, Obsidian or an agent-memory tool?** They are good at what they were built for: code, personal notes, the memory of one agent. Atrium is built for the step after that, when a group of people and their different assistants need the same, reviewed, access-controlled knowledge without anybody syncing anything. See [How Atrium compares](#how-atrium-compares).
+**Why not just keep Markdown files in a central Git repository?** For developers it works, and your code documentation belongs in the code repository anyway. As a company memory it asks every colleague to run Git, leaves browser and phone assistants out, hands whole files to the assistant and stops at rights per repository. Atrium keeps the Markdown and drops the synchronising, adds search, roles, review and skills, and exports back to Markdown at any time. Obsidian grew out of personal notes and Hindsight out of agent memory; both can be shared. Atrium adds roles per space, review, reviewed skills and one company login on top, for the step when a whole organisation and its different assistants need the same, access-controlled knowledge without anybody syncing anything. See [How Atrium compares](#how-atrium-compares).
 
 **Will my personal notes be visible to my boss or to IT?** No. Nobody can read a personal space through Atrium, administrators included. Team spaces are visible to their members, and administrators see all team spaces.
 
