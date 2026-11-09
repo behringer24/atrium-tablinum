@@ -5,6 +5,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 ## [Unreleased]
 
 ### Added
+- **Export of knowledge:** the new tool `export_knowledge` prepares a ZIP of Markdown files, one folder per space, one file per entry with a YAML header, and an `index.md` per folder. The archive follows the Open Knowledge Format (OKF) version 0.2: the header carries `type`, `title`, `tags`, `status`, `stale_after` and `generated`, the root `index.md` names `okf_version`, and everything else (author, owner, version, dates, exact state) is under the key `atrium`. It returns a link that works for ten minutes and once (`GET /export/<token>`, signed, checked again when opened). Admins export a space or all team spaces they administer, instance admins every team space, everybody their own personal space; nobody can export someone else's personal space. Entries in every state are included, older versions, handoffs and skills are not. Every export is in the audit log as `knowledge_export` with the number of entries.
 - **Guide for Pro licensees:** `docs/pro/pro-edition.md` (with PDF) describes what a licensee needs: reading, installing, renewing and removing the licence, what `not covered` and the reminders mean, the user limit and the guided offboarding with `admin_transfer_personal_space` and `reassign_owner`.
 - **Build from source:** `docs/release.md` describes how to build the Community edition from a checkout, with Docker or with Go.
 

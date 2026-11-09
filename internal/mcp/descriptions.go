@@ -98,6 +98,11 @@ var defaultDescriptions = map[string]string{
 		`Without a space given, the user's personal space is listed. type filters by knowledge type, owner (e-mail) by responsible person ` +
 		`(also a former one), review=due lists the entries whose review date has passed.`,
 
+	"export_knowledge": `Prepares a download of knowledge as a ZIP of Markdown files and returns a link that works for ten minutes and once. ` +
+		`Call ONLY when the user explicitly asks to export or take out knowledge. ` +
+		`space names one space the user administers or "my personal space"; without it all team spaces the user administers are exported. ` +
+		`Give the link to the user, who opens it in a browser. Do not open it yourself, and show it to nobody else: it is a credential.`,
+
 	"whats_new": `Shows what is new in the team spaces of the "{{.ProductName}}" knowledge store that the user can read, since a date ` +
 		`(default: the last 7 days): entries that were published or changed, and skills that were released; for curators also how many ` +
 		`drafts and skill drafts wait for review and how many reviews are due in their spaces. Call it when the user asks what is new or what changed ` +
