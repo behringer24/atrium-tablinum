@@ -18,7 +18,7 @@ func noop(context.Context, *call, noIn) (noOut, error) { return noOut{}, nil }
 
 // The curator and space admin tools of the core are listed for everyone, but a tool that an edition
 // adds to such a group knows nothing of the compact form: it must appear only for the holders of the
-// role, as before. (The Pro edition's reassign_owner showed up for every user.)
+// role, as before. (Such a tool used to show up in the list of every user.)
 func TestEditionToolsAreOfferedToTheHoldersOfTheirGroup(t *testing.T) {
 	saved := editionTools
 	t.Cleanup(func() { editionTools = saved })
