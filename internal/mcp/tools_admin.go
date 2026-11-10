@@ -38,6 +38,7 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_revoke_sessions", "End a user's sessions", tierInstanceAdmin, true, s.adminRevokeSessions)
 	addTool(s, ms, "admin_allowlist", "Manage login allowlist", tierInstanceAdmin, true, s.adminAllowlist)
 	addTool(s, ms, "admin_context", "Manage context", tierInstanceAdmin, true, s.adminContext)
+	addTool(s, ms, "admin_instance", "Manage instance names", tierInstanceAdmin, true, s.adminInstance)
 	if s.Quota != nil {
 		addTool(s, ms, "admin_quotas", "Manage quotas", tierInstanceAdmin, true, s.adminQuotas)
 	}

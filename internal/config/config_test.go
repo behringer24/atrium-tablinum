@@ -91,6 +91,39 @@ func TestShortName(t *testing.T) {
 	}
 }
 
+func TestEnvDefault(t *testing.T) {
+	raw := strings.Replace(minimal, "instance:\n", "instance:\n  short_name: \"${ATRIUM_SHORT_NAME:-Atrium}\"\n  organization_name: \"${ATRIUM_ORGANIZATION_NAME:-Example Corp}\"\n", 1)
+	base := map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "postgres://x"}
+	for name, tc := range map[string]struct {
+		extra      map[string]string
+		short, org string
+	}{
+		"both unset":      {nil, "Atrium", "Example Corp"},
+		"set":             {map[string]string{"ATRIUM_SHORT_NAME": "Atrium Firma", "ATRIUM_ORGANIZATION_NAME": "Affilicon"}, "Atrium Firma", "Affilicon"},
+		"empty is unset":  {map[string]string{"ATRIUM_SHORT_NAME": "", "ATRIUM_ORGANIZATION_NAME": ""}, "Atrium", "Example Corp"},
+		"only one is set": {map[string]string{"ATRIUM_ORGANIZATION_NAME": "Privat"}, "Atrium", "Privat"},
+	} {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range tc.extra {
+			m[k] = v
+		}
+		cfg, err := Parse([]byte(raw), env(m))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if cfg.Instance.ShortName != tc.short || cfg.Instance.OrganizationName != tc.org {
+			t.Errorf("%s: %q / %q", name, cfg.Instance.ShortName, cfg.Instance.OrganizationName)
+		}
+	}
+	// a variable without default is still mandatory
+	if _, err := Parse([]byte(minimal), env(nil)); err == nil {
+		t.Error("variable without default must stay mandatory")
+	}
+}
+
 func TestParseMissingEnv(t *testing.T) {
 	_, err := Parse([]byte(minimal), env(nil))
 	if err == nil || !strings.Contains(err.Error(), "GOOGLE_SECRET") || !strings.Contains(err.Error(), "DATABASE_URL") {

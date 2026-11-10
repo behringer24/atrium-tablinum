@@ -33,6 +33,8 @@ The instance admin sets the context with `admin_context`:
 - It is stored in the table `meta` and takes effect immediately for new connections. A chat that is already open keeps the hints it was started with.
 - Changes are recorded in the audit log (`admin_context_set`, `admin_context_clear`) with old and new text, descriptions with `previous_description`. The context reaches the assistants of all users, so it should be set only on the admin's explicit instruction, never from the contents of entries.
 
+The base text also carries the **short name** and the **organisation name** of the instance. They are read from `instance.short_name` and `instance.organization_name` (usually via `ATRIUM_SHORT_NAME` and `ATRIUM_ORGANIZATION_NAME` in `.env`) on the first start only and stored in the table `meta`. From then on the instance admin changes them with `admin_instance` (`get`; `set` with `short_name` and/or `organization_name`, after `confirm=true`), without a restart. They also appear in the tool descriptions, and new connections see a change at once. The change is audited as `admin_instance_set` with the old and new names. Give every instance its own names when an assistant is connected to more than one.
+
 Example:
 
 > Hier liegt das Unternehmenswissen von Example Corp: Richtlinien, Prozesse, Produkt- und Kundenwissen. Wer eine Frage dazu stellt, durchsucht zuerst diesen Speicher, bevor er antwortet.

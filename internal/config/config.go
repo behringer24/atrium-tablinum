@@ -259,7 +259,9 @@ func Defaults() Config {
 	}
 }
 
-var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+// envRef matches ${VAR} and ${VAR:-default}. With a default, an unset or empty variable yields the
+// default instead of an error, so optional settings need no entry in the environment.
+var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}`)
 
 // Load reads path, expands ${VAR} references, applies defaults and validates.
 func Load(path string) (*Config, error) {
@@ -274,9 +276,13 @@ func Load(path string) (*Config, error) {
 func Parse(raw []byte, lookup func(string) (string, bool)) (*Config, error) {
 	var missing []string
 	expanded := envRef.ReplaceAllStringFunc(string(raw), func(m string) string {
-		name := envRef.FindStringSubmatch(m)[1]
+		parts := envRef.FindStringSubmatch(m)
+		name := parts[1]
 		v, ok := lookup(name)
 		if !ok || v == "" {
+			if strings.HasPrefix(m, "${"+name+":-") {
+				return parts[2]
+			}
 			missing = append(missing, name)
 		}
 		return v

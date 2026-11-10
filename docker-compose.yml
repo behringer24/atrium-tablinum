@@ -13,6 +13,10 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      # Read by config.yaml (${ATRIUM_SHORT_NAME:-...}) for the first start only; afterwards an
+      # instance admin changes the names with admin_instance.
+      ATRIUM_SHORT_NAME: ${ATRIUM_SHORT_NAME:-}
+      ATRIUM_ORGANIZATION_NAME: ${ATRIUM_ORGANIZATION_NAME:-}
       ENTRA_CLIENT_ID: ${ENTRA_CLIENT_ID:-}
       ENTRA_CLIENT_SECRET: ${ENTRA_CLIENT_SECRET:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}

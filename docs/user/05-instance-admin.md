@@ -26,7 +26,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context; query the audit log; set storage limits (quotas); check health.
+- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -137,6 +137,17 @@ When an assistant connects, Atrium sends it a text (the MCP instructions): the b
 
 Descriptions of spaces carry the subject scoping; the context carries the general rule.
 
+### Names of the instance
+
+Assistants also learn two names: the **short name** users say in a chat ("save that in Atrium") and the **organisation** the store belongs to. They appear in the instructions and in the tool descriptions. The first start takes them from the configuration (`instance.short_name`, `instance.organization_name`, normally set in `.env` as `ATRIUM_SHORT_NAME` and `ATRIUM_ORGANIZATION_NAME`); after that the database holds them, and editing the configuration changes nothing.
+
+*"Show the names of this Atrium."* / *"Call this Atrium 'Atrium Firma' and the organisation 'Example Corp'."* (`admin_instance`: `get`, `set`)
+
+- At most 40 characters for the short name and 100 for the organisation, one line each. `set` needs your confirmation after the old and the new names were shown.
+- It applies to **new connections**; open chats pick it up when they reconnect. No restart.
+- Changes are in the audit log with old and new names (`admin_instance_set`). The product name ("Atrium Tablinum") is not changeable here.
+- Give each instance its own names if people connect one assistant to several instances (for example a private and a company Atrium). Otherwise "save that in Atrium" is ambiguous, and the assistant has to guess or ask.
+
 ## Quotas
 
 Every space has storage limits, so that one user or one team cannot fill the database, and a flood of drafts cannot bury a curator's queue. There are five, and `0` always means unlimited:
@@ -204,7 +215,7 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
-| Instance | `admin_context_set`, `admin_context_clear`, `admin_quota_set` (scope, target, old and new values) |
+| Instance | `admin_context_set`, `admin_context_clear`, `admin_instance_set`, `admin_quota_set` (scope, target, old and new values) |
 
 Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
 
@@ -382,3 +393,5 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 **What do I send when I ask for support?** The answer of *"Collect the Atrium support information."* (`admin_support_bundle`), the time of the problem and what you asked. It holds no content, names or secrets; read it before you send it.
 
 **Can I switch to another embedding model later?** Yes. Change the model in `config.yaml` (with your own TEI server also its `--model-id`), restart, and start *"Rebuild the Atrium search vectors."* (`admin_reembed`); search keeps working by full text until the rebuild is done. A model with another dimension also needs `embedding.allow_dimension_change: true` for that one start. See [Embedding](../embedding.md#dimension-and-changing-the-model).
+
+**Can I rename the instance later?** Yes, the short name and the organisation with `admin_instance`, without a restart; the product name stays in the configuration. Changing `short_name` or `organization_name` in `config.yaml` after the first start has no effect.
