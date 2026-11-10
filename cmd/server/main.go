@@ -201,6 +201,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		},
 		mcpserver.Settings{
 			ProductName: cfg.Instance.ProductName, ShortName: cfg.Instance.ShortName, OrganizationName: cfg.Instance.OrganizationName,
+			BaseURL: cfg.Instance.BaseURL,
 			IconURL: strings.TrimRight(cfg.Instance.BaseURL, "/") + "/icon", IconMIME: icon.MIME,
 			HandoffTTLDays: cfg.Spaces.HandoffTTLDays, DescriptionOverrides: cfg.Tools.Descriptions,
 			DefaultSpaceByGroup: cfg.Spaces.DefaultSpaceByGr, WritesPerMinute: cfg.Policy.RateLimitWritesPerMinute, ReadsPerMinute: cfg.Policy.RateLimitReadsPerMinute,
@@ -213,6 +214,11 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	if err != nil {
 		return err
 	}
+	// The names come from the configuration on the first start; afterwards the database decides.
+	if err := mcpSrv.InitIdentity(ctx); err != nil {
+		return err
+	}
+
 	mux := http.NewServeMux()
 
 	var verifier auth.TokenVerifier
@@ -263,6 +269,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	mux.Handle("GET /icon", icon.Handler())
 	mux.Handle("GET /favicon.ico", icon.Handler())
 	mux.Handle("GET /skills/export/{space}/{name}", mcpSrv.SkillExportHandler(verifier, resourceMetadataURL))
+	mux.Handle("GET /export/{token}", mcpSrv.ExportHandler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	mux.Handle("GET /readyz", readiness(log, func(ctx context.Context) error {
 		if err := pool.Ping(ctx); err != nil {

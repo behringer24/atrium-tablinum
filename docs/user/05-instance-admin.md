@@ -26,7 +26,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context; query the audit log; set storage limits (quotas); check health.
+- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -43,8 +43,8 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 A checklist for the first days. The technical steps are in the [README](../../README.md) and [deployment](../deployment.md).
 
 1. **Install and verify.** Follow a deployment variant (bundled nginx, your own proxy or a tunnel). Check `https://<domain>/healthz` and `/readyz`. Set `instance.trusted_proxies` correctly: the limits per address depend on it.
-2. **Identity provider.** Configure Google, Entra or another OIDC provider and the allowed domains, addresses or tenants. Test a login. Use `admin_allowlist` later to extend the list without a restart.
-3. **First admin login.** Log in with an address in `auth.bootstrap_admins`. Connect an assistant and ask *"Which Atrium spaces exist and what is my role?"*
+2. **Identity provider.** Configure Google, Entra or another OIDC provider and the allowed domains, addresses or tenants (with the shipped `config.example.yaml` the domain is `ATRIUM_ALLOWED_DOMAIN` and the Google credentials are `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`). Test a login. Use `admin_allowlist` later to extend the list without a restart.
+3. **First admin login.** Log in with an address in `auth.bootstrap_admins` (`ADMIN_EMAIL` in `.env` with the shipped configuration). Connect an assistant and ask *"Which Atrium spaces exist and what is my role?"*
 4. **Check health.** *"Show the Atrium health."* (`admin_health`): database, embedding service, jobs and tasks. The TLS certificate is not checked by Atrium; monitor its expiry at the proxy.
 5. **Set the context** that tells assistants what Atrium is for ([below](#the-context-for-assistants)).
 6. **Create the first spaces** and add members ([Spaces](#spaces)). Start small: one open "Company handbook" space and one or two team spaces with approval.
@@ -137,6 +137,17 @@ When an assistant connects, Atrium sends it a text (the MCP instructions): the b
 
 Descriptions of spaces carry the subject scoping; the context carries the general rule.
 
+### Names of the instance
+
+Assistants also learn two names: the **short name** users say in a chat ("save that in Atrium") and the **organisation** the store belongs to. They appear in the instructions and in the tool descriptions. The first start takes them from the configuration (`instance.short_name`, `instance.organization_name`, normally set in `.env` as `ATRIUM_SHORT_NAME` and `ATRIUM_ORGANIZATION_NAME`); after that the database holds them, and editing the configuration changes nothing.
+
+*"Show the names of this Atrium."* / *"Call this Atrium 'Atrium Firma' and the organisation 'Example Corp'."* (`admin_instance`: `get`, `set`)
+
+- At most 40 characters for the short name and 100 for the organisation, one line each. `set` needs your confirmation after the old and the new names were shown.
+- It applies to **new connections**; open chats pick it up when they reconnect. No restart.
+- Changes are in the audit log with old and new names (`admin_instance_set`). The product name ("Atrium Tablinum") is not changeable here.
+- Give each instance its own names if people connect one assistant to several instances (for example a private and a company Atrium). Otherwise "save that in Atrium" is ambiguous, and the assistant has to guess or ask.
+
 ## Quotas
 
 Every space has storage limits, so that one user or one team cannot fill the database, and a flood of drafts cannot bury a curator's queue. There are five, and `0` always means unlimited:
@@ -199,12 +210,12 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 
 | Area | Actions |
 |---|---|
-| Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
+| Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
-| Instance | `admin_context_set`, `admin_context_clear`, `admin_quota_set` (scope, target, old and new values) |
+| Instance | `admin_context_set`, `admin_context_clear`, `admin_instance_set`, `admin_quota_set` (scope, target, old and new values) |
 
 Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
 
@@ -238,6 +249,20 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 ### Backups
 
 `scripts/backup.sh` writes a compressed `pg_dump` and removes old dumps; schedule it daily. The dump contains personal spaces, so protect it like the database. Restore into an empty database and test it once. Embeddings are in the dump; changing the embedding model needs a reindex.
+
+### Exporting knowledge
+
+As instance admin you can take everything out, not only a backup. *"Export all Atrium spaces."* (`export_knowledge` without a space) returns a link that works for ten minutes and once. It leads to a ZIP file with one folder per team space, one Markdown file per entry (with type, tags, state, author, owner, review date and version in the header) and an `index.md` for each folder and for the whole export. The archive follows the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format) (OKF, version 0.2), so tools that read that format can use it; what only Atrium knows is under the key `atrium` in each header. *"Export the space Support."* does the same for one space.
+
+- **Rights:** the export follows the admin role. Instance admins hold it in every team space, archived ones included. **Personal spaces are never part of the export** and nobody but their owner can export one.
+- **What it contains:** entries in every state (approved, draft, returned, archived). Not included: older versions of an entry, handoffs, skills (each released skill has its own ZIP export, see [Skills](../skills.md)) and the audit log.
+- **The link is a credential.** It is signed, valid for ten minutes, works once and is checked again when it is opened: a locked account or a lost admin role gets nothing. Links do not survive a restart of the server. Up to two exports run at the same time; a third is turned away with the request to try again shortly.
+- **Behind a proxy:** the link points to `/export/…` on the public address (`instance.base_url`). Like `/mcp`, it needs no login in the browser and must reach the server unchanged.
+- **Large instances:** the archive is built while it is sent, so it does not fill the server's memory, but a very large export takes time. Do not close the browser tab; an interrupted download does not open as a ZIP.
+- **Trace:** one audit entry `knowledge_export` per space with the number of entries.
+- **Protect the file.** It holds the knowledge of all team spaces, drafts and archived entries included. Store and share it like a database backup.
+
+For a complete copy that can be restored into Atrium, use the backup above; the export is the readable copy for other uses.
 
 ### Updates
 
@@ -368,3 +393,5 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 **What do I send when I ask for support?** The answer of *"Collect the Atrium support information."* (`admin_support_bundle`), the time of the problem and what you asked. It holds no content, names or secrets; read it before you send it.
 
 **Can I switch to another embedding model later?** Yes. Change the model in `config.yaml` (with your own TEI server also its `--model-id`), restart, and start *"Rebuild the Atrium search vectors."* (`admin_reembed`); search keeps working by full text until the rebuild is done. A model with another dimension also needs `embedding.allow_dimension_change: true` for that one start. See [Embedding](../embedding.md#dimension-and-changing-the-model).
+
+**Can I rename the instance later?** Yes, the short name and the organisation with `admin_instance`, without a restart; the product name stays in the configuration. Changing `short_name` or `organization_name` in `config.yaml` after the first start has no effect.

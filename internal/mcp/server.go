@@ -56,6 +56,8 @@ type Settings struct {
 	// non-local Host header on loopback connections. Needed when a reverse proxy on the
 	// same host forwards to 127.0.0.1.
 	DisableHostProtection bool
+	// BaseURL is the public address of the instance; export links are built from it.
+	BaseURL string
 	// IconURL is the public address of the icon, sent to clients in the server info; empty = none.
 	IconURL  string
 	IconMIME string
@@ -118,15 +120,31 @@ type Server struct {
 	limiter *limiter
 	reads   *limiter
 
+	// exports signs the download links of export_knowledge; exportSlots bounds the exports
+	// running at once.
+	exports     *exportLinks
+	exportSlots chan struct{}
+
 	// deniedAt remembers when a refusal was last audited (see denied).
 	deniedMu sync.Mutex
 	deniedAt map[string]time.Time
-	desc     map[string]string // rendered descriptions
+
+	// idMu guards the names an instance admin can change at runtime (see identity.go) and the
+	// tool descriptions rendered from them.
+	idMu       sync.RWMutex
+	short, org string            // current short name and organisation name
+	desc       map[string]string // rendered descriptions
 }
 
 func New(d Deps, set Settings) *Server {
-	s := &Server{Deps: d, set: set, limiter: newLimiter(set.WritesPerMinute, time.Minute), reads: newLimiter(set.ReadsPerMinute, time.Minute)}
-	s.desc = s.renderDescriptions()
+	s := &Server{Deps: d, set: set, limiter: newLimiter(set.WritesPerMinute, time.Minute), reads: newLimiter(set.ReadsPerMinute, time.Minute),
+		exports: newExportLinks(), exportSlots: make(chan struct{}, maxParallelExports)}
+	short, org := s.set.ShortName, s.set.OrganizationName
+	if short == "" {
+		short = s.set.ProductName
+	}
+	s.short, s.org = short, org
+	s.desc = s.renderDescriptions(short, org)
 	return s
 }
 
@@ -153,22 +171,18 @@ func (s *Server) Handler(verifier auth.TokenVerifier, resourceMetadataURL string
 // instructions are the server-level hints a client shows its model. Users mostly say the
 // short name, so the model has to connect it with this server.
 func (s *Server) instructions() string {
+	short, org := s.names()
 	name := s.set.ProductName
-	if s.set.ShortName != "" && s.set.ShortName != name {
-		name += " (short: " + s.set.ShortName + ")"
+	if short != "" && short != name {
+		name += " (short: " + short + ")"
 	}
-	return "This is the central knowledge store " + name + ". When the user mentions \"" + s.shortName() +
+	if org != "" {
+		name += " of " + org
+	}
+	return "This is the central knowledge store " + name + ". When the user mentions \"" + short +
 		"\", this store is meant. Only save something when the user explicitly asks for it. " +
 		"After saving, always tell the user which space the entry is in. " +
 		untrustedHint
-}
-
-// shortName falls back to the product name when no short form is configured.
-func (s *Server) shortName() string {
-	if s.set.ShortName != "" {
-		return s.set.ShortName
-	}
-	return s.set.ProductName
 }
 
 // serverFor builds the tool set for one new session from the authenticated caller. The
@@ -233,7 +247,7 @@ type call struct {
 // rate-limit writes, run, translate errors into messages the model can act on.
 func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tier, write bool, fn func(context.Context, *call, In) (Out, error)) {
 	ann := &mcp.ToolAnnotations{Title: title, ReadOnlyHint: !write}
-	tool := &mcp.Tool{Name: name, Description: s.desc[name], Annotations: ann}
+	tool := &mcp.Tool{Name: name, Description: s.description(name), Annotations: ann}
 	if in := portableSchema[In](); in != nil {
 		tool.InputSchema = in
 	}
@@ -409,11 +423,12 @@ func (l *limiter) allow(id uuid.UUID) bool {
 	return true
 }
 
-func (s *Server) renderDescriptions() map[string]string {
+// renderDescriptions renders every tool description for the given names.
+func (s *Server) renderDescriptions(short, org string) map[string]string {
 	data := struct {
 		ProductName, ShortName, OrganizationName string
 		HandoffTTLDays                           int
-	}{s.set.ProductName, s.shortName(), s.set.OrganizationName, s.set.HandoffTTLDays}
+	}{s.set.ProductName, short, org, s.set.HandoffTTLDays}
 	out := map[string]string{}
 	defaults := map[string]string{}
 	for name, def := range defaultDescriptions {

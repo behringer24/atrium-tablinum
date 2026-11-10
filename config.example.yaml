@@ -1,13 +1,18 @@
 # Example configuration. Secrets only via environment variables (${VAR}).
+# A basic setup needs no edit here: base_url, login domain, first admin, instance names, Google
+# credentials and the database password come from .env. ${VAR} is mandatory, ${VAR:-default} optional.
 instance:
   product_name: "Atrium Tablinum"
-  short_name: "Atrium"                  # how users say it in chat
-  organization_name: "Example Corp"          # appears in tool descriptions
+  # The two names below come from the environment (.env) and are read on the first start only:
+  # they are stored in the database, and from then on an instance admin changes them with
+  # admin_instance, without a restart. Editing them here later has no effect.
+  short_name: "${ATRIUM_SHORT_NAME:-Atrium}"                        # how users say it in chat
+  organization_name: "${ATRIUM_ORGANIZATION_NAME:-your organisation}"   # appears in tool descriptions
   # Icon for the favicon and the MCP server info: svg, png, ico, jpg or webp, up to 256 KB.
   # Empty = the built-in Atrium icon. Served without login at /favicon.ico and /icon.
   # icon_file: "/etc/atrium/logo.svg"
   log_level: info                         # debug adds one log line per MCP request (see docs/skills.md)
-  base_url: "https://knowledge.example.com"   # public address, no matter which proxy sits in front
+  base_url: "${ATRIUM_BASE_URL}"          # public HTTPS address, no matter which proxy sits in front (.env)
   listen: ":8080"
   dev_mode: false                         # local only (base_url on localhost and listen on 127.0.0.1); static test token
   # dev_token: "at-least-16-characters"   # mandatory with dev_mode, is neither generated nor logged
@@ -22,7 +27,7 @@ auth:
       type: google
       client_id: "${GOOGLE_CLIENT_ID}"
       client_secret: "${GOOGLE_CLIENT_SECRET}"
-      allowed_domains: ["example.com"]
+      allowed_domains: ["${ATRIUM_ALLOWED_DOMAIN}"]   # who may log in (.env); for private accounts use allowed_emails instead
       # allowed_emails: ["me@gmail.com"]   # single addresses, e.g. private Gmail accounts (no hd claim)
     # - id: entra
     #   type: entra
@@ -39,7 +44,7 @@ auth:
     #   client_secret: "..."
     #   allowed_domains: ["example.com"]
     #   groups_claim: "groups"
-  bootstrap_admins: ["admin@example.com"]
+  bootstrap_admins: ["${ADMIN_EMAIL}"]   # first instance admin (.env)
   access_token_ttl: "1h"
   refresh_token_ttl: "720h"
   session_max_age: "2160h"         # absolute duration of a login (90 days), even with continuous use; 0 = unlimited

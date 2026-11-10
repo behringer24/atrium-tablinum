@@ -10,6 +10,7 @@ Do not confuse the two admin roles. A **space admin** manages **one** space. An 
 - [Members, roles and groups](#members-roles-and-groups)
 - [Choosing roles](#choosing-roles)
 - [Lifting blocks and deleting](#lifting-blocks-and-deleting)
+- [Taking a space's knowledge out](#taking-a-spaces-knowledge-out)
 - [Settings only instance admins change](#settings-only-instance-admins-change)
 - [Daily and periodic workflows](#daily-and-periodic-workflows)
 - [Troubleshooting](#troubleshooting)
@@ -94,6 +95,18 @@ A reason is required and goes to the audit log.
 
 Deleting skills for good is for instance admins, because skills are instructions that assistants followed. Ask an instance admin if one must go; block or archive in the meantime.
 
+## Taking a space's knowledge out
+
+As admin of a space you can export everything in it as Markdown files, for a copy of your own, a migration or an archive. Ask: *"Export the Support space."* (`export_knowledge`). Without a space name, all team spaces you administer are exported together.
+
+The assistant answers with a link that works for **ten minutes and only once**. You open it in your browser; there is nothing to install. The ZIP file holds a folder per space, one Markdown file per entry and an `index.md` that lists them. It follows the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format) (OKF, version 0.2), so tools that read that format can use it; what only Atrium knows is under the key `atrium` in each header.
+
+- **What is in it:** every entry of the space in every state: approved, draft, returned and archived, each with its title, type, tags, state, author, responsible person, review date and version in a header. The `status` field says whether the entry was approved (`stable`), still a draft (`draft`) or archived (`deprecated`); the exact state is under `atrium`.
+- **What is not:** the history of earlier versions, handoffs and skills (export a skill with its own ZIP, see [Skills](../skills.md)), and personal spaces. Nobody can export someone else's personal space.
+- **Who may:** admins of the space and instance admins. Curators, authors and readers cannot, and the assistant does not tell them whether the space exists.
+- **Trace:** every export is in the audit log with the space and the number of entries, never the content.
+- **Treat the file like the space itself.** It contains drafts and archived entries that not every reader of the space could see. Keep it where only the right people can open it.
+
 ## Settings only instance admins change
 
 Ask an instance admin when you need to:
@@ -155,6 +168,8 @@ Ask an instance admin when you need to:
 ## FAQ
 
 **Can I see what is in someone's personal space?** No. Nobody can, not even instance admins.
+
+**Can I export my space?** Yes, as admin: *"Export the Support space."* You get a ten-minute, single-use link to a ZIP of Markdown files, drafts and archived entries included.
 
 **Can I turn on approval for my space?** No, ask an instance admin.
 

@@ -32,6 +32,7 @@ func (s *Server) registerUserTools(ms *mcp.Server) {
 	addTool(s, ms, "delete_knowledge", "Delete entry permanently", tierUser, true, s.deleteKnowledge)
 	addTool(s, ms, "list_knowledge", "List entries", tierUser, false, s.listKnowledge)
 	addTool(s, ms, "whats_new", "What is new", tierUser, false, s.whatsNew)
+	addTool(s, ms, "export_knowledge", "Export knowledge", tierUser, false, s.exportKnowledge)
 	addTool(s, ms, "set_default_space", "Set default space", tierUser, true, s.setDefaultSpace)
 	addTool(s, ms, "handoff_save", "Save handoff", tierUser, true, s.handoffSave)
 	addTool(s, ms, "handoff_list", "List handoffs", tierUser, false, s.handoffList)
