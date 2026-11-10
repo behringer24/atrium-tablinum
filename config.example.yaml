@@ -140,5 +140,16 @@ skills:
   # admin_quotas) for all personal spaces, all team spaces, one user or one space; the change
   # applies to the next write and survives a restart. docs/user/05-instance-admin.md.
 
+sharing:
+  # true: users can send a knowledge entry or a skill to a colleague (tools share_knowledge and
+  # share_skill). It lands in the recipient's personal space as a draft that only the recipient
+  # can approve or return; nothing reaches their assistant before that. Off by default.
+  # Needs spaces.personal.enabled. docs/sharing.md.
+  enabled: false
+  # Received items that wait unanswered in one personal space (drafts and returned ones), from
+  # everybody and from one sender. They keep somebody from filling another user's review list.
+  max_pending_per_recipient: 20
+  max_pending_per_sender: 3
+
 tools:
   descriptions: {}

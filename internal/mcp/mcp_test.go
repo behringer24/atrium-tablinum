@@ -22,6 +22,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
@@ -150,6 +151,12 @@ type env struct {
 
 func setup(t *testing.T, writesPerMinute int) *env {
 	t.Helper()
+	return setupSharing(t, writesPerMinute, share.Options{})
+}
+
+// setupSharing is setup with the sending of entries and skills configured.
+func setupSharing(t *testing.T, writesPerMinute int, shareOpt share.Options) *env {
+	t.Helper()
 	pool := dbtest.NewPool(t)
 	e := &env{ctx: context.Background(), tokens: map[string]string{}}
 	e.users = users.New(pool, users.Options{BootstrapAdmins: []string{"boss@x.de"}, PersonalEnabled: true})
@@ -163,14 +170,14 @@ func setup(t *testing.T, writesPerMinute int) *env {
 		t.Fatal(err)
 	}
 	e.quota = quota.New(pool, quota.Defaults{Personal: quota.Limits{Documents: 100, Bytes: 1 << 20}})
-	ds := docs.New(pool, e.spaces, ing, docs.Options{Quota: e.quota, HandoffTTLDays: 14, DuplicateThreshold: 0.9})
+	ds := docs.New(pool, e.spaces, ing, docs.Options{Quota: e.quota, HandoffTTLDays: 14, DuplicateThreshold: 0.9, Share: shareOpt})
 	sr, err := search.New(pool, fakeEmbedder{}, search.Config{FTSLanguages: langs, CandidatesPerMethod: 50, RRFK: 60, DefaultLimit: 5, MaxLimit: 20, HNSWEfSearch: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{Quota: e.quota}), Quota: e.quota, Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
+	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{Quota: e.quota, Share: shareOpt}), Quota: e.quota, Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
 		Health: []HealthCheck{{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }}}},
-		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute})
+		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute, SharingEnabled: shareOpt.Enabled})
 
 	verifier := func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 		email, ok := e.tokens[token]
@@ -304,8 +311,8 @@ func TestToolListAndDescriptions(t *testing.T) {
 	}
 	for name := range defaultDescriptions {
 		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" ||
-			name == "review_skill" || name == "publish_skill" || name == "block_skill" || name == "unblock_skill" {
-			continue // tools for admins and curators depend on the role, see TestToolListFollowsRole
+			name == "review_skill" || name == "publish_skill" || name == "block_skill" || name == "unblock_skill" || strings.HasPrefix(name, "share_") {
+			continue // tools for admins and curators depend on the role, see TestToolListFollowsRole; share_* only where sharing is on, see TestShareToolsExistOnlyWhenEnabled
 		}
 		if got[name] == nil {
 			t.Errorf("tool %s missing", name)

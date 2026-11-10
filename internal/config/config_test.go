@@ -261,3 +261,23 @@ func TestExampleConfigNeedsOnlyEnvironment(t *testing.T) {
 		}
 	}
 }
+
+func TestSharingIsOffByDefaultAndNeedsPersonalSpaces(t *testing.T) {
+	vars := env(map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "postgres://x"})
+	cfg, err := Parse([]byte(minimal), vars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sharing.Enabled || cfg.Sharing.MaxPendingPerRecipient != 20 || cfg.Sharing.MaxPendingPerSender != 3 {
+		t.Errorf("defaults: %+v", cfg.Sharing)
+	}
+	if _, err := Parse([]byte(minimal+"sharing:\n  enabled: true\nspaces:\n  personal:\n    enabled: false\n"), vars); err == nil || !strings.Contains(err.Error(), "sharing.enabled") {
+		t.Errorf("sharing without personal spaces: %v", err)
+	}
+	if _, err := Parse([]byte(minimal+"sharing:\n  max_pending_per_sender: 0\n"), vars); err == nil || !strings.Contains(err.Error(), "max_pending") {
+		t.Errorf("a limit of 0: %v", err)
+	}
+	if cfg, err := Parse([]byte(minimal+"sharing:\n  enabled: true\n"), vars); err != nil || !cfg.Sharing.Enabled {
+		t.Errorf("enabled: %v", err)
+	}
+}

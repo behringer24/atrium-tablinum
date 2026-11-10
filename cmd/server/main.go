@@ -35,6 +35,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/reembed"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
@@ -133,12 +134,14 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		Team: quota.Limits{Documents: cfg.Spaces.Team.MaxDocuments, Bytes: cfg.Spaces.Team.MaxBytes,
 			Skills: cfg.Skills.TeamMaxSkills, SkillBytes: cfg.Skills.TeamMaxBytes, SkillVersions: cfg.Skills.MaxVersionsPerSkill},
 	})
+	shareOpt := share.Options{Enabled: cfg.Sharing.Enabled, MaxPerRecipient: cfg.Sharing.MaxPendingPerRecipient, MaxPerSender: cfg.Sharing.MaxPendingPerSender}
 	docStore := docs.New(pool, spaceStore, ing, docs.Options{
 		Quota:              quotaStore,
 		HandoffTTLDays:     cfg.Spaces.HandoffTTLDays,
 		DuplicateThreshold: cfg.Policy.DuplicateThreshold,
+		Share:              shareOpt,
 	})
-	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval, Quota: quotaStore})
+	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval, Quota: quotaStore, Share: shareOpt})
 	searchSvc, err := search.New(pool, emb, search.Config{
 		FTSLanguages: cfg.Search.FTSLanguages, CandidatesPerMethod: cfg.Search.CandidatesPerMethod, RRFK: cfg.Search.RRFK,
 		DefaultLimit: cfg.Search.DefaultLimit, MaxLimit: cfg.Search.MaxLimit, HNSWEfSearch: cfg.Search.HNSWEfSearch,
@@ -206,6 +209,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 			HandoffTTLDays: cfg.Spaces.HandoffTTLDays, DescriptionOverrides: cfg.Tools.Descriptions,
 			DefaultSpaceByGroup: cfg.Spaces.DefaultSpaceByGr, WritesPerMinute: cfg.Policy.RateLimitWritesPerMinute, ReadsPerMinute: cfg.Policy.RateLimitReadsPerMinute,
 			PersonalRetentionDays: cfg.Spaces.Personal.RetentionDaysAfterOffboarding,
+			SharingEnabled:        cfg.Sharing.Enabled,
 			// A reverse proxy on the same host reaches us via loopback with the public Host header.
 			DisableHostProtection: len(cfg.Instance.TrustedProxies) > 0,
 		})

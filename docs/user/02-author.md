@@ -10,6 +10,7 @@ You are an **author** when a space gave you the role *author* (or when everybody
 - [Drafts and approval](#drafts-and-approval)
 - [Maintaining your entries](#maintaining-your-entries)
 - [Writing skills](#writing-skills)
+- [Sending to a colleague](#sending-to-a-colleague)
 - [Daily workflows](#daily-workflows)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -162,6 +163,16 @@ The author of a version cannot approve it; another curator must. That is on purp
 
 Your personal skills are released at once and visible only to you. This is a good place to develop and test a skill before you propose it to a team. Copy the files into the team space with `store_skill`; the curators review it there.
 
+## Sending to a colleague
+
+Where your organisation has switched it on, you can send an entry or a skill to one colleague instead of filing it in a team space: *"Send my entry about the release checklist to anna@example.com"* (`share_knowledge`) or *"Send the skill weekly-report to anna@example.com"* (`share_skill`). The assistant asks you to confirm. A copy lands in the colleague's personal space as a draft that only they can see; they approve or return it, and you are not told which. For a skill they have to read, approve and release it before their assistant offers it.
+
+- **What you can send:** an approved entry or a released skill. For an entry of a team space you need to be its author or a curator or admin of the space; for a skill of a team space you need to be a curator or admin (as for `move_skill`). Text that is not stored yet: store it in your personal space first, then send it.
+- **Rules arrive as documentation:** a binding rule is sent as a plain documentation entry.
+- **A refusal says little on purpose.** If the colleague does not exist, cannot receive right now, already holds a skill of that name or has too many unanswered items, the answer is the same. Do not try other addresses; ask them directly.
+- **You see nothing afterwards,** not the copy and not the decision. If it matters, tell the colleague.
+- **It is not a way to publish.** What the whole team should use goes to a team space and is reviewed there. Details: [Sending to a colleague](../sharing.md).
+
 ## Daily workflows
 
 **Documenting a new procedure.**
@@ -181,6 +192,8 @@ Your personal skills are released at once and visible only to you. This is a goo
 2. Write `SKILL.md` and reference files; file as a skill in your personal space and try `/name`.
 3. File the same package in the team space. Message a curator.
 4. After approval, announce the skill to your team and collect feedback; ship fixes as new versions.
+
+**Passing something on to one colleague.** *"Send this entry to anna@example.com."* Confirm when asked, then tell the colleague that it waits in their personal space.
 
 **Handing over before you leave or change teams.** Move your team-relevant entries to the right space (*"Move all entries about X to Operations"*, one at a time with confirmation). What stays in your personal space is deleted after you leave.
 

@@ -38,6 +38,7 @@ func (s *Server) registerUserTools(ms *mcp.Server) {
 	addTool(s, ms, "handoff_list", "List handoffs", tierUser, false, s.handoffList)
 	addTool(s, ms, "handoff_load", "Load handoff", tierUser, false, s.handoffLoad)
 	s.registerSkillTools(ms)
+	s.registerShareTools(ms)
 	s.registerEditionTools(ms, tierUser)
 }
 

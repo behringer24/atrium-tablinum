@@ -14,6 +14,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 - [The context for assistants](#the-context-for-assistants)
 - [Quotas](#quotas)
 - [Governing skills](#governing-skills)
+- [Sending between users](#sending-between-users)
 - [Audit log and monitoring](#audit-log-and-monitoring)
 - [Operating the system](#operating-the-system)
 - [Security responsibilities and incidents](#security-responsibilities-and-incidents)
@@ -202,6 +203,16 @@ Skills are the highest-trust content in Atrium: assistants follow them. Your rol
 
 Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `skill_block`, `skill_move_*` and `skill_delete` (see below).
 
+## Sending between users
+
+Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `share_skill`). It lands in the recipient's personal space as a draft that only the recipient can read, approve or return; you cannot read it either. Details, rights and protections: [Sending to a colleague](../sharing.md).
+
+- **Off by default.** Switch it on with `sharing.enabled: true` in `config.yaml` (needs `spaces.personal.enabled`) and restart; the two tools are listed only then. The change reaches users when they reconnect.
+- **Limits:** `sharing.max_pending_per_recipient` (default 20) caps the received items that wait in one personal space, `sharing.max_pending_per_sender` (default 3) those of one sender in it. Both keep somebody from filling another user's review list. The recipient's quota applies too. They are settings, not runtime quotas.
+- **Skills are the point to watch.** A received skill is only a draft in a personal space until its owner releases it. The owner is the reviewer, so brief people to read every file, and expect that risk class C needs you, as everywhere. Block the skill with `block_skill` if one turns out to be harmful.
+- **No content in the log.** Every sending is `share_send` with the sender, the recipient (id), the kind and a digest; nothing says what was sent. Ask *"Who sent something to others this week?"* with the filter `action: share_send`.
+- **Not covered yet:** the sender is not told the decision, there is no recall and no per-user switch to refuse items (see the [roadmap](../../ROADMAP.md)).
+
 ## Audit log and monitoring
 
 *"Show the last audit entries."* (`admin_audit_log`). Filters: `user` (e-mail), `action` (exact or a prefix with `*`, for example `skill_*`), `space`, `document_id`, `skill` (skill name), `client`, `since`, `until` (RFC 3339 or `YYYY-MM-DD`), `limit` (default 50, at most 200).
@@ -211,7 +222,7 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 | Area | Actions |
 |---|---|
 | Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
-| Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
+| Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, `share_send` (a sending to a colleague: kind, recipient id and digest, no title or name), reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |

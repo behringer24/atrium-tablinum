@@ -11,9 +11,11 @@ import (
 
 // registerCuratorTools adds what only curators (and admins) of a team space need. It lists them
 // for everyone; member says whether the caller holds the role, and everyone else gets the compact
-// form. docs.Review re-checks the role per entry.
+// form. The review tools are open to every user at the tool level, because the owner of a personal
+// space reviews what others sent them (see package share); docs.Review and skills.Review check the
+// role per entry.
 func (s *Server) registerCuratorTools(ms *mcp.Server, member bool) {
-	addTool(s, ms, "review_knowledge", "Review draft", tierCurator, true, s.reviewKnowledge, s.compactFor("review_knowledge", member))
+	addTool(s, ms, "review_knowledge", "Review draft", tierUser, true, s.reviewKnowledge, s.compactFor("review_knowledge", member))
 	s.registerCuratorSkillTools(ms, member)
 	s.registerEditionTools(ms, tierCurator)
 }

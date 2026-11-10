@@ -30,6 +30,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/reembed"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
@@ -45,6 +46,8 @@ type Settings struct {
 	// PersonalRetentionDays is how long the personal space of a disabled account is kept
 	// before it is purged; 0 = never.
 	PersonalRetentionDays int
+	// SharingEnabled lists the tools that send an entry or a skill to another user (sharing.enabled).
+	SharingEnabled bool
 	// DescriptionOverrides replaces default tool descriptions (Go templates).
 	DescriptionOverrides map[string]string
 	// DefaultSpaceByGroup maps a group name to the slug of its default target space.
@@ -351,7 +354,8 @@ func translate(tool string, err error) error {
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
 		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap),
-		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived), errors.Is(err, skills.ErrQuota), errors.Is(err, skills.ErrChanged), errors.Is(err, skills.ErrNameTaken), errors.Is(err, users.ErrUserLimit):
+		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived), errors.Is(err, skills.ErrQuota), errors.Is(err, skills.ErrChanged), errors.Is(err, skills.ErrNameTaken), errors.Is(err, users.ErrUserLimit),
+		errors.Is(err, share.ErrDisabled), errors.Is(err, share.ErrSelf), errors.Is(err, share.ErrUndeliverable):
 		return err
 	}
 	slog.Error("Tool error", "tool", tool, "error", err)

@@ -15,6 +15,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 	"github.com/behringer24/atrium-tablinum/internal/visibility"
@@ -43,6 +44,8 @@ type Options struct {
 	Quota              *quota.Store
 	HandoffTTLDays     int
 	DuplicateThreshold float64
+	// Share configures sending an entry to another user's personal space (see package share).
+	Share share.Options
 }
 
 type Document struct {
