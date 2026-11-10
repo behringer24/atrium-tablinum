@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -223,4 +224,40 @@ func devLocal(c *Config) {
 	c.Instance.Listen = "127.0.0.1:8080"
 	c.Instance.BaseURL = "http://localhost:8080"
 	c.Instance.DevToken = "0123456789abcdef"
+}
+
+// The shipped example must start from the environment alone: that is the promise of a basic setup
+// that only fills in .env.
+func TestExampleConfigNeedsOnlyEnvironment(t *testing.T) {
+	raw, err := os.ReadFile("../../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]string{
+		"ATRIUM_BASE_URL":       "https://atrium.corp.example",
+		"ATRIUM_ALLOWED_DOMAIN": "corp.example",
+		"ADMIN_EMAIL":           "boss@corp.example",
+		"GOOGLE_CLIENT_ID":      "id",
+		"GOOGLE_CLIENT_SECRET":  "s",
+		"DATABASE_URL":          "postgres://x",
+	}
+	cfg, err := Parse(raw, env(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Instance.BaseURL != m["ATRIUM_BASE_URL"] || cfg.Auth.BootstrapAdmins[0] != m["ADMIN_EMAIL"] ||
+		cfg.Auth.Providers[0].AllowedDomains[0] != m["ATRIUM_ALLOWED_DOMAIN"] {
+		t.Fatalf("values not taken from the environment: %+v", cfg.Instance)
+	}
+	for _, drop := range []string{"ATRIUM_BASE_URL", "ATRIUM_ALLOWED_DOMAIN", "ADMIN_EMAIL"} {
+		short := map[string]string{}
+		for k, v := range m {
+			if k != drop {
+				short[k] = v
+			}
+		}
+		if _, err := Parse(raw, env(short)); err == nil || !strings.Contains(err.Error(), drop) {
+			t.Fatalf("without %s the start must fail naming it, got %v", drop, err)
+		}
+	}
 }

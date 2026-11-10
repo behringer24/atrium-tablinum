@@ -43,8 +43,8 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 A checklist for the first days. The technical steps are in the [README](../../README.md) and [deployment](../deployment.md).
 
 1. **Install and verify.** Follow a deployment variant (bundled nginx, your own proxy or a tunnel). Check `https://<domain>/healthz` and `/readyz`. Set `instance.trusted_proxies` correctly: the limits per address depend on it.
-2. **Identity provider.** Configure Google, Entra or another OIDC provider and the allowed domains, addresses or tenants. Test a login. Use `admin_allowlist` later to extend the list without a restart.
-3. **First admin login.** Log in with an address in `auth.bootstrap_admins`. Connect an assistant and ask *"Which Atrium spaces exist and what is my role?"*
+2. **Identity provider.** Configure Google, Entra or another OIDC provider and the allowed domains, addresses or tenants (with the shipped `config.example.yaml` the domain is `ATRIUM_ALLOWED_DOMAIN` and the Google credentials are `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`). Test a login. Use `admin_allowlist` later to extend the list without a restart.
+3. **First admin login.** Log in with an address in `auth.bootstrap_admins` (`ADMIN_EMAIL` in `.env` with the shipped configuration). Connect an assistant and ask *"Which Atrium spaces exist and what is my role?"*
 4. **Check health.** *"Show the Atrium health."* (`admin_health`): database, embedding service, jobs and tasks. The TLS certificate is not checked by Atrium; monitor its expiry at the proxy.
 5. **Set the context** that tells assistants what Atrium is for ([below](#the-context-for-assistants)).
 6. **Create the first spaces** and add members ([Spaces](#spaces)). Start small: one open "Company handbook" space and one or two team spaces with approval.
