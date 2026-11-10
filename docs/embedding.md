@@ -58,6 +58,10 @@ For values smaller than 8192, TEI requires `--auto-truncate`. Atrium's sections 
 TEI_ARGS=--model-id BAAI/bge-m3 --max-batch-tokens 1024 --auto-truncate
 ```
 
+### Saving long entries
+
+Every section of an entry needs its own vector, and the embedding service works through them one after the other (see the speed above). An entry of 70 KB has some 40 sections, so embedding all of them before answering could take minutes, longer than a client waits: it gives up, the save is cancelled and nothing is stored. Therefore Atrium embeds only the first `policy.inline_index_sections` sections (default 6) while saving. The entry is stored at once; the other sections are saved without a vector and embedded by the periodic task `index_pending`, which runs every 15 seconds and works in small batches of 4 sections (a search that arrives meanwhile waits for the batch in progress, about ten seconds on two cores), across restarts. Until a section has its vector it is found by full text; the duplicate check looks at the sections embedded so far, which are the first ones. `admin_health` (check `embeddings`) says how many sections are being embedded. This is no rebuild: sections whose vector was dropped by a change of the dimension still wait for `admin_reembed`. With `inline_index_sections: 0` every section is embedded before saving answers, as before. Whoever runs a very slow embedding service lowers the value, with a fast one it can be raised.
+
 For a shared server there is an example with limits for CPU and memory: [deploy/examples/docker-compose.limits.yml](../deploy/examples/docker-compose.limits.yml). How to use it is described at the top of the file.
 
 The TEI image only exists for x86 (amd64), so ARM servers (e.g. AWS Graviton, Hetzner CAX) are ruled out. On first start TEI downloads the model (about 2 GB) from Hugging Face; in air-gapped networks the model cache must be copied into the volume beforehand.

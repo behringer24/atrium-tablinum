@@ -46,7 +46,7 @@ What Atrium does when you file:
 2. **Checks.** Atrium checks size (about 200 KB per entry), tags (up to 20, 50 characters each, no line breaks) and rejects text that looks like passwords, keys or other credentials.
 3. **Duplicates.** If very similar entries already exist, nothing is saved yet. The assistant shows them and asks whether you want to update the existing entry or file a new one anyway.
 4. **Status.** In a space without approval your entry is *approved* immediately and every reader sees it. In a space with approval it becomes a *draft* (see [Drafts and approval](#drafts-and-approval)). Personal spaces have no drafts.
-5. **Index.** The entry is split into sections and indexed for search; this takes a moment.
+5. **Index.** The entry is split into sections and indexed for search. A long entry is saved at once: its first sections are indexed right away and the rest a short while later in the background. Until then the rest is found by exact words, afterwards by meaning too. The assistant tells you when that applies; there is nothing to do.
 
 Say *"as a draft"* if you want a curator to check it first even though the space does not require it, for example when you write about a subject outside your area.
 

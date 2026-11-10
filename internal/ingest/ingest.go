@@ -132,26 +132,50 @@ type PreparedChunk struct {
 type Prepared struct {
 	Chunks []PreparedChunk
 	Model  string
+	// Pending counts the sections that have no vector yet: they are saved with the entry and embedded
+	// by the background task (reembed.IndexPending). Until then they are found by full text only.
+	Pending int
 }
 
-// Prepare chunks and embeds a document. It does network I/O and must run before the
+// PendingModel marks a section that waits for its first vector (chunks.embedding_model). It differs
+// from "" (a vector dropped by a change of the embedding dimension, rebuilt on request by admin_reembed)
+// so that the background task indexes new entries by itself but never starts a costly rebuild unasked.
+const PendingModel = "(pending)"
+
+// Prepare chunks and embeds a document completely. It does network I/O and must run before the
 // database transaction is opened.
 func (s *Service) Prepare(ctx context.Context, title, content string) (Prepared, error) {
+	return s.PrepareUpTo(ctx, title, content, 0)
+}
+
+// PrepareUpTo chunks a document and embeds its first inline sections; the others are left without a
+// vector and counted in Pending. A document is embedded section by section at the speed of the
+// embedding service (about 2.5 seconds each on two cores), so embedding a long one before answering
+// outlasts the patience of the client, which then gives up and nothing is saved. inline <= 0 embeds
+// every section before returning.
+func (s *Service) PrepareUpTo(ctx context.Context, title, content string, inline int) (Prepared, error) {
 	chunks := chunk.Split(title, content, s.cfg.Chunk)
-	texts := make([]string, len(chunks))
-	for i, c := range chunks {
-		texts[i] = c.Content
+	now := len(chunks)
+	if inline > 0 && inline < now {
+		now = inline
+	}
+	texts := make([]string, now)
+	for i := range texts {
+		texts[i] = chunks[i].Content
 	}
 	vecs, err := s.emb.Embed(ctx, texts)
 	if err != nil {
 		return Prepared{}, err
 	}
-	if len(vecs) != len(chunks) {
-		return Prepared{}, fmt.Errorf("embedder returned %d vectors for %d chunks", len(vecs), len(chunks))
+	if len(vecs) != now {
+		return Prepared{}, fmt.Errorf("embedder returned %d vectors for %d chunks", len(vecs), now)
 	}
-	out := Prepared{Model: s.emb.Model(), Chunks: make([]PreparedChunk, len(chunks))}
+	out := Prepared{Model: s.emb.Model(), Chunks: make([]PreparedChunk, len(chunks)), Pending: len(chunks) - now}
 	for i, c := range chunks {
-		out.Chunks[i] = PreparedChunk{Chunk: c, Vector: VectorLiteral(vecs[i])}
+		out.Chunks[i] = PreparedChunk{Chunk: c}
+		if i < now {
+			out.Chunks[i].Vector = VectorLiteral(vecs[i])
+		}
 	}
 	return out, nil
 }
@@ -185,11 +209,17 @@ func (s *Service) ReplaceChunks(ctx context.Context, tx pgx.Tx, docID uuid.UUID,
 	if _, err := tx.Exec(ctx, `DELETE FROM chunks WHERE document_id = $1`, docID); err != nil {
 		return err
 	}
+	// A section without a vector is stored with a NULL vector and the pending marker; its text is
+	// searchable by full text at once.
 	q := `INSERT INTO chunks (document_id, chunk_index, heading_path, content, embedding, embedding_model, tsv)
-		VALUES ($1, $2, $3, $4, $5::vector, $6, ` + s.TSVExpr("$4") + `)`
+		VALUES ($1, $2, $3, $4, NULLIF($5::text, '')::vector, $6, ` + s.TSVExpr("$4") + `)`
 	batch := &pgx.Batch{}
 	for _, c := range p.Chunks {
-		batch.Queue(q, docID, c.Index, c.HeadingPath, c.Content, c.Vector, p.Model)
+		model := p.Model
+		if c.Vector == "" {
+			model = PendingModel
+		}
+		batch.Queue(q, docID, c.Index, c.HeadingPath, c.Content, c.Vector, model)
 	}
 	res := tx.SendBatch(ctx, batch)
 	defer res.Close()
@@ -238,6 +268,9 @@ func (s *Service) FindDuplicates(ctx context.Context, pool *pgxpool.Pool, sc Sco
 		LIMIT 3`
 	best := map[uuid.UUID]Duplicate{}
 	for _, c := range p.Chunks {
+		if c.Vector == "" {
+			continue // not embedded yet: the first sections of a long entry stand for it
+		}
 		rows, err := tx.Query(ctx, q, c.Vector, nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator), space, exclude, p.Model)
 		if err != nil {
 			return nil, err
