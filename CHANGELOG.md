@@ -4,6 +4,11 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Changed
+- **Curator and space admin tools are listed for everyone:** `review_knowledge`, `review_skill`, `publish_skill`, `block_skill`, `unblock_skill`, `space_members`, `space_add_member` and `space_remove_member` are in the tool list of every logged-in user. Assistants read the list once and keep it, so a user who was made curator or space admin later did not see the new tools until they reconnected. Whoever does not hold the role yet gets a compact form (one sentence naming the role, parameters without their texts), which keeps the longer list cheap; the role is still checked on every call. The instance admin tools stay limited to instance admins.
+
+## [0.5.0] - 2026-11-10
+
 ### Added
 - **Export of knowledge:** the new tool `export_knowledge` prepares a ZIP of Markdown files, one folder per space, one file per entry with a YAML header, and an `index.md` per folder. The archive follows the Open Knowledge Format (OKF) version 0.2: the header carries `type`, `title`, `tags`, `status`, `stale_after` and `generated`, the root `index.md` names `okf_version`, and everything else (author, owner, version, dates, exact state) is under the key `atrium`. It returns a link that works for ten minutes and once (`GET /export/<token>`, signed, checked again when opened). Admins export a space or all team spaces they administer, instance admins every team space, everybody their own personal space; nobody can export someone else's personal space. Entries in every state are included, older versions, handoffs and skills are not. Every export is in the audit log as `knowledge_export` with the number of entries.
 - **Guide for Pro licensees:** `docs/pro/pro-edition.md` (with PDF) describes what a licensee needs: reading, installing, renewing and removing the licence, what `not covered` and the reminders mean, the user limit and the guided offboarding with `admin_transfer_personal_space` and `reassign_owner`.
@@ -16,6 +21,10 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **User guides:** the introduction gains a section "What it takes to run" (free Community edition, parts, memory, prerequisites), a point on working from any device without syncing, a note on how rights are enforced inside the search and an honest note on the context that tool descriptions use. The user guide explains how much one search returns, the curator guide answers who decides what is still valid, and the embedding page says that search is hybrid.
 - **Public texts say what Community is and no more:** the editions page, the instance admin guide, the offboarding notes, the configuration example, the workflow and code comments no longer describe the Pro internals. The build notification of `.github/workflows/test.yml` now reads its target from the repository secret `BUILD_NOTIFY_URL` (no value, no notification).
 - `docs/staging.md` no longer lists re-embedding as missing (`admin_reembed` exists since 0.4.0).
+
+### Upgrade notes
+- No database migration. An existing `config.yaml` keeps working; the instance names in it are stored in the database on the first start of this version and from then on changed with `admin_instance`.
+- A `config.yaml` that uses `${VAR:-default}` needs this version: older ones take the text literally.
 
 ## [0.4.0] - 2026-11-07
 

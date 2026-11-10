@@ -35,18 +35,22 @@ func TestToolListFollowsRole(t *testing.T) {
 	sadmin := toolNames(t, e, e.session(t, "spaceadmin@x.de"))
 	boss := toolNames(t, e, e.session(t, "boss@x.de"))
 
-	if plain["space_members"] || plain["admin_create_space"] || plain["review_knowledge"] || !plain["store_knowledge"] {
+	// The curator and space admin tools are listed for everyone, so that a role granted later shows
+	// up without a reconnect; only the instance admin tools depend on the role.
+	roleTools := []string{"review_knowledge", "review_skill", "publish_skill", "block_skill", "unblock_skill",
+		"space_members", "space_add_member", "space_remove_member"}
+	for who, list := range map[string]map[string]bool{"regular user": plain, "curator": curator, "space admin": sadmin, "instance admin": boss} {
+		for _, name := range roleTools {
+			if !list[name] {
+				t.Errorf("%s: %s missing from the tool list", who, name)
+			}
+		}
+	}
+	if plain["admin_create_space"] || plain["admin_audit_log"] || !plain["store_knowledge"] {
 		t.Errorf("regular user: %v", plain)
 	}
-	if !curator["review_knowledge"] || curator["space_members"] || curator["admin_create_space"] {
-		t.Errorf("curator: %v", curator)
-	}
-	if !sadmin["review_knowledge"] || !boss["review_knowledge"] {
-		t.Error("space admin and instance admin without review_knowledge")
-	}
-	// Admin of one's own personal space is not enough for space admin tools (see 'plain')
-	if !sadmin["space_members"] || !sadmin["space_add_member"] || !sadmin["space_remove_member"] || sadmin["admin_create_space"] || sadmin["admin_update_space"] || sadmin["admin_audit_log"] {
-		t.Errorf("space admin: %v", sadmin)
+	if curator["admin_create_space"] || sadmin["admin_create_space"] || sadmin["admin_update_space"] || sadmin["admin_audit_log"] {
+		t.Errorf("curator or space admin with instance admin tools")
 	}
 	for _, name := range []string{"admin_create_space", "admin_update_space", "admin_archive_space", "admin_restore_space", "admin_list_users",
 		"admin_offboard_user", "admin_reactivate_user", "admin_groups", "admin_audit_log", "admin_health",
@@ -54,6 +58,50 @@ func TestToolListFollowsRole(t *testing.T) {
 		if !boss[name] {
 			t.Errorf("instance admin without %s", name)
 		}
+	}
+}
+
+// Whoever does not hold the role gets the compact form of its tools, the holder the full one, and
+// the role is still checked on the call.
+func TestRoleToolsAreCompactWithoutTheRole(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "support", "Support", false, map[string]authz.Role{"author@x.de": authz.Author, "cur@x.de": authz.Curator, "spaceadmin@x.de": authz.Admin})
+
+	byName := func(email string) map[string]*mcp.Tool {
+		res, err := e.session(t, email).ListTools(e.ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]*mcp.Tool{}
+		for _, tool := range res.Tools {
+			out[tool.Name] = tool
+		}
+		return out
+	}
+	size := func(tl *mcp.Tool) int { b, _ := json.Marshal(tl); return len(b) }
+
+	plain, cur, sadmin := byName("author@x.de"), byName("cur@x.de"), byName("spaceadmin@x.de")
+	for _, name := range []string{"review_skill", "review_knowledge", "publish_skill", "block_skill"} {
+		if size(plain[name]) >= size(cur[name]) || !strings.Contains(plain[name].Description, "curator") {
+			t.Errorf("%s: compact form for a user without the role expected (%d vs %d bytes): %q", name, size(plain[name]), size(cur[name]), plain[name].Description)
+		}
+	}
+	for _, name := range []string{"space_members", "space_add_member", "space_remove_member", "unblock_skill"} {
+		if size(plain[name]) >= size(sadmin[name]) || size(cur[name]) >= size(sadmin[name]) || !strings.Contains(plain[name].Description, "space admin") {
+			t.Errorf("%s: compact form for a user without the role expected", name)
+		}
+	}
+	if size(cur["review_skill"]) != size(sadmin["review_skill"]) {
+		t.Error("curator and space admin should see the same full review_skill")
+	}
+	// Listed, but still refused.
+	_, msg := e.call(t, e.session(t, "author@x.de"), "space_members", map[string]any{"space": "support"})
+	if msg == "" {
+		t.Error("space_members worked for an author")
+	}
+	_, msg = e.call(t, e.session(t, "author@x.de"), "review_knowledge", map[string]any{"id": uuid.NewString(), "decision": "reject", "note": "x"})
+	if msg == "" {
+		t.Error("review_knowledge worked for an author")
 	}
 }
 
@@ -157,8 +205,9 @@ func TestSpaceAdminManagesOnlyOwnSpaces(t *testing.T) {
 	}
 	// a regular member has no access to administration
 	member := e.session(t, "member@x.de") // curator, but not admin
-	if names := toolNames(t, e, member); names["space_members"] {
-		t.Error("curator sees space admin tools")
+	// (the tool is listed for everyone, but the call is refused)
+	if _, msg := e.call(t, member, "space_members", map[string]any{"space": "support"}); msg == "" {
+		t.Error("curator can use space admin tools")
 	}
 }
 
@@ -243,15 +292,15 @@ func TestDraftOnRequestAndReviewTool(t *testing.T) {
 	reader := e.session(t, "reader@x.de")
 	author := e.session(t, "author@x.de")
 
-	// only curators and admins see the review tool
-	for name, cs := range map[string]*mcp.ClientSession{"curator": cur, "instance admin": boss} {
+	// the review tool is listed for everyone, but only curators and admins may use it
+	for name, cs := range map[string]*mcp.ClientSession{"curator": cur, "instance admin": boss, "reader": reader, "author": author} {
 		if !toolNames(t, e, cs)["review_knowledge"] {
-			t.Errorf("%s without review_knowledge", name)
+			t.Errorf("%s without review_knowledge in the list", name)
 		}
 	}
 	for name, cs := range map[string]*mcp.ClientSession{"reader": reader, "author": author} {
-		if toolNames(t, e, cs)["review_knowledge"] {
-			t.Errorf("%s sees review_knowledge", name)
+		if _, msg := e.call(t, cs, "review_knowledge", map[string]any{"id": uuid.NewString(), "decision": "reject", "note": "x"}); msg == "" {
+			t.Errorf("%s can use review_knowledge", name)
 		}
 	}
 

@@ -207,12 +207,14 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 	if s.Skills != nil {
 		s.registerSkillResources(ms)
 	}
-	if cur, err := s.teamSpacesAtLeast(r.Context(), a, authz.Curator); err == nil && len(cur) > 0 {
-		s.registerCuratorTools(ms)
-	}
-	if admin, err := s.adminSpaces(r.Context(), a); err == nil && len(admin) > 0 {
-		s.registerSpaceAdminTools(ms)
-	}
+	// The curator and space admin tools are listed for everyone: a client reads the list once and
+	// keeps it, so a user who is made curator or space admin later would otherwise not see the tools
+	// until the connector is reconnected. Whoever does not hold the role yet gets the compact form
+	// (see compactFor); the role is checked on every call either way.
+	cur, err := s.teamSpacesAtLeast(r.Context(), a, authz.Curator)
+	s.registerCuratorTools(ms, err == nil && len(cur) > 0)
+	admin, err := s.adminSpaces(r.Context(), a)
+	s.registerSpaceAdminTools(ms, err == nil && len(admin) > 0)
 	if u.InstanceAdmin {
 		s.registerInstanceAdminTools(ms)
 	}
@@ -245,7 +247,7 @@ type call struct {
 
 // addTool registers a tool behind the central wrapper: authenticate, compute roles,
 // rate-limit writes, run, translate errors into messages the model can act on.
-func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tier, write bool, fn func(context.Context, *call, In) (Out, error)) {
+func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tier, write bool, fn func(context.Context, *call, In) (Out, error), opts ...toolOpt) {
 	ann := &mcp.ToolAnnotations{Title: title, ReadOnlyHint: !write}
 	tool := &mcp.Tool{Name: name, Description: s.description(name), Annotations: ann}
 	if in := portableSchema[In](); in != nil {
@@ -253,6 +255,9 @@ func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tie
 	}
 	if out := portableSchema[Out](); out != nil {
 		tool.OutputSchema = out
+	}
+	for _, o := range opts {
+		o(tool)
 	}
 	mcp.AddTool(ms, tool,
 		func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
