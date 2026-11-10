@@ -32,7 +32,7 @@ A **curator** keeps the quality of a space. Curators review what authors submit,
 | Manage members | no, space admins do |
 | Read the audit log | no, instance admins do |
 
-The curator tools appear in your tool list once you are curator in at least one space; every call is checked per space. There is **no notification** yet: you find work by asking for the review queue.
+The curator tools are in everybody's tool list, in a short form for those who are no curator yet, so you find them right away after you were made curator (a client that keeps an older list may need a reconnect, see the FAQ). Every call is checked per space; without the role it is refused. There is **no notification** yet: you find work by asking for the review queue.
 
 ## Reviewing knowledge
 
@@ -198,6 +198,8 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 | A skill needs to be undone quickly | Block it; ask a space admin to unblock when a fixed version is ready |
 
 ## FAQ
+
+**I was just made curator, but my assistant refuses to review.** The tool is there, but your assistant may still hold the short form or an older list from before. Open a new chat; if that does not help, disconnect and connect the Atrium connector again in your assistant's settings, or restart the app. Then ask *"What can I review?"*. Until then the call is refused, because the role is checked on every call.
 
 **Do I have to approve everything?** No. Reject or return with a note. A short, helpful note is part of the job.
 

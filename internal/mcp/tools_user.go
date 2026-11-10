@@ -38,7 +38,7 @@ func (s *Server) registerUserTools(ms *mcp.Server) {
 	addTool(s, ms, "handoff_list", "List handoffs", tierUser, false, s.handoffList)
 	addTool(s, ms, "handoff_load", "Load handoff", tierUser, false, s.handoffLoad)
 	s.registerSkillTools(ms)
-	s.registerEditionTools(ms, tierUser)
+	s.registerEditionTools(ms, tierUser, true)
 }
 
 // ---- shared output shapes ---------------------------------------------------
@@ -78,6 +78,18 @@ type docInfo struct {
 	// ReviewDue is the review date; ReviewOverdue is set once it has passed.
 	ReviewDue     string `json:"review_due,omitempty"`
 	ReviewOverdue bool   `json:"review_overdue,omitempty"`
+	// Indexing is set after saving or changing a long entry: part of it is still being embedded.
+	Indexing string `json:"indexing,omitempty"`
+}
+
+// indexNote tells the user, after saving, that the last sections of a long entry are embedded in the
+// background: the entry is saved and readable at once and found by full text, and by meaning too after
+// a short while. Empty when nothing is pending.
+func indexNote(pending int) string {
+	if pending <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" The entry is long: %d of its sections are still being indexed in the background and are found by exact words until then, by meaning a short while later.", pending)
 }
 
 func (s *Server) spaceInfos(list []spaces.Space, a docs.Actor) []spaceInfo {
@@ -109,6 +121,7 @@ func (s *Server) docInfo(ctx context.Context, d docs.Document, withContent bool)
 	if d.Tags == nil {
 		di.Tags = []string{}
 	}
+	di.Indexing = strings.TrimSpace(indexNote(d.IndexPending))
 	if withContent {
 		di.Content = d.Content
 	}
@@ -348,6 +361,7 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 	if res.Document.Status == "draft" {
 		msg += " The entry is a draft and is visible to others only after approval by a curator of the space (review_knowledge)."
 	}
+	msg += indexNote(res.Document.IndexPending)
 	return storeOut{Result: "stored", Message: msg, ID: res.Document.ID.String(), Space: name, Status: res.Document.Status}, nil
 }
 
