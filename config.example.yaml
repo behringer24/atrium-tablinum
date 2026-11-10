@@ -123,6 +123,11 @@ policy:
   max_document_bytes: 200000
   rate_limit_writes_per_minute: 20
   rate_limit_reads_per_minute: 120   # search, read, list per user; every search costs one embedding; 0 = unlimited
+  # How many sections of an entry are embedded while it is saved. A long entry has many sections and the
+  # embedding service needs seconds for each, so the rest is embedded in the background: the entry is
+  # saved at once and found by exact words until then (docs/embedding.md). 0 = embed every section
+  # before answering; a long entry can then take longer than the client waits.
+  inline_index_sections: 6
 
 skills:
   # true: the author of a skill version may also approve it. Leave it off wherever a second

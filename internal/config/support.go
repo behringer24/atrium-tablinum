@@ -55,6 +55,7 @@ func (c Config) SupportSummary() map[string]any {
 		"policy": map[string]any{
 			"duplicate_threshold": c.Policy.DuplicateThreshold, "max_document_bytes": c.Policy.MaxDocumentBytes,
 			"rate_limit_writes_per_minute": c.Policy.RateLimitWritesPerMinute, "rate_limit_reads_per_minute": c.Policy.RateLimitReadsPerMinute,
+			"inline_index_sections": c.Policy.InlineIndexSections,
 		},
 		"skills": map[string]any{
 			"allow_self_approval": c.Skills.AllowSelfApproval, "personal_max_skills": c.Skills.PersonalMaxSkills,
