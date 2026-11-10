@@ -27,8 +27,14 @@ var (
 	editionOffboarded []func(ctx context.Context, s *Server, u users.User, out *offboardOut)
 )
 
-// registerEditionTools lets an edition add the tools of one group.
-func (s *Server) registerEditionTools(ms *mcp.Server, group tier) {
+// registerEditionTools lets an edition add the tools of one group. member says whether the session
+// holds the role of the group: the curator and space admin tools of the core are listed for everyone
+// (in a compact form for whoever lacks the role), but an edition tool knows only its group, so it is
+// offered to the holders alone and does not turn up in everybody's list.
+func (s *Server) registerEditionTools(ms *mcp.Server, group tier, member bool) {
+	if !member {
+		return
+	}
 	for _, add := range editionTools {
 		add(s, ms, group)
 	}
