@@ -4,6 +4,9 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Changed
+- **Curator and space admin tools are listed for everyone:** `review_knowledge`, `review_skill`, `publish_skill`, `block_skill`, `unblock_skill`, `space_members`, `space_add_member` and `space_remove_member` are in the tool list of every logged-in user. Assistants read the list once and keep it, so a user who was made curator or space admin later did not see the new tools until they reconnected. Whoever does not hold the role yet gets a compact form (one sentence naming the role, parameters without their texts), which keeps the longer list cheap; the role is still checked on every call. The instance admin tools stay limited to instance admins.
+
 ## [0.5.0] - 2026-11-10
 
 ### Added
