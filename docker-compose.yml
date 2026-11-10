@@ -1,7 +1,7 @@
 # Production. Variants (see docs/deployment.md):
 #   A   own nginx + Let's Encrypt:     docker compose --profile proxy up -d
 #   B/C existing proxy or tunnel:      docker compose up -d
-# Configuration: .env (see .env.example) and config.yaml (see config.example.yaml).
+# Configuration: .env (see .env.example); config.yaml (see config.example.yaml) only for what .env does not cover.
 name: atrium-tablinum
 services:
   server:
@@ -13,6 +13,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ATRIUM_BASE_URL: ${ATRIUM_BASE_URL:-}
+      ATRIUM_ALLOWED_DOMAIN: ${ATRIUM_ALLOWED_DOMAIN:-}
       # Read by config.yaml (${ATRIUM_SHORT_NAME:-...}) for the first start only; afterwards an
       # instance admin changes the names with admin_instance.
       ATRIUM_SHORT_NAME: ${ATRIUM_SHORT_NAME:-}
