@@ -116,10 +116,7 @@ func TestSkillUnblock(t *testing.T) {
 	publishedSkill(t, e, anna, cora, "code-review", "dev")
 	e.mustCall(t, cora, "block_skill", map[string]any{"skill": "code-review", "version": 1, "reason": "wrong advice", "confirm": true})
 
-	// A curator blocks but cannot lift the block: the tool is not even offered.
-	if toolNames(t, e, cora)["unblock_skill"] {
-		t.Fatal("a curator is offered unblock_skill")
-	}
+	// A curator blocks but cannot lift the block: the call is refused.
 	if res, err := cora.CallTool(e.ctx, &mcp.CallToolParams{Name: "unblock_skill", Arguments: map[string]any{
 		"skill": "code-review", "version": 1, "reason": "x", "confirm": true}}); err == nil && !res.IsError {
 		t.Fatal("a curator lifted a block")

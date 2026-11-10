@@ -18,12 +18,14 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
 
-func (s *Server) registerSpaceAdminTools(ms *mcp.Server) {
-	addTool(s, ms, "space_members", "Show members", tierSpaceAdmin, false, s.spaceMembers)
-	addTool(s, ms, "space_add_member", "Add member", tierSpaceAdmin, true, s.spaceAddMember)
-	addTool(s, ms, "space_remove_member", "Remove member", tierSpaceAdmin, true, s.spaceRemoveMember)
-	s.registerSpaceAdminSkillTools(ms)
-	s.registerEditionTools(ms, tierSpaceAdmin)
+// registerSpaceAdminTools lists the tools of space admins for everyone; member says whether the
+// caller is admin of a team space, everyone else gets the compact form.
+func (s *Server) registerSpaceAdminTools(ms *mcp.Server, member bool) {
+	addTool(s, ms, "space_members", "Show members", tierSpaceAdmin, false, s.spaceMembers, s.compactFor("space_members", member))
+	addTool(s, ms, "space_add_member", "Add member", tierSpaceAdmin, true, s.spaceAddMember, s.compactFor("space_add_member", member))
+	addTool(s, ms, "space_remove_member", "Remove member", tierSpaceAdmin, true, s.spaceRemoveMember, s.compactFor("space_remove_member", member))
+	s.registerSpaceAdminSkillTools(ms, member)
+	s.registerEditionTools(ms, tierSpaceAdmin, member)
 }
 
 func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
@@ -48,7 +50,7 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	if s.Reembed != nil {
 		addTool(s, ms, "admin_reembed", "Re-embed sections", tierInstanceAdmin, true, s.adminReembed)
 	}
-	s.registerEditionTools(ms, tierInstanceAdmin)
+	s.registerEditionTools(ms, tierInstanceAdmin, true)
 }
 
 // record writes an admin audit event. The action has already happened, so a failure is

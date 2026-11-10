@@ -9,12 +9,13 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 )
 
-// registerCuratorTools adds what only curators (and admins) of a team space need. Like all
-// tiers it is a convenience for the tool list; docs.Review re-checks the role per entry.
-func (s *Server) registerCuratorTools(ms *mcp.Server) {
-	addTool(s, ms, "review_knowledge", "Review draft", tierCurator, true, s.reviewKnowledge)
-	s.registerCuratorSkillTools(ms)
-	s.registerEditionTools(ms, tierCurator)
+// registerCuratorTools adds what only curators (and admins) of a team space need. It lists them
+// for everyone; member says whether the caller holds the role, and everyone else gets the compact
+// form. docs.Review re-checks the role per entry.
+func (s *Server) registerCuratorTools(ms *mcp.Server, member bool) {
+	addTool(s, ms, "review_knowledge", "Review draft", tierCurator, true, s.reviewKnowledge, s.compactFor("review_knowledge", member))
+	s.registerCuratorSkillTools(ms, member)
+	s.registerEditionTools(ms, tierCurator, member)
 }
 
 type reviewIn struct {

@@ -50,14 +50,14 @@ func (s *Server) registerSkillTools(ms *mcp.Server) {
 }
 
 // registerSpaceAdminSkillTools adds what only admins of a space (and instance admins) need.
-func (s *Server) registerSpaceAdminSkillTools(ms *mcp.Server) {
-	addTool(s, ms, "unblock_skill", "Unblock skill", tierSpaceAdmin, true, s.unblockSkill)
+func (s *Server) registerSpaceAdminSkillTools(ms *mcp.Server, member bool) {
+	addTool(s, ms, "unblock_skill", "Unblock skill", tierSpaceAdmin, true, s.unblockSkill, s.compactFor("unblock_skill", member))
 }
 
-func (s *Server) registerCuratorSkillTools(ms *mcp.Server) {
-	addTool(s, ms, "review_skill", "Review skill", tierCurator, true, s.reviewSkill)
-	addTool(s, ms, "publish_skill", "Publish skill", tierCurator, true, s.publishSkill)
-	addTool(s, ms, "block_skill", "Block skill", tierCurator, true, s.blockSkill)
+func (s *Server) registerCuratorSkillTools(ms *mcp.Server, member bool) {
+	addTool(s, ms, "review_skill", "Review skill", tierCurator, true, s.reviewSkill, s.compactFor("review_skill", member))
+	addTool(s, ms, "publish_skill", "Publish skill", tierCurator, true, s.publishSkill, s.compactFor("publish_skill", member))
+	addTool(s, ms, "block_skill", "Block skill", tierCurator, true, s.blockSkill, s.compactFor("block_skill", member))
 }
 
 var errNoSkills = userErr("The skill registry is not available on this server.")

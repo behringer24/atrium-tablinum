@@ -34,7 +34,7 @@ Do not confuse the two admin roles. A **space admin** manages **one** space. An 
 | See and manage spaces you do not administer | no | all team spaces |
 | Read personal spaces | no | no |
 
-A space admin only sees their own space(s) in the member tools. Spaces they do not administer are reported as "not found".
+A space admin only sees their own space(s) in the member tools. Spaces they do not administer are reported as "not found". The member tools (`space_members`, `space_add_member`, `space_remove_member`) are in everybody's tool list, in a short form for those who are no space admin; without the role a call is refused.
 
 `space_members` also shows the **limits and the current usage** of the space (entries, bytes, skills, skill bytes and versions per skill, with the source of each limit). Limits are set by instance admins; if your space is about to run into one, ask for it to be raised.
 
@@ -166,6 +166,8 @@ Ask an instance admin when you need to:
 | Role changes seem not to apply | They apply to the next request. Check `space_members`, and look for roles the person has through a group or the default role |
 
 ## FAQ
+
+**I was just made space admin, but the assistant says it cannot manage members.** Your assistant may still hold an older tool list. Open a new chat; if that does not help, disconnect and connect the Atrium connector again in your assistant's settings, or restart the app. The role is checked on every call, so the change takes effect as soon as the assistant uses the full definition.
 
 **Can I see what is in someone's personal space?** No. Nobody can, not even instance admins.
 
