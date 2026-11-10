@@ -214,6 +214,11 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	if err != nil {
 		return err
 	}
+	// The names come from the configuration on the first start; afterwards the database decides.
+	if err := mcpSrv.InitIdentity(ctx); err != nil {
+		return err
+	}
+
 	mux := http.NewServeMux()
 
 	var verifier auth.TokenVerifier

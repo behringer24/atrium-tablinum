@@ -1,8 +1,11 @@
 # Example configuration. Secrets only via environment variables (${VAR}).
 instance:
   product_name: "Atrium Tablinum"
-  short_name: "Atrium"                  # how users say it in chat
-  organization_name: "Example Corp"          # appears in tool descriptions
+  # The two names below come from the environment (.env) and are read on the first start only:
+  # they are stored in the database, and from then on an instance admin changes them with
+  # admin_instance, without a restart. Editing them here later has no effect.
+  short_name: "${ATRIUM_SHORT_NAME:-Atrium}"                        # how users say it in chat
+  organization_name: "${ATRIUM_ORGANIZATION_NAME:-your organisation}"   # appears in tool descriptions
   # Icon for the favicon and the MCP server info: svg, png, ico, jpg or webp, up to 256 KB.
   # Empty = the built-in Atrium icon. Served without login at /favicon.ico and /icon.
   # icon_file: "/etc/atrium/logo.svg"

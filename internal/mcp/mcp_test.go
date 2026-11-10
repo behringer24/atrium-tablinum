@@ -852,3 +852,61 @@ func (e *env) withDigest(t *testing.T, cs *mcp.ClientSession, args map[string]an
 	out["digest"] = m.Version.Digest
 	return out
 }
+
+func TestAdminInstanceNames(t *testing.T) {
+	e := setup(t, 0)
+	e.team(t, "wiki", "Wiki", false, map[string]authz.Role{"anna@x.de": authz.Reader})
+	boss := e.session(t, "boss@x.de")
+	anna := e.session(t, "anna@x.de")
+	if toolNames(t, e, anna)["admin_instance"] || !toolNames(t, e, boss)["admin_instance"] {
+		t.Error("admin_instance only for instance admins")
+	}
+
+	// First start: the configured names are written to the database.
+	if err := e.srv.InitIdentity(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := e.mustCall(t, boss, "admin_instance", map[string]any{"action": "get"})
+	if got["short_name"] != "Atrium" || got["organization_name"] != "Test" || got["product_name"] != "Atrium Tablinum" {
+		t.Errorf("seeded names: %v", got)
+	}
+
+	// Input checks and the confirmation come first; nothing changes before.
+	if _, msg := e.call(t, boss, "admin_instance", map[string]any{"action": "set"}); !strings.Contains(msg, "Nothing to change") {
+		t.Errorf("set without a value: %q", msg)
+	}
+	if _, msg := e.call(t, boss, "admin_instance", map[string]any{"action": "set", "short_name": strings.Repeat("x", 41), "confirm": true}); !strings.Contains(msg, "too long") {
+		t.Errorf("short name too long: %q", msg)
+	}
+	if _, msg := e.call(t, boss, "admin_instance", map[string]any{"action": "set", "short_name": "A\nB", "confirm": true}); !strings.Contains(msg, "single line") {
+		t.Errorf("line break: %q", msg)
+	}
+	if _, msg := e.call(t, boss, "admin_instance", map[string]any{"action": "set", "short_name": "Atrium Firma"}); !strings.Contains(msg, "confirm=true") {
+		t.Errorf("set without confirmation: %q", msg)
+	}
+	if got := e.mustCall(t, boss, "admin_instance", map[string]any{"action": "get"}); got["short_name"] != "Atrium" {
+		t.Errorf("changed without confirmation: %v", got)
+	}
+
+	// The change applies to the next connection: instructions and tool descriptions.
+	e.mustCall(t, boss, "admin_instance", map[string]any{"action": "set", "short_name": "Atrium Firma", "organization_name": "Affilicon", "confirm": true})
+	if n := queryCount(t, e, `SELECT count(*) FROM audit_log WHERE action = 'admin_instance_set'
+		AND details->>'previous_short_name' = 'Atrium' AND details->>'short_name' = 'Atrium Firma'`); n != 1 {
+		t.Errorf("audit log: %d", n)
+	}
+	in := e.session(t, "anna@x.de").InitializeResult().Instructions
+	if !strings.Contains(in, "(short: Atrium Firma) of Affilicon") || !strings.Contains(in, "\"Atrium Firma\"") {
+		t.Errorf("instructions after the change: %q", in)
+	}
+	if d := e.srv.description("store_knowledge"); !strings.Contains(d, "Save this in Atrium Firma") || !strings.Contains(d, "Affilicon") {
+		t.Errorf("tool description after the change: %q", d)
+	}
+
+	// A restart does not overwrite what the admin set: the configuration only seeds.
+	if err := e.srv.InitIdentity(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if short, org := e.srv.names(); short != "Atrium Firma" || org != "Affilicon" {
+		t.Errorf("names after restart: %q / %q", short, org)
+	}
+}
