@@ -46,6 +46,9 @@ type Options struct {
 	DuplicateThreshold float64
 	// Share configures sending an entry to another user's personal space (see package share).
 	Share share.Options
+	// InlineIndexSections is how many sections of an entry are embedded before saving answers; the
+	// rest is embedded in the background (see ingest.PrepareUpTo). 0 = all of them, as before.
+	InlineIndexSections int
 }
 
 type Document struct {
@@ -73,6 +76,9 @@ type Document struct {
 	OwnerActive bool
 	// ReviewDue is the day by which the entry should be checked, if set.
 	ReviewDue *time.Time
+	// IndexPending is set by Store and Update only: how many sections of the entry were saved without
+	// a vector and wait for the background task. Until then they are found by full text only.
+	IndexPending int
 }
 
 // Knowledge types. Only curators and admins of a team space set or change a rule.

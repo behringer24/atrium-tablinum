@@ -120,7 +120,7 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 	if err := s.checkQuota(ctx, sp, 1, int64(len(n.Content))); err != nil {
 		return StoreResult{}, err
 	}
-	prep, err := s.ing.Prepare(ctx, n.Title, n.Content)
+	prep, err := s.ing.PrepareUpTo(ctx, n.Title, n.Content, s.opt.InlineIndexSections)
 	if err != nil {
 		return StoreResult{}, err
 	}
@@ -162,6 +162,7 @@ VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10) RETURNING id`,
 	if err != nil {
 		return StoreResult{}, err
 	}
+	doc.IndexPending = prep.Pending
 	return StoreResult{Document: &doc}, tx.Commit(ctx)
 }
 
@@ -270,7 +271,7 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	reindex := n.Title != cur.Title || n.Content != cur.Content
 	var prep ingest.Prepared
 	if reindex {
-		if prep, err = s.ing.Prepare(ctx, n.Title, n.Content); err != nil {
+		if prep, err = s.ing.PrepareUpTo(ctx, n.Title, n.Content, s.opt.InlineIndexSections); err != nil {
 			return Document{}, err
 		}
 	}
@@ -313,6 +314,7 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	if err != nil {
 		return Document{}, err
 	}
+	doc.IndexPending = prep.Pending
 	return doc, tx.Commit(ctx)
 }
 

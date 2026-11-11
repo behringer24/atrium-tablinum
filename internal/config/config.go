@@ -192,6 +192,11 @@ type Policy struct {
 	// RateLimitReadsPerMinute caps search, read and list calls per user (each search costs an
 	// embedding); 0 = unlimited.
 	RateLimitReadsPerMinute int `yaml:"rate_limit_reads_per_minute"`
+	// InlineIndexSections is how many sections of an entry are embedded while it is being saved. A long
+	// entry has many sections and the embedding service needs seconds for each, so the rest is embedded
+	// in the background; the entry is saved at once and found by full text until then. 0 = embed every
+	// section before answering (a long entry can then outlast the client's patience).
+	InlineIndexSections int `yaml:"inline_index_sections"`
 }
 
 // Skills configures the skill registry (docs/skills.md).
@@ -268,6 +273,7 @@ func Defaults() Config {
 			MaxDocumentBytes:         200000,
 			RateLimitWritesPerMinute: 20,
 			RateLimitReadsPerMinute:  120,
+			InlineIndexSections:      6,
 		},
 	}
 }
@@ -461,6 +467,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Policy.MaxDocumentBytes < 1 {
 		add("policy.max_document_bytes must be positive")
+	}
+	if c.Policy.InlineIndexSections < 0 {
+		add("policy.inline_index_sections must not be negative")
 	}
 	if c.Spaces.HandoffTTLDays < 1 {
 		add("spaces.handoff_ttl_days must be >= 1")

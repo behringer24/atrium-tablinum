@@ -136,10 +136,11 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	})
 	shareOpt := share.Options{Enabled: cfg.Sharing.Enabled, MaxPerRecipient: cfg.Sharing.MaxPendingPerRecipient, MaxPerSender: cfg.Sharing.MaxPendingPerSender}
 	docStore := docs.New(pool, spaceStore, ing, docs.Options{
-		Quota:              quotaStore,
-		HandoffTTLDays:     cfg.Spaces.HandoffTTLDays,
-		DuplicateThreshold: cfg.Policy.DuplicateThreshold,
-		Share:              shareOpt,
+		Quota:               quotaStore,
+		HandoffTTLDays:      cfg.Spaces.HandoffTTLDays,
+		DuplicateThreshold:  cfg.Policy.DuplicateThreshold,
+		InlineIndexSections: cfg.Policy.InlineIndexSections,
+		Share:               shareOpt,
 	})
 	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval, Quota: quotaStore, Share: shareOpt})
 	searchSvc, err := search.New(pool, emb, search.Config{
@@ -155,6 +156,9 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	// (admin_reembed); this task works through it in the background, also across restarts.
 	reembedder := reembed.New(pool, emb)
 	runner.AddPeriodic(jobs.Periodic{Name: "reembed", Every: time.Minute, Run: reembedder.Run})
+	// A long entry is saved with its first sections embedded; this task embeds the rest, so that
+	// saving answers at once and does not depend on how long the embedding service needs.
+	runner.AddPeriodic(jobs.Periodic{Name: "index_pending", Every: 15 * time.Second, Run: reembedder.IndexPending})
 	runner.AddPeriodic(jobs.Periodic{Name: "expire_handoffs", Every: time.Hour, Run: func(ctx context.Context) error {
 		n, err := docStore.ExpireHandoffs(ctx)
 		if n > 0 {
@@ -191,6 +195,8 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 						return "", err
 					}
 					switch {
+					case st.Stale == 0 && st.Pending > 0:
+						return fmt.Sprintf("%d of %d sections of new entries are being embedded in the background, found by full text meanwhile", st.Pending, st.Total), nil
 					case st.Stale == 0:
 						return fmt.Sprintf("all %d sections embedded with %s", st.Total, st.Model), nil
 					case st.Requested != nil:

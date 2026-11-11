@@ -30,6 +30,10 @@ const metaKey = "reembed_requested"
 const (
 	DefaultBatch  = 16
 	DefaultBudget = 50 * time.Second
+	// DefaultPendingBatch is how many sections IndexPending sends at once. The embedding service
+	// works through a request before it takes the next, so a search that arrives meanwhile waits for it:
+	// 4 sections keep that to about ten seconds on two cores, where 16 would make it forty.
+	DefaultPendingBatch = 4
 )
 
 type Service struct {
@@ -39,10 +43,13 @@ type Service struct {
 	// periodic task works before it hands over to the next run.
 	Batch  int
 	Budget time.Duration
+	// PendingBatch is the batch size of IndexPending, which runs all the time beside searches and
+	// saves; a rebuild (Run) is requested and may take the larger Batch.
+	PendingBatch int
 }
 
 func New(pool *pgxpool.Pool, emb embed.Embedder) *Service {
-	return &Service{pool: pool, emb: emb, Batch: DefaultBatch, Budget: DefaultBudget}
+	return &Service{pool: pool, emb: emb, Batch: DefaultBatch, Budget: DefaultBudget, PendingBatch: DefaultPendingBatch}
 }
 
 // Status describes the vectors of all sections.
@@ -51,6 +58,9 @@ type Status struct {
 	Total int
 	// Stale counts the sections embedded with another model or without a vector.
 	Stale int
+	// Pending counts the sections of new entries that wait for their first vector; the background task
+	// embeds them by itself (IndexPending) and they are not part of Stale.
+	Pending int
 	// ByModel counts the sections per model that built their vector; "" stands for none.
 	ByModel   map[string]int
 	Requested *time.Time
@@ -58,8 +68,8 @@ type Status struct {
 
 func (s *Service) Status(ctx context.Context) (Status, error) {
 	st := Status{Model: s.emb.Model(), ByModel: map[string]int{}}
-	rows, err := s.pool.Query(ctx, `SELECT CASE WHEN embedding IS NULL THEN '' ELSE embedding_model END, count(*)
-		FROM chunks GROUP BY 1`)
+	rows, err := s.pool.Query(ctx, `SELECT CASE WHEN embedding IS NULL AND embedding_model <> $1 THEN '' ELSE embedding_model END, count(*)
+		FROM chunks GROUP BY 1`, ingest.PendingModel)
 	if err != nil {
 		return Status{}, err
 	}
@@ -70,8 +80,12 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 		if err := rows.Scan(&model, &n); err != nil {
 			return Status{}, err
 		}
-		st.ByModel[model] = n
 		st.Total += n
+		if model == ingest.PendingModel {
+			st.Pending = n
+			continue
+		}
+		st.ByModel[model] = n
 		if model != st.Model {
 			st.Stale += n
 		}
@@ -125,7 +139,7 @@ func (s *Service) Run(ctx context.Context) error {
 	deadline := time.Now().Add(s.Budget)
 	after := uuid.Nil
 	for time.Now().Before(deadline) {
-		n, last, err := s.batch(ctx, after)
+		n, last, err := s.batch(ctx, after, false)
 		if err != nil {
 			return err
 		}
@@ -149,12 +163,44 @@ func (s *Service) Run(ctx context.Context) error {
 	return nil
 }
 
+// IndexPending is the periodic task that embeds the sections of new entries: a long entry is saved
+// with its first sections embedded and the rest waiting (ingest.PrepareUpTo), so that saving answers
+// at once instead of after minutes of embedding. Unlike Run it needs no request: this is not a
+// rebuild but the second half of saving. After Budget it stops and the next run goes on; an embedder
+// error ends the run and is reported as the task's error, the next run tries again. Until a section
+// has its vector it is found by full text.
+func (s *Service) IndexPending(ctx context.Context) error {
+	deadline := time.Now().Add(s.Budget)
+	after := uuid.Nil
+	done := 0
+	for time.Now().Before(deadline) {
+		n, last, err := s.batch(ctx, after, true)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			break
+		}
+		done += n
+		after = last
+	}
+	if done > 0 {
+		slog.Info("Sections of new entries embedded in the background", "sections", done, "model", s.emb.Model())
+	}
+	return nil
+}
+
 // batch rebuilds the next stale sections after the given id (in id order, so that one run passes
-// over the table once) and returns how many it did and the last id.
-func (s *Service) batch(ctx context.Context, after uuid.UUID) (int, uuid.UUID, error) {
+// over the table once) and returns how many it did and the last id. With pendingOnly it takes only
+// the sections that wait for their first vector.
+func (s *Service) batch(ctx context.Context, after uuid.UUID, pendingOnly bool) (int, uuid.UUID, error) {
 	model := s.emb.Model()
+	cond, arg, limit := `(embedding IS NULL OR embedding_model <> $2)`, model, s.Batch
+	if pendingOnly {
+		cond, arg, limit = `(embedding IS NULL AND embedding_model = $2)`, ingest.PendingModel, s.PendingBatch
+	}
 	rows, err := s.pool.Query(ctx, `SELECT id, content FROM chunks
-		WHERE id > $1 AND (embedding IS NULL OR embedding_model <> $2) ORDER BY id LIMIT $3`, after, model, s.Batch)
+		WHERE id > $1 AND `+cond+` ORDER BY id LIMIT $3`, after, arg, max(limit, 1))
 	if err != nil {
 		return 0, after, err
 	}
