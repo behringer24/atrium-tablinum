@@ -15,6 +15,10 @@ The guiding question for all knowledge features: does an assistant find the righ
 - **Systematic permission tests:** a test matrix of roles (reader, author, curator, admin, instance admin) across personal and team spaces and across every tool: drafts, archive, versions, search excerpts, direct ids, counts and error texts must not leak anything. Many negative tests exist in the packages; the matrix makes the gaps visible.
 - **Summarising with `replaces`:** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported.
 
+### Sending to a colleague, follow-ups
+
+Sending an entry or a skill to a colleague's personal space is built ([docs/sharing.md](docs/sharing.md)). Still open: a notice to the recipient when something arrives (needs the notifications above), the sender seeing the outcome and recalling an item that is still waiting (needs a small table of sent items, which the first version avoids on purpose), a switch for a single user to refuse items, and sending to a group of people or a team space (which would be an ordinary draft in that space, not a personal one).
+
 ### Security, remainder of the audit of 2026-11-03
 
 - consent page before a new client is connected

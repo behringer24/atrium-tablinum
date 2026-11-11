@@ -35,6 +35,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/guard"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 )
 
@@ -96,6 +97,8 @@ type Options struct {
 	// Quota resolves the storage limits of a space (skills, skill bytes, versions per skill);
 	// nil = no limits.
 	Quota *quota.Store
+	// Share configures sending a skill to another user's personal space (see package share).
+	Share share.Options
 }
 
 type Store struct {
@@ -134,9 +137,11 @@ type Version struct {
 	RiskClass      string
 	Digest         string
 	CreatedBy      *uuid.UUID
-	CreatedAt      time.Time
-	ReviewNote     string
-	BlockReason    string
+	// Author is the e-mail address of CreatedBy, empty if the account is gone.
+	Author      string
+	CreatedAt   time.Time
+	ReviewNote  string
+	BlockReason string
 	// Archived is a property of the whole skill, repeated on each of its versions.
 	Archived bool
 	// Tags belong to the skill and are repeated on each of its versions.
@@ -802,13 +807,13 @@ type querier interface {
 
 const versionSelect = `SELECT s.id, v.id, s.space_id, s.name, v.version, v.status, v.description, v.requested_tools,
   COALESCE(v.risk_class, ''), v.digest, v.created_by, v.created_at, COALESCE(v.review_note, ''), COALESCE(v.block_reason, ''),
-  s.archived_at IS NOT NULL, s.tags
-FROM skill_versions v JOIN skills s ON s.id = v.skill_id `
+  s.archived_at IS NOT NULL, s.tags, COALESCE(au.email::text, '')
+FROM skill_versions v JOIN skills s ON s.id = v.skill_id LEFT JOIN users au ON au.id = v.created_by `
 
 func scanVersion(row pgx.Row) (Version, error) {
 	var v Version
 	err := row.Scan(&v.SkillID, &v.VersionID, &v.SpaceID, &v.Name, &v.Version, &v.Status, &v.Description, &v.RequestedTools,
-		&v.RiskClass, &v.Digest, &v.CreatedBy, &v.CreatedAt, &v.ReviewNote, &v.BlockReason, &v.Archived, &v.Tags)
+		&v.RiskClass, &v.Digest, &v.CreatedBy, &v.CreatedAt, &v.ReviewNote, &v.BlockReason, &v.Archived, &v.Tags, &v.Author)
 	return v, err
 }
 

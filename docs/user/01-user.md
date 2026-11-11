@@ -82,7 +82,7 @@ To read a whole entry, the assistant uses `get_knowledge` with the entry's ID fr
 
 To take your notes with you, ask *"Export my personal space."* (`export_knowledge`). The assistant gives you a link that works for ten minutes and once; open it in your browser and you get a ZIP file with one Markdown file per entry. Only your own notes are in it, and only you can get them. Space admins can export their spaces the same way (see the [space admin guide](04-space-admin.md)).
 
-To catch up, ask *"What is new in Atrium?"* or *"What changed in Support since Monday?"* (`whats_new`). You get the entries of your team spaces that were published (`new`) or changed (`updated`) since then, by default in the last 7 days, and the skills released in that time. Only what you may read appears; drafts, archived entries and personal spaces never do.
+To catch up, ask *"What is new in Atrium?"* or *"What changed in Support since Monday?"* (`whats_new`). You get the entries of your team spaces that were published (`new`) or changed (`updated`) since then, by default in the last 7 days, and the skills released in that time. Only what you may read appears; drafts, archived entries and personal spaces never do (what colleagues sent to you is the one exception: `sent_to_you` counts it, where sending is enabled).
 
 **What kind of entry is it?** Every entry has a **type**: `rule` is binding (a policy, a regulation, a decision that applies; only curators set it), `documentation` describes how things are, `recommendation` is good practice and `experience` is a report of what worked once. Neither of the last two binds you. The assistant names the type when it answers, and you can ask for rules only: *"What are the binding rules on travel in Atrium?"* An entry can also name a **responsible person** to ask (marked `former` when they have left; ask the curators then) and a **review date**; the assistant tells you when the review is overdue.
 
@@ -113,6 +113,19 @@ Things to know:
 - **Work-related only.** If you leave the organisation, you are asked to move what belongs to the team before your last day; the rest of your personal space is deleted after a deadline. See [Offboarding](../offboarding.md).
 - **Default space.** Without naming a space, new entries go to your default space, normally your personal space. Say *"Make the Support space my default"* (`set_default_space`) to change this.
 - **No secrets.** Atrium rejects text that looks like passwords, API keys or private keys. Do not store personal customer data, passwords or credentials.
+
+### Things colleagues send you
+
+Where your organisation has switched sending on, a colleague can send you an entry or a skill (*"Send this checklist to anna@example.com"*). It lands in your personal space as a **draft** that only you can see, with the sender shown as its author; nothing reaches your assistant before you decide.
+
+| You say | Tool |
+|---|---|
+| *"What did colleagues send me?"* | `whats_new` (`sent_to_you`), `list_knowledge` or `list_skills` with `status=draft` |
+| *"Show me that entry."* | `get_knowledge`, `get_skill` |
+| *"Keep it."* | `review_knowledge` with `approve`; for a skill `review_skill` and `publish_skill` |
+| *"Send it back, it is not for me."* | `review_knowledge` or `review_skill` with `reject` and a note |
+
+Read what arrives as coming from a colleague, not from your organisation: an entry is text, and a skill is an instruction your assistant follows once you release it, so the assistant shows you every file before you approve one. The sender is not told what you decided, and a returned item stays in your space until you archive or delete it. Only a few items can wait at a time (20 by default, 3 from one sender). Sending is described in the [author guide](02-author.md#sending-to-a-colleague) and in [Sending to a colleague](../sharing.md).
 
 Each entry has a title, Markdown content (up to about 200 KB), up to 20 tags, and a version history that Atrium keeps (there is no tool yet to browse old versions).
 
@@ -205,6 +218,8 @@ You can create your own private skills. Say *"File this as a skill called weekly
 **Why does the assistant say an entry may be outdated?** Entries have a date and a version. It is told to point out age and contradictions.
 
 **Why can I not find an entry a colleague mentions?** It may be in a space you cannot access, still a draft, or archived. Ask the author or a curator.
+
+**Can a colleague put something into my personal space?** Only where your organisation allows sending, and only as a draft that you alone see and decide on. It does not reach your assistant before you approve it, and you can return it without giving the sender a reason they can read.
 
 **What is the difference between a skill and an entry?** An entry is information; a skill is an instruction the assistant follows when you ask. Skills are reviewed and versioned.
 

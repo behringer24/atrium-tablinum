@@ -62,6 +62,10 @@ func (c Config) SupportSummary() map[string]any {
 			"personal_max_bytes": c.Skills.PersonalMaxBytes, "team_max_skills": c.Skills.TeamMaxSkills,
 			"team_max_bytes": c.Skills.TeamMaxBytes, "max_versions_per_skill": c.Skills.MaxVersionsPerSkill,
 		},
+		"sharing": map[string]any{
+			"enabled": c.Sharing.Enabled, "max_pending_per_recipient": c.Sharing.MaxPendingPerRecipient,
+			"max_pending_per_sender": c.Sharing.MaxPendingPerSender,
+		},
 		"tools": map[string]any{"description_overrides": len(c.Tools.Descriptions)},
 	}
 }

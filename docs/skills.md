@@ -83,8 +83,9 @@ Approved and published are separate on purpose: a review says "this is fine", pu
 | `store_skill` | authors and up | Saves the package as a new version or revises the author's own draft. `tags` are applied when the skill is new |
 | `tag_skill` | creator of the skill, curators | Replaces the tags of a skill without a new version or review |
 | `move_skill` | curators of the old space who may also write in the new one | Files the newest released version in another space; a release never travels along (see below) |
-| `review_skill` | curators | Approve (with confirmation, risk class and the digest of the version that was read) or reject (with note). An approval is refused if the author changed the draft after it was read |
-| `publish_skill` | curators | Release an approved version (confirmation required) |
+| `share_skill` | curators of the old space (the owner in a personal space); only where sharing is enabled | Sends a copy of the newest released version to a colleague's personal space as a draft that the recipient reviews and releases (see [sharing](sharing.md)) |
+| `review_skill` | curators; in a personal space its owner, for skills sent to them | Approve (with confirmation, risk class and the digest of the version that was read) or reject (with note). An approval is refused if the author changed the draft after it was read |
+| `publish_skill` | curators; in a personal space its owner | Release an approved version (confirmation required) |
 | `block_skill` | curators | Withdraw a version (reason and confirmation required) |
 | `unblock_skill` | space admins | Lift a block (reason and confirmation required); the version is approved again, not released |
 | `archive_skill`, `unarchive_skill` | curators | Hide a whole skill from everyone else, or bring it back (confirmation required) |
@@ -132,7 +133,7 @@ Atrium does **not** install them: an organisation stores a skill with `store_ski
 
 ## Audit
 
-`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept. A refusal because of the caller's role, a required approval or a rate limit is logged as `denied` with the tool and the reason, no arguments, once a minute per user, tool and reason.
+`store_skill`, review, publish, block, unblock, archive, restore and delete are written to the audit log (`skill_save`, `skill_approve`, `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`), the sending to a colleague (`share_send`, outside any space, with the recipient and the digest but no name, see [sharing](sharing.md)), and every read (`skill_get`, `skill_resource`, `skill_export`) with skill name and version. In personal spaces only action and time are kept. A refusal because of the caller's role, a required approval or a rate limit is logged as `denied` with the tool and the reason, no arguments, once a minute per user, tool and reason.
 
 Every read carries `via` in its details, the route the client took: `tool` (`get_skill`, `get_skill_resource`), `resource` (`resources/read` of a `skill://` URI), `rpc` (`skills/get`) or `export` (the ZIP download). `skills/list` is written as `skill_list` with the number of skills offered. So `admin_audit_log action=skill_*` shows whether a client uses the SEP-2640 methods or the tools. Calls through `skills/*` carry the client `mcp-skills`, as that route has no MCP session to read the client name from.
 
