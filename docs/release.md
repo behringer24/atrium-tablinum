@@ -15,6 +15,8 @@ git tag -a v0.1.0 -m "Atrium Tablinum 0.1.0"
 git push origin v0.1.0
 ```
 
+**Before tagging a new minor or major version** (`X.Y.0`), set `line` and `date` in `internal/product/line.txt` to that version and its release day, in the commit that gets the tag. Patch releases (`X.Y.Z`) keep the file. The release line is shown by `server_info` and the start log.
+
 The progress of the tests is visible under "Actions" in this repo. The finished package appears under "Packages" and is linked to the repo through the label `org.opencontainers.image.source`.
 
 ## Canary builds
