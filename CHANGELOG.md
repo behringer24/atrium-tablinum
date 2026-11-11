@@ -13,6 +13,9 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **Review tools for the owner of a personal space:** `review_knowledge`, `review_skill` and `publish_skill` are open at the tool level for every user, because the owner of a personal space reviews what colleagues send them; the role is still checked per entry and per skill (curator or admin of a team space, the owner in their personal space), so a user without that role is refused as before. The compact form of these three tools now says so.
 - **Authors of skill versions are shown while a version is not released:** the version information of `list_skills`, `get_skill` and the review tools carries `author` (e-mail) for drafts, rejected, approved and blocked versions, so that a reviewer sees who wrote what they are asked to approve.
 
+### Fixed
+- **Release line:** `internal/product/line.txt` still named line 0.4 after 0.5.0 and 0.5.1; it now names 0.5, dated 2026-11-10, so that `server_info` shows the right line. [docs/release.md](docs/release.md) says when to set it.
+
 ## [0.5.1] - 2026-11-11
 
 ### Changed
