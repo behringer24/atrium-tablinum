@@ -9,6 +9,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ### Changed
 - **Go toolchain 1.26.11:** fixes GO-2026-6859 (`net/http`, found by `govulncheck`); `go.mod`, the Dockerfile and [docs/release.md](docs/release.md) name the new patch release.
+- **A licence is bound to a major version:** a Pro licence names the major version it covers (`major`) and runs for a term (`expires`); every build of that major version is covered, so no minor release needs a new licence. Licences with a maintenance date keep working as before. `admin_license` reports the `major`. See [docs/pro/pro-edition.md](docs/pro/pro-edition.md).
 - **Review tools for the owner of a personal space:** `review_knowledge`, `review_skill` and `publish_skill` are open at the tool level for every user, because the owner of a personal space reviews what colleagues send them; the role is still checked per entry and per skill (curator or admin of a team space, the owner in their personal space), so a user without that role is refused as before. The compact form of these three tools now says so.
 - **Authors of skill versions are shown while a version is not released:** the version information of `list_skills`, `get_skill` and the review tools carries `author` (e-mail) for drafts, rejected, approved and blocked versions, so that a reviewer sees who wrote what they are asked to approve.
 
