@@ -3,6 +3,7 @@ package product
 import (
 	_ "embed"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -41,6 +42,17 @@ func (l Line) Coverage() time.Time {
 		return *l.Epoch
 	}
 	return l.Date
+}
+
+// Major is the major version of the line: the number before the first dot of its name ("3" for
+// "3.4"). A licence can be bound to a major version instead of a date.
+func (l Line) Major() (int, error) {
+	head, _, _ := strings.Cut(l.Name, ".")
+	n, err := strconv.Atoi(head)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("line %q has no major version", l.Name)
+	}
+	return n, nil
 }
 
 // ParseLine reads the content of line.txt.

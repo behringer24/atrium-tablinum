@@ -21,9 +21,11 @@ A licence is one line of text that starts with `atrium-license-v1.`. You receive
 - **It is checked on your server, offline.** Atrium never calls anybody to check it, and nothing about your instance is sent anywhere.
 - **It belongs to your instance.** It is issued for the host of your `instance.base_url`, so tell us the address you run under. A licence installed on an instance with another address is refused.
 - **It lists what it switches on:** the number of users (`users`; 0 means unlimited) and features such as `offboarding`.
-- **It carries a maintenance date** (`maintenance_until`) and, for a trial or subscription, an optional expiry date (`expires`).
+- **It is for one major version and runs for a term.** It names the major version it covers (`major`) and, for a subscription or a trial, the day it ends (`expires`). Licences issued earlier carry a maintenance date (`maintenance_until`) instead of a major version; they keep working as described at the end of this section.
 
-**Maintenance, not an expiry.** Atrium releases come in *release lines* (0.4, 0.5, 1.0 and so on); `server_info` and `admin_license` name the line of the running build and the day it was released. A licence covers every build of a line released on or before its maintenance date, **for ever**: you can run what you have indefinitely, and patch releases of a covered line are always covered. A *newer* line needs a licence with a later maintenance date. You renew once, in the running instance, usually once a year.
+**One major version, one term.** Atrium versions are numbered `major.minor.patch` (1.4.2); `server_info` and `admin_license` name the version and release line of the running build. A licence for major version 1 covers every build of 1.x, so each minor release and patch of that version is included while the licence runs. A build of a *newer* major version (2.0 and later) needs a licence for that major version; a licence for a newer major version also covers the earlier ones, so you can go back. When the term ends, the instance runs as Community until a new licence is installed. Renewing brings the licence for the major version that is current then.
+
+*Licences with a maintenance date.* An older licence covers every build of a release line released on or before its `maintenance_until`, for ever; a newer line needs a licence with a later date.
 
 **Nothing is ever blocked.** In every state other than `valid` the instance runs as Community. Content stays readable and exportable, and no account is locked.
 
@@ -33,15 +35,15 @@ A licence is one line of text that starts with `atrium-license-v1.`. You receive
 
 | Field | Meaning |
 |---|---|
-| `status` | `none` (no licence, Community), `valid`, `not covered` (the running build is of a newer line than the maintenance covers; the text names the dates), `expired` (the `expires` date has passed), `wrong domain` (the licence is for another address), `invalid` (unreadable or not issued by behringer24) |
-| `edition`, `licensee`, `features`, `limits`, `maintenance_until`, `expires` | What the licence says |
+| `status` | `none` (no licence, Community), `valid`, `not covered` (the running build is of a newer major version than the licence covers, or, for a licence with a maintenance date, of a newer line; the text names which), `expired` (the `expires` date has passed), `wrong domain` (the licence is for another address), `invalid` (unreadable or not issued by behringer24) |
+| `edition`, `licensee`, `features`, `limits`, `major`, `maintenance_until`, `expires` | What the licence says |
 | `source` | `installed` (by an admin at run time) or `file` (named in the configuration) |
 | `notice` | A reminder with the date, see below |
-| `build` | Version, release line and its release date, for comparison with `maintenance_until` |
+| `build` | Version, major version, release line and its release date |
 | `users` | The active accounts now, the limit in force (0 = unlimited) and `over_limit` |
 | `warning` | Only when the active accounts have reached the limit |
 
-**Reminders.** From 60 days before the end of maintenance, and before the `expires` date of a trial or subscription, the notice appears in the licence report, in `admin_health` (which never turns unhealthy because of it) and as a warning in the server log at start. After the end of maintenance it stays as a reminder that newer release lines need a renewed licence; the running build is not affected.
+**Reminders.** From 60 days before the `expires` date, the notice appears in the licence report, in `admin_health` (which never turns unhealthy because of it) and as a warning in the server log at start. For a licence with a maintenance date it also names the end of maintenance, and afterwards stays as a reminder that newer release lines need a renewed licence; the running build is not affected.
 
 ## Installing, renewing and removing a licence
 
@@ -52,21 +54,21 @@ Say: *"Install this licence: atrium-license-v1.…"* (`admin_license action=inst
 - A licence you install at run time is stored in the database and takes precedence over a file.
 - **Alternatively** an operator can name a licence file in `config.yaml` (section `license:` with the key `file:`, the path of the licence file); it is read at start.
 
-**Renewal** is installing the new line once the maintenance has been extended. The reminder tells you 60 days ahead. Anyone who does not want new releases never has to touch the file again.
+**Renewal** is installing the new licence before the old one ends. The reminder tells you 60 days ahead, and a renewal made in time continues the running term.
 
 **Removing.** *"Remove the installed licence."* (`action=remove`, after confirmation) deletes the installed licence; one named in the configuration stays. The question before the removal tells you how many accounts are active and what the Community limit means for them. After a removal the instance runs as Community: **nobody is locked out**, see [the user limit](#the-user-limit).
 
-Installing and removing are recorded in the audit log (`license_install`, `license_remove`) with licence id, licensee, edition and maintenance date, never the licence text.
+Installing and removing are recorded in the audit log (`license_install`, `license_remove`) with licence id, licensee, edition, major version and end date, never the licence text.
 
 ## Updating Atrium with a licence
 
-Read the [changelog](../../CHANGELOG.md) and update to the version you want as usual. If after an update the report says **`not covered`**, the new build is of a line newer than your maintenance. Pro features are off and the Community limits apply, all data stays accessible. Either go back to the covered version, or renew the maintenance and install the new licence.
+Read the [changelog](../../CHANGELOG.md) and update to the version you want as usual. If after an update the report says **`not covered`**, the new build is of a newer major version than your licence covers (or, for a licence with a maintenance date, of a newer line). Pro features are off and the Community limits apply, all data stays accessible. Either go back to the covered version, or get a licence for the new major version and install it. Updates within the major version of your licence are always covered.
 
 ## The user limit
 
 With a licence that sets a limit, that limit applies; without one, Community's 8 active accounts. What counts as a user is explained in [Editions](../licensing.md): registered accounts that are active at the same time, not connected assistants, and locked accounts do not count.
 
-If more accounts are active than the limit in force (after a removal, an expiry, or an update beyond the maintenance), everybody keeps working. The licence report shows `over_limit` and a warning, and only **new accounts and reactivations** wait until there is room or a covering licence is installed again.
+If more accounts are active than the limit in force (after a removal, an expiry, or an update to a major version the licence does not cover), everybody keeps working. The licence report shows `over_limit` and a warning, and only **new accounts and reactivations** wait until there is room or a covering licence is installed again.
 
 ## Guided offboarding
 
