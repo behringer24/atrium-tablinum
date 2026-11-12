@@ -232,7 +232,7 @@ func (s *Server) skillsListResult(ctx context.Context, a docs.Actor, cursor stri
 		out = append(out, e)
 	}
 	s.Skills.AuditList(ctx, a, "rpc", len(out))
-	res := map[string]any{"resultType": "complete", "skills": out}
+	res := map[string]any{"resultType": "complete", "ttlMs": cacheTTLMs, "cacheScope": cacheScopePrivate, "skills": out}
 	if next != nil {
 		res["nextCursor"] = encodeCursor(*next)
 	}
@@ -257,7 +257,7 @@ func (s *Server) skillsGetResult(ctx context.Context, a docs.Actor, uri string) 
 		return nil, &rpcError{Code: -32603, Message: "internal error"}
 	}
 	s.Skills.Audit(ctx, a, v, "skill_get", "rpc")
-	return map[string]any{"resultType": "complete", "skill": e}, nil
+	return map[string]any{"resultType": "complete", "ttlMs": cacheTTLMs, "cacheScope": cacheScopePrivate, "skill": e}, nil
 }
 
 type rpcError struct {
