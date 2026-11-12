@@ -258,6 +258,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		oauthSrv.Register(mux)
 		runner.AddPeriodic(jobs.Periodic{Name: "oauth_cleanup", Every: time.Hour, Run: oauthSrv.Cleanup})
 		mcpSrv.RevokeTokens = oauthSrv.RevokeUser // offboarding
+		mcpSrv.RevokeAllTokens = oauthSrv.RevokeAll
 		mcpSrv.ListSessions = func(ctx context.Context, user uuid.UUID) ([]mcpserver.SessionInfo, error) {
 			list, err := oauthSrv.Sessions(ctx, user)
 			out := make([]mcpserver.SessionInfo, 0, len(list))

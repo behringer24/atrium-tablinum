@@ -703,6 +703,27 @@ func TestSessionsAndAbsoluteLifetime(t *testing.T) {
 	}
 }
 
+// Incident response: one call ends every login of every user, and a second call finds nothing left.
+func TestRevokeAllEndsEveryLogin(t *testing.T) {
+	e := setup(t, 1)
+	e.tokens()
+	u, _ := e.users.GetByEmail(e.ctx, "anna@example.com")
+	store := oauth.NewStore(e.pool, time.Hour, 720*time.Hour)
+	if list, _ := store.Sessions(e.ctx, u.ID); len(list) == 0 {
+		t.Fatal("expected a login before the revocation")
+	}
+	n, err := store.RevokeAll(e.ctx)
+	if err != nil || n == 0 {
+		t.Fatalf("RevokeAll: %d %v", n, err)
+	}
+	if list, _ := store.Sessions(e.ctx, u.ID); len(list) != 0 {
+		t.Errorf("sessions after RevokeAll: %+v", list)
+	}
+	if n, err = store.RevokeAll(e.ctx); err != nil || n != 0 {
+		t.Errorf("second RevokeAll: %d %v", n, err)
+	}
+}
+
 // An admin lets a new domain in while the server runs; a rejected login leaves a trace, but no account.
 func TestAllowlistAtRuntime(t *testing.T) {
 	e := setup(t, 1)

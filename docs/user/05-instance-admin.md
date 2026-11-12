@@ -104,6 +104,7 @@ Local groups (`admin_groups`: `list`, `create`, `rename`, `delete`, `add_member`
 ### Sessions
 
 - `admin_revoke_sessions` ends all logins of a user at once (account stays active; they log in again). Use it when an access is suspected of misuse.
+- `admin_revoke_all_sessions` ends the logins of **all** users, yours included, and needs `confirm=true`. Accounts stay active; every assistant logs in again. Use it when tokens may have leaked and the scope is unclear; remove the source of the leak first. It does not touch a static token of a `dev_mode` setup.
 - Users end their own with `revoke_my_sessions`. Sessions last at most 90 days (`auth.session_max_age`); access tokens one hour, refresh tokens 30 days.
 - A locked account loses access immediately, even with a valid token: users are checked live on every request.
 
@@ -224,7 +225,7 @@ Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `
 | Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, `share_send` (a sending to a colleague: kind, recipient id and digest, no title or name), reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
-| Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
+| Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
 | Instance | `admin_context_set`, `admin_context_clear`, `admin_instance_set`, `admin_quota_set` (scope, target, old and new values) |
 
@@ -325,6 +326,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 | Situation | Steps |
 |---|---|
 | An account may be compromised | `admin_revoke_sessions` for the user; if confirmed, `admin_offboard_user` to lock it; review `admin_audit_log user=...` for what it did; reset access at the identity provider |
+| Tokens may have leaked and the scope is unclear | Remove the source of the leak, then `admin_revoke_all_sessions` (everybody logs in again); the full runbook is in `docs/incident.md` |
 | A harmful or wrong skill | Block the version (curator or you), check who loaded it (`skill=..., action=skill_get`), tell the users, have a fixed version reviewed. Delete only if it must disappear |
 | Sensitive data in an entry | Archive at once to stop it being served, then delete it for good (that works on archived entries); reads of knowledge entries are not logged, so the audit log shows who changed it and which searches ran, not who read it; tell the data protection officer |
 | Credentials leaked in an entry | Treat them as compromised, rotate them first, then delete the entry |

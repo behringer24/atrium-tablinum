@@ -365,6 +365,12 @@ func (s *Store) RevokeUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	return tag.RowsAffected(), err
 }
 
+// RevokeAll revokes every token of every user (incident response).
+func (s *Store) RevokeAll(ctx context.Context) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE oauth_tokens SET revoked_at = now() WHERE revoked_at IS NULL`)
+	return tag.RowsAffected(), err
+}
+
 // Cleanup removes expired codes and login states, tokens a week past their end, and
 // clients that never completed a login, an hour after they registered (they cost nothing
 // to create, so registrations must not pile up).
