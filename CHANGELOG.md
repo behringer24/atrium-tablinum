@@ -14,6 +14,7 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 - **Authors of skill versions are shown while a version is not released:** the version information of `list_skills`, `get_skill` and the review tools carries `author` (e-mail) for drafts, rejected, approved and blocked versions, so that a reviewer sees who wrote what they are asked to approve.
 
 ### Fixed
+- **`dev_mode` token refused for an instance admin:** the static dev token failed with HTTP 500 ("token check failed") when `dev_user` was also listed in `auth.bootstrap_admins`, because the dev account was not marked as having a verified address. It now is; `dev_mode` still only runs on localhost.
 - **Release line:** `internal/product/line.txt` still named line 0.4 after 0.5.0 and 0.5.1; it now names 0.5, dated 2026-11-10, so that `server_info` shows the right line. [docs/release.md](docs/release.md) says when to set it.
 
 ## [0.5.1] - 2026-11-11
