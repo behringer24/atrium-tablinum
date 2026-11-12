@@ -9,7 +9,11 @@ services:
     image: atrium-tablinum:latest
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://knowledge:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/knowledge
+      # The server runs with an account that cannot change the schema or alter the audit log; a
+      # second account applies the migrations at start (docs/deployment.md, "Separate database
+      # accounts"). The superuser's password is only used by postgres and db-init.
+      DATABASE_URL: postgres://atrium_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@postgres:5432/knowledge
+      DATABASE_MIGRATION_URL: postgres://atrium_migrate:${MIGRATE_DB_PASSWORD:?set MIGRATE_DB_PASSWORD in .env}@postgres:5432/knowledge
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
@@ -34,10 +38,27 @@ services:
     ports:
       - "${SERVER_BIND:-127.0.0.1:8080}:8080"
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       tei-embed:
         condition: service_started
+    networks: [atrium]
+
+  # Sets up the two database accounts before the server starts. Runs as the superuser, changes
+  # nothing that is already right, and exits; safe on every start and on an existing database.
+  db-init:
+    image: pgvector/pgvector:0.8.0-pg17
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+      MIGRATE_DB_PASSWORD: ${MIGRATE_DB_PASSWORD:?set MIGRATE_DB_PASSWORD in .env}
+    volumes:
+      - ./scripts/db-roles.sql:/db-roles.sql:ro
+    entrypoint: ["/bin/sh", "-c", "psql -h postgres -U knowledge -d knowledge -v ON_ERROR_STOP=1 -v app_password=\"$$APP_DB_PASSWORD\" -v migrate_password=\"$$MIGRATE_DB_PASSWORD\" -f /db-roles.sql"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks: [atrium]
 
   postgres:

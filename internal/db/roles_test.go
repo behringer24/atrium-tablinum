@@ -94,3 +94,55 @@ func TestHardenedAccounts(t *testing.T) {
 		t.Errorf("the server cannot use a table a later migration created: %v", err)
 	}
 }
+
+// A new installation runs scripts/db-roles.sql on the empty database before the first start; the
+// migrations then run with the migration account and must leave the audit log append-only for the
+// server account.
+func TestHardenedAccountsOnAFreshDatabase(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	script, err := os.ReadFile("../../scripts/db-roles.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := strings.NewReplacer(":'app_password'", "'app-pw'", ":'migrate_password'", "'migrate-pw'").Replace(string(script))
+	if _, err := pool.Exec(ctx, sql); err != nil {
+		t.Fatalf("db-roles.sql on an empty database: %v", err)
+	}
+	connect := func(user, password string) *pgxpool.Pool {
+		t.Helper()
+		u, err := url.Parse(os.Getenv("ATRIUM_TEST_DATABASE_URL"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		u.User = url.UserPassword(user, password)
+		u.Path = "/" + pool.Config().ConnConfig.Database
+		p, err := pgxpool.New(ctx, u.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(p.Close)
+		return p
+	}
+	app, migrate := connect("atrium_app", "app-pw"), connect("atrium_migrate", "migrate-pw")
+	if err := Migrate(ctx, migrate, Embedding{Model: "test", Dimensions: 4}); err != nil {
+		t.Fatalf("migrating with the migration account: %v", err)
+	}
+	if _, err := app.Exec(ctx, `INSERT INTO audit_log (action) VALUES ('test')`); err != nil {
+		t.Fatalf("appending to the audit log: %v", err)
+	}
+	if _, err := app.Exec(ctx, `INSERT INTO users (email, display_name, idp, idp_subject) VALUES ('a@x.de', 'A', 't', '1')`); err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	for name, stmt := range map[string]string{
+		"alter an audit entry":    `UPDATE audit_log SET action = 'forged'`,
+		"delete an audit entry":   `DELETE FROM audit_log`,
+		"truncate the audit log":  `TRUNCATE audit_log`,
+		"switch triggers off":     `ALTER TABLE skill_versions DISABLE TRIGGER ALL`,
+		"read the migration list": `SELECT * FROM goose_db_version`,
+	} {
+		if _, err := app.Exec(ctx, stmt); err == nil {
+			t.Errorf("the server account can %s", name)
+		}
+	}
+}

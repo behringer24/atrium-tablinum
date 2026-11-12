@@ -64,11 +64,20 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO atrium_ap
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO atrium_app;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO atrium_app;
 -- ... but the audit log is append-only for it, and the migration bookkeeping is not its business.
-REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM atrium_app;
-REVOKE ALL ON goose_db_version FROM atrium_app;
+-- On a database that has no tables yet (a new installation, where this script runs before the first
+-- start) there is nothing to revoke: migration 00013 does it when it creates the schema.
+DO $$
+BEGIN
+    IF to_regclass('public.audit_log') IS NOT NULL THEN
+        REVOKE UPDATE, DELETE, TRUNCATE ON audit_log FROM atrium_app;
+    END IF;
+    IF to_regclass('public.goose_db_version') IS NOT NULL THEN
+        REVOKE ALL ON goose_db_version FROM atrium_app;
+    END IF;
+END $$;
 
 -- Tables, sequences and functions that later migrations create get the same rights; the audit log
--- rule above is repeated by the migration that creates a table for it (none yet).
+-- rule above is repeated by migration 00013 for databases that were set up before the first start.
 ALTER DEFAULT PRIVILEGES FOR ROLE atrium_migrate IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO atrium_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE atrium_migrate IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO atrium_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE atrium_migrate IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO atrium_app;

@@ -28,21 +28,24 @@ Your own proxy should add what it does best: a connection and request limit for 
 
 ## Separate database accounts
 
-By default the server connects with the one account the database was created with, which in the compose setup is a superuser. A flaw in the server, or anybody who gets hold of its connection string, could then switch off the triggers that freeze released skills, rewrite or delete audit entries, or change the schema. The server logs a warning at start while it runs as a superuser. For production, use two accounts:
+The server must not run as the database's superuser: a flaw in it, or anybody who gets hold of its connection string, could then switch off the triggers that freeze released skills, rewrite or delete audit entries, or change the schema. Atrium therefore uses two accounts:
 
 | Account | Does | Cannot |
 |---|---|---|
 | `atrium_app` (the server, `database.url`) | Read and write the data, append to the audit log | Change the schema, create or drop tables, switch triggers off, alter or delete an audit entry, read the migration list |
 | `atrium_migrate` (`database.migration_url`) | Owns the schema and runs the migrations at start | Nothing is run with it besides the migrations |
 
-Set up once, as a superuser, on the existing database (take a backup first; the script is safe to run again):
+**With the compose setup nothing is left to do.** The service `db-init` runs `scripts/db-roles.sql` as the superuser before the server starts, creates the accounts with the passwords `APP_DB_PASSWORD` and `MIGRATE_DB_PASSWORD` from `.env`, and exits; the server gets `DATABASE_URL` (the first account) and `DATABASE_MIGRATION_URL` (the second) from the same file. The script changes nothing that is already right, so it is safe on every start. A new installation starts hardened from its first start. The superuser's password (`POSTGRES_PASSWORD`) is used only by `postgres`, `db-init` and the backup.
+
+**Updating an installation that ran as the superuser:** add `APP_DB_PASSWORD` and `MIGRATE_DB_PASSWORD` to `.env` (compose refuses to start without them; use `openssl rand -hex 24`, letters and digits only) and run `docker compose up -d`. `db-init` converts the existing database; the data is not touched. Take a backup first, as before any update. Do not point `config.yaml` at the superuser again: `DATABASE_URL` and `DATABASE_MIGRATION_URL` from the environment are what the server uses, unless `database.url` is written out in your `config.yaml`.
+
+**Without compose**, set up the accounts once, as a superuser, on the database (take a backup first; the script is safe to run again, also on an empty database):
 
 ```bash
-docker compose exec -T postgres psql -U knowledge -d knowledge -v ON_ERROR_STOP=1 \
-  -v app_password='...' -v migrate_password='...' < scripts/db-roles.sql
+psql -U <superuser> -d <database> -v ON_ERROR_STOP=1   -v app_password='...' -v migrate_password='...' < scripts/db-roles.sql
 ```
 
-Then in `config.yaml` set `database.url` to `postgres://atrium_app:<app password>@postgres:5432/knowledge` and `database.migration_url` to `postgres://atrium_migrate:<migrate password>@postgres:5432/knowledge`, and restart. At start the migrations run with the second account and the server then continues with the first. Tables, sequences and functions that later migrations create are usable by the server without further steps. Keep `atrium_migrate`'s password only where the server starts, and keep the superuser's out of the server's environment.
+Then set `database.url` to `postgres://atrium_app:<app password>@<host>:5432/<database>` and `database.migration_url` (or the environment variable `DATABASE_MIGRATION_URL`) to `postgres://atrium_migrate:<migrate password>@<host>:5432/<database>`, and restart. At start the migrations run with the second account and the server then continues with the first. Tables, sequences and functions that later migrations create are usable by the server without further steps. Keep `atrium_migrate`'s password only where the server starts, and keep the superuser's out of the server's environment. The server logs a warning at start while it still runs as a superuser.
 
 The test suite can run the integration tests with the restricted account (`ATRIUM_TEST_RESTRICTED=1 go test -p 1 ./...`), to check that no code path needs more. The one test that tampers with the schema on purpose (switching triggers off) fails in that mode, which is the point.
 

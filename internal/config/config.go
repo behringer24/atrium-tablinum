@@ -111,7 +111,8 @@ type Database struct {
 	// MigrationURL, if set, is the account that applies the schema migrations at start (it owns the
 	// schema); URL can then be an account that cannot change the schema, disable triggers or alter
 	// the audit log. Empty = the migrations run with URL, as before. scripts/db-roles.sql sets both
-	// accounts up (docs/deployment.md, "Separate database accounts").
+	// accounts up (docs/deployment.md, "Separate database accounts"). The environment variable
+	// DATABASE_MIGRATION_URL sets it when the file leaves it empty.
 	MigrationURL string `yaml:"migration_url"`
 }
 
@@ -318,6 +319,11 @@ func Parse(raw []byte, lookup func(string) (string, bool)) (*Config, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	if v, ok := lookup("DATABASE_MIGRATION_URL"); ok && v != "" && cfg.Database.MigrationURL == "" {
+		// The compose setup passes the migration account through the environment, so that a
+		// config.yaml written before the two accounts existed keeps working.
+		cfg.Database.MigrationURL = v
 	}
 	if cfg.Instance.ShortName == "" {
 		cfg.Instance.ShortName = cfg.Instance.ProductName
