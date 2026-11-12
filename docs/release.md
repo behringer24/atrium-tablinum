@@ -15,6 +15,8 @@ git tag -a v0.1.0 -m "Atrium Tablinum 0.1.0"
 git push origin v0.1.0
 ```
 
+**Upgrade notes:** a change that needs action from operators (a new required variable, a changed compose file, a migration that cannot be undone) goes under "Upgrade notes" at the top of "Unreleased" in the changelog, and the release description repeats it. Operators learn about it there, not from a failing start.
+
 **Before tagging a new minor or major version** (`X.Y.0`), set `line` and `date` in `internal/product/line.txt` to that version and its release day, in the commit that gets the tag. Patch releases (`X.Y.Z`) keep the file. The release line is shown by `server_info` and the start log.
 
 The progress of the tests is visible under "Actions" in this repo. The finished package appears under "Packages" and is linked to the repo through the label `org.opencontainers.image.source`.

@@ -4,6 +4,13 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Upgrade notes
+Read these before you update; the update is not a plain `docker compose pull`.
+
+- **The compose setup needs two new passwords (breaking).** The server now runs as a restricted database account instead of the superuser. Before the update, add `APP_DB_PASSWORD` and `MIGRATE_DB_PASSWORD` to `.env` (any strong value, letters and digits only: `openssl rand -hex 24`; `POSTGRES_PASSWORD` stays as it is). Without them `docker compose` stops with an error before it changes anything. Take a backup, then run `docker compose up -d`: the new service `db-init` converts the existing database and keeps its data. Details: [docs/deployment.md](docs/deployment.md), "Separate database accounts".
+- **Your own compose file** (not the one in this repository): add the service `db-init` and the two accounts as described there, and use the new image together with the new compose file, never the new compose file with an older image: an older image cannot start as the restricted account. A new image with the old compose file keeps working as before.
+- A `config.yaml` that spells out `database.url` keeps that account and wins over the environment; leave `database.url` as `"${DATABASE_URL}"`.
+
 ### Added
 - **Sending to a colleague:** a user can send an approved knowledge entry (`share_knowledge`) or the newest released version of a skill (`share_skill`) to a colleague by e-mail address. The copy lands in the recipient's personal space as a draft that only the recipient can read; the recipient is its reviewer and approves or returns it with `review_knowledge`, or reads, approves and releases a skill with `review_skill` and `publish_skill`. The sender is the author of the copy, cannot read or change it afterwards and is not told the decision. A binding rule arrives as plain documentation; a skill arrives with the same files and digest and no release, as with `move_skill`. Off by default: `sharing.enabled`, with `sharing.max_pending_per_recipient` (20) and `sharing.max_pending_per_sender` (3) against flooding; the tools are listed only where it is on. Everything on the recipient's side (unknown or disabled account, a name already taken, a full space, a reached limit) gives the sender the same refusal, so it reveals nothing about who exists or what they hold. The sending is audited as `share_send` (recipient id, kind, digest; no title or name). `whats_new` reports `sent_to_you`. Details in [docs/sharing.md](docs/sharing.md).
 
