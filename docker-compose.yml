@@ -12,8 +12,8 @@ services:
       # The server runs with an account that cannot change the schema or alter the audit log; a
       # second account applies the migrations at start (docs/deployment.md, "Separate database
       # accounts"). The superuser's password is only used by postgres and db-init.
-      DATABASE_URL: postgres://atrium_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}@postgres:5432/knowledge
-      DATABASE_MIGRATION_URL: postgres://atrium_migrate:${MIGRATE_DB_PASSWORD:?set MIGRATE_DB_PASSWORD in .env}@postgres:5432/knowledge
+      DATABASE_URL: postgres://atrium_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env (new, see docs/deployment.md, Separate database accounts)}@postgres:5432/knowledge
+      DATABASE_MIGRATION_URL: postgres://atrium_migrate:${MIGRATE_DB_PASSWORD:?set MIGRATE_DB_PASSWORD in .env (new, see docs/deployment.md, Separate database accounts)}@postgres:5432/knowledge
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
@@ -51,8 +51,8 @@ services:
     restart: "no"
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
-      MIGRATE_DB_PASSWORD: ${MIGRATE_DB_PASSWORD:?set MIGRATE_DB_PASSWORD in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env (new, see docs/deployment.md, Separate database accounts)}
+      MIGRATE_DB_PASSWORD: ${MIGRATE_DB_PASSWORD:?set MIGRATE_DB_PASSWORD in .env (new, see docs/deployment.md, Separate database accounts)}
     volumes:
       - ./scripts/db-roles.sql:/db-roles.sql:ro
     entrypoint: ["/bin/sh", "-c", "psql -h postgres -U knowledge -d knowledge -v ON_ERROR_STOP=1 -v app_password=\"$$APP_DB_PASSWORD\" -v migrate_password=\"$$MIGRATE_DB_PASSWORD\" -f /db-roles.sql"]
