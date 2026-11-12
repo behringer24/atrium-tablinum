@@ -290,12 +290,12 @@ For more users and extra features, see [Editions](../licensing.md); with a Pro l
 
 ### Separate database accounts
 
-Out of the box the server connects to the database as its superuser. That is simple, but a flaw in the server (or anybody holding its connection string) could switch off the triggers that freeze released skills, rewrite the audit log or change the schema. The server logs a warning at start while it runs as a superuser. For production, set up two accounts once, with `scripts/db-roles.sql`:
+A flaw in the server (or anybody holding its connection string) must not be able to switch off the triggers that freeze released skills, rewrite the audit log or change the schema. The compose setup therefore runs the server with a restricted account and sets the accounts up itself at every start (the service `db-init`, with `APP_DB_PASSWORD` and `MIGRATE_DB_PASSWORD` from `.env`). Without compose (and in a setup that connects as the superuser, where the server logs a warning at start), set the accounts up once with `scripts/db-roles.sql`:
 
 - `atrium_app` (the server): reads and writes the data, can only **append** to the audit log, cannot change the schema, create or drop tables or switch triggers off.
 - `atrium_migrate`: owns the schema and runs the migrations at start.
 
-Then set `database.url` to the first and `database.migration_url` to the second in `config.yaml`. The steps are in [Deployment](../deployment.md#separate-database-accounts). An update that adds tables works without further steps.
+Then set `database.url` to the first and `database.migration_url` to the second in `config.yaml` (compose does this through the environment). The steps are in [Deployment](../deployment.md#separate-database-accounts). An update that adds tables works without further steps.
 
 ### Limits that protect the system
 

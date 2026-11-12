@@ -22,7 +22,7 @@ Sending an entry or a skill to a colleague's personal space is built ([docs/shar
 ### Security, remainder of the audit of 2026-11-03
 
 - consent page before a new client is connected
-- audit log leaving the database (JSON line on stdout, Postgres role with `INSERT` only, optionally a hash chain) and a retention period
+- audit log leaving the database (JSON line on stdout, optionally a hash chain) and a retention period; the Postgres account that can only append to it is in place (hardened accounts)
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
 - confirmation when storing into spaces of others
 
@@ -31,7 +31,6 @@ Sending an entry or a skill to a colleague's personal space is built ([docs/shar
 The findings of the second audit (external attack surface, authorisation and integrity) that are fixed are listed in the changelog. Still open:
 
 - **Package cleanup token:** `PACKAGES_PAT` is a classic token with `delete:packages`; replace it with a narrower credential as soon as GitHub offers one for container packages.
-- **Database roles by default:** the separate accounts are opt-in (`scripts/db-roles.sql`); make them part of the compose setup and the install steps, so that new installations start hardened.
 - A client whose `client_name` is shown in `my_sessions` should be marked as data.
 
 ### Editions and release

@@ -7,7 +7,7 @@ A self-hosted, vendor-neutral knowledge store for AI assistants (MCP). Knowledge
 ## Quick start (production)
 
 1. `cp .env.example .env` and `cp config.example.yaml config.yaml`. A basic setup fills in only `.env`: `POSTGRES_PASSWORD`,
-   `ATRIUM_BASE_URL`, `ATRIUM_ALLOWED_DOMAIN`, `ADMIN_EMAIL` and the Google credentials; `config.yaml` stays as it is unless you need other providers or settings.
+   `APP_DB_PASSWORD`, `MIGRATE_DB_PASSWORD`, `ATRIUM_BASE_URL`, `ATRIUM_ALLOWED_DOMAIN`, `ADMIN_EMAIL` and the Google credentials; `config.yaml` stays as it is unless you need other providers or settings.
 2. Choose a deployment variant (details and proxy requirements in [docs/deployment.md](docs/deployment.md)):
 
 | Variant | Steps |

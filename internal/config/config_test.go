@@ -281,3 +281,22 @@ func TestSharingIsOffByDefaultAndNeedsPersonalSpaces(t *testing.T) {
 		t.Errorf("enabled: %v", err)
 	}
 }
+
+func TestMigrationURLFromEnvironment(t *testing.T) {
+	base := map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "postgres://app"}
+	cfg, err := Parse([]byte(minimal), env(base))
+	if err != nil || cfg.Database.MigrationURL != "" {
+		t.Fatalf("without the variable: %q %v", cfg.Database.MigrationURL, err)
+	}
+	base["DATABASE_MIGRATION_URL"] = "postgres://migrate"
+	cfg, err = Parse([]byte(minimal), env(base))
+	if err != nil || cfg.Database.MigrationURL != "postgres://migrate" {
+		t.Fatalf("from the environment: %q %v", cfg.Database.MigrationURL, err)
+	}
+	// a value in the file wins
+	withFile := strings.Replace(minimal, "database:", "database:\n  migration_url: \"postgres://file\"", 1)
+	cfg, err = Parse([]byte(withFile), env(base))
+	if err != nil || cfg.Database.MigrationURL != "postgres://file" {
+		t.Fatalf("from the file: %q %v", cfg.Database.MigrationURL, err)
+	}
+}
