@@ -609,6 +609,11 @@ func (s *Server) RevokeUser(ctx context.Context, id uuid.UUID) (int64, error) {
 	return s.store.RevokeUser(ctx, id)
 }
 
+// RevokeAll ends every login of every user (incident response, admin tools).
+func (s *Server) RevokeAll(ctx context.Context) (int64, error) {
+	return s.store.RevokeAll(ctx)
+}
+
 // Sessions lists the clients a user is logged in with.
 func (s *Server) Sessions(ctx context.Context, id uuid.UUID) ([]Session, error) {
 	return s.store.Sessions(ctx, id)

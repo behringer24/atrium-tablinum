@@ -23,7 +23,6 @@ Sending an entry or a skill to a colleague's personal space is built ([docs/shar
 
 - consent page before a new client is connected
 - audit log leaving the database (JSON line on stdout, Postgres role with `INSERT` only, optionally a hash chain) and a retention period
-- `SECURITY.md` with a reporting route, an incident runbook (`docs/incident.md`) and a tool that revokes all tokens of the instance
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
 - confirmation when storing into spaces of others
 
@@ -37,7 +36,11 @@ The findings of the second audit (external attack surface, authorisation and int
 
 ### Editions and release
 
-Community (this repository, up to 8 active accounts) and Pro are built from one code base ([docs/licensing.md](docs/licensing.md)). Still open on the public side: `SECURITY.md` with a reporting route (the CRA reporting duty applies since 11 September 2026).
+Community (this repository, up to 8 active accounts) and Pro are built from one code base ([docs/licensing.md](docs/licensing.md)).
+
+### Tool list after a change of rights (open gap)
+
+Clients read the tool list once per connection and do not reliably refresh it. A user who becomes curator or space admin may therefore keep seeing the compact form of the curator and space admin tools until the connector is reconnected. Only the listed tools and their descriptions are stale: rights are checked on every call. Atrium marks its answers as not cacheable (`ttlMs: 0`, scope `private`) and sends no `notifications/tools/list_changed`. In a measurement with Claude Code 2.1.321 no refresh followed a change of rights within five minutes; one reload came after exactly six minutes, for a reason not yet established. Unsolved. Options: send list-changed notifications over `subscriptions/listen` (needs a long-lived server and a registry of open streams per user instead of one server per request), after finding out which clients act on them.
 
 ### Documentation and operations
 

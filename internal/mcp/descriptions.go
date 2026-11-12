@@ -22,6 +22,10 @@ var defaultDescriptions = map[string]string{
 	"admin_revoke_sessions": `Ends all logins of a user (instance admin), e.g. when an access is suspected of being misused. ` +
 		`The account stays active, the user logs in again. ONLY on explicit instruction; ask the user first and call with confirm=true only after their confirmation.`,
 
+	"admin_revoke_all_sessions": `Ends the logins of ALL users of the instance at once (instance admin), including the caller's own, for a suspected leak of tokens or another incident. ` +
+		`Accounts stay active; every assistant has to log in again. Applies to OAuth logins only, not to a static token of a dev setup. ` +
+		`ONLY on explicit instruction; tell the user what it does, ask first and call with confirm=true only after their confirmation.`,
+
 	"server_info": `Reports the running version of "{{.ProductName}}" (and, if known, the revision). ` +
 		`Call it when the user asks for the version or should state the version in an error report.`,
 

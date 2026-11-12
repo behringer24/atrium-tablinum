@@ -58,6 +58,10 @@ Restore: `gunzip -c backups/atrium-tablinum-….sql.gz | docker compose exec -T 
 
 The dump also contains personal spaces. Protect its storage and access accordingly.
 
+## Security
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). What an instance admin does in an incident is in [docs/incident.md](docs/incident.md).
+
 ## License
 
 Atrium Tablinum is licensed under the [Elastic License 2.0](LICENSE), see also [NOTICE](NOTICE). This is source-available software, not an open source license in the sense of the OSI. The Community edition is for up to 8 active user accounts; for more, see [Editions](docs/licensing.md).

@@ -99,6 +99,25 @@ func (s *Server) revokeMySessions(ctx context.Context, c *call, in revokeMySessi
 	return messageOut{Message: fmt.Sprintf("Ended: %s (%d tokens revoked). The affected assistants have to log in again.", what, n)}, nil
 }
 
+type revokeAllIn struct {
+	Confirm bool `json:"confirm" jsonschema:"true only after confirmation by the user"`
+}
+
+func (s *Server) adminRevokeAllSessions(ctx context.Context, c *call, in revokeAllIn) (messageOut, error) {
+	if s.RevokeAllTokens == nil {
+		return messageOut{}, userErr("Sessions are not managed by this server.")
+	}
+	if !in.Confirm {
+		return messageOut{}, userErr("This ends the sessions of ALL users, including yours; every assistant has to log in again: tell the user and ask, then call again with confirm=true.")
+	}
+	n, err := s.RevokeAllTokens(ctx)
+	if err != nil {
+		return messageOut{}, err
+	}
+	s.record(ctx, c.Actor, "admin_revoke_all_sessions", nil, map[string]any{"tokens": n})
+	return messageOut{Message: fmt.Sprintf("All sessions of the instance have been ended (%d tokens revoked). Every assistant has to log in again, yours included.", n)}, nil
+}
+
 type revokeUserIn struct {
 	UserEmail string `json:"user_email" jsonschema:"E-mail of the user"`
 	Confirm   bool   `json:"confirm" jsonschema:"true only after confirmation by the user"`

@@ -768,6 +768,18 @@ func TestSessionTools(t *testing.T) {
 	if len(revokedAll) != 2 {
 		t.Errorf("admin revoke: %v", revokedAll)
 	}
+	// ending everything: instance admins only, and only after confirmation
+	var allRevoked int
+	e.srv.RevokeAllTokens = func(context.Context) (int64, error) { allRevoked++; return 9, nil }
+	if toolNames(t, e, anna)["admin_revoke_all_sessions"] || !toolNames(t, e, boss)["admin_revoke_all_sessions"] {
+		t.Error("admin_revoke_all_sessions only for instance admins")
+	}
+	if _, msg := e.call(t, boss, "admin_revoke_all_sessions", map[string]any{"confirm": false}); !strings.Contains(msg, "confirm=true") || allRevoked != 0 {
+		t.Errorf("without confirmation: %q (%d)", msg, allRevoked)
+	}
+	if _, msg := e.call(t, boss, "admin_revoke_all_sessions", map[string]any{"confirm": true}); msg != "" || allRevoked != 1 {
+		t.Errorf("admin_revoke_all_sessions: %q (%d)", msg, allRevoked)
+	}
 }
 
 func TestAdminAllowlistTool(t *testing.T) {
