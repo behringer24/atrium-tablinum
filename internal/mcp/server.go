@@ -171,6 +171,21 @@ func (s *Server) Handler(verifier auth.TokenVerifier, resourceMetadataURL string
 	})(s.skillsRPC(h))
 }
 
+// Cache hints (ttlMs and cacheScope, protocol 2026-07-28) of every answer that carries them. What
+// the server tells a caller depends on who asks: the tool list and the instructions follow the roles,
+// skill files and lists follow the space rights. So nothing may be shared between callers
+// ("private"), and nothing is fresh for any time ("ttlMs" 0), because a change of rights has to show
+// at the next request. The SDK default would be "public".
+const (
+	cacheScopePrivate = "private"
+	cacheTTLMs        = 0
+)
+
+// privateCacheable is the SetCacheable hook of every per-caller MCP server.
+func privateCacheable(_ context.Context, _ mcp.Request, c *mcp.Cacheable) {
+	c.TTLMs, c.CacheScope = cacheTTLMs, cacheScopePrivate
+}
+
 // instructions are the server-level hints a client shows its model. Users mostly say the
 // short name, so the model has to connect it with this server.
 func (s *Server) instructions() string {
@@ -205,7 +220,7 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 	if s.Skills != nil {
 		caps.AddExtension(skillsExtension, nil)
 	}
-	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName, Icons: s.icons()}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a), Capabilities: caps})
+	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName, Icons: s.icons()}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a), Capabilities: caps, SetCacheable: privateCacheable})
 	s.registerUserTools(ms)
 	if s.Skills != nil {
 		s.registerSkillResources(ms)
