@@ -41,4 +41,4 @@ not affected; `dev_mode` does not belong on a server in the first place.
 
 The audit log is append-only for the server when the separate database accounts are in use
 ([deployment.md](deployment.md), "Separate database accounts"); without them anyone holding the server's database connection
-could change it. Back up the database before you restore or rebuild anything.
+could change it. Better still, keep a copy outside the database with `audit.stdout` ([deployment.md](deployment.md), "Audit log outside the database"): then the trail survives a takeover of the database as well. Back up the database before you restore or rebuild anything.

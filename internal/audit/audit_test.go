@@ -1,7 +1,10 @@
 package audit_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,5 +78,77 @@ func TestQueryFiltersAndPrivacy(t *testing.T) {
 	future, past := time.Now().Add(time.Hour), time.Now().Add(-time.Hour)
 	if count(audit.Filter{Since: &future}) != 0 || count(audit.Filter{Until: &past}) != 0 || count(audit.Filter{Since: &past, Until: &future}) != 4 {
 		t.Error("time filter")
+	}
+}
+
+// A copy of every event goes to the sink as one JSON line; personal spaces keep their details out.
+func TestSinkWritesOneLinePerEvent(t *testing.T) {
+	pool := dbtest.NewPool(t)
+	ctx := context.Background()
+	var buf bytes.Buffer
+	audit.SetSink(&buf)
+	t.Cleanup(func() { audit.SetSink(nil) })
+
+	uid, sid := uuid.New(), uuid.New()
+	if err := audit.Insert(ctx, pool, audit.Event{UserID: &uid, Client: "claude", Action: "store", SpaceID: &sid, Details: map[string]any{"status": "approved"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := audit.Insert(ctx, pool, audit.Event{UserID: &uid, Action: "store", Personal: true, Details: map[string]any{"title": "SECRET"}}); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("%d lines: %q", len(lines), buf.String())
+	}
+	var first, second map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal([]byte(lines[1]), &second)
+	if first["log"] != "audit" || first["action"] != "store" || first["client"] != "claude" || first["user_id"] != uid.String() || first["space_id"] != sid.String() {
+		t.Errorf("first line: %v", first)
+	}
+	if first["details"].(map[string]any)["status"] != "approved" {
+		t.Errorf("details missing: %v", first)
+	}
+	if _, ok := second["details"]; ok || strings.Contains(lines[1], "SECRET") {
+		t.Errorf("a personal event must not carry details: %s", lines[1])
+	}
+
+	// off again: nothing more is written
+	audit.SetSink(nil)
+	buf.Reset()
+	_ = audit.Insert(ctx, pool, audit.Event{Action: "login"})
+	if buf.Len() != 0 {
+		t.Errorf("written after SetSink(nil): %q", buf.String())
+	}
+}
+
+// Retention removes old entries, records that it did, and never touches the last 30 days.
+func TestPurgeKeepsRecentEntries(t *testing.T) {
+	pool := dbtest.NewPool(t)
+	ctx := context.Background()
+	for _, a := range []string{"old1", "old2", "recent"} {
+		if err := audit.Insert(ctx, pool, audit.Event{Action: a}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audit_log SET ts = now() - interval '100 days' WHERE action LIKE 'old%'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := audit.Purge(ctx, pool, 7*24*time.Hour); err == nil {
+		t.Error("a retention of seven days must be refused")
+	}
+	n, err := audit.Purge(ctx, pool, 90*24*time.Hour)
+	if err != nil || n != 2 {
+		t.Fatalf("purge: %d %v", n, err)
+	}
+	got, _ := audit.Query(ctx, pool, audit.Filter{})
+	actions := map[string]bool{}
+	for _, e := range got {
+		actions[e.Action] = true
+	}
+	if len(got) != 2 || !actions["recent"] || !actions["audit_purge"] {
+		t.Errorf("after the purge: %+v", got)
 	}
 }
