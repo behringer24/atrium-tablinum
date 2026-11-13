@@ -18,6 +18,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 
 	"github.com/behringer24/atrium-tablinum/internal/allowlist"
+	"github.com/behringer24/atrium-tablinum/internal/audit"
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/chunk"
 	"github.com/behringer24/atrium-tablinum/internal/config"
@@ -64,6 +65,9 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		_ = level.UnmarshalText([]byte(cfg.Instance.LogLevel))
 	}
 
+	if cfg.Audit.Stdout {
+		audit.SetSink(os.Stdout)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -155,6 +159,16 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	// After a change of the embedding model an instance admin starts the rebuild of the vectors
 	// (admin_reembed); this task works through it in the background, also across restarts.
 	reembedder := reembed.New(pool, emb)
+	if cfg.Audit.RetentionDays > 0 {
+		keep := time.Duration(cfg.Audit.RetentionDays) * 24 * time.Hour
+		runner.AddPeriodic(jobs.Periodic{Name: "audit_retention", Every: 24 * time.Hour, Run: func(ctx context.Context) error {
+			n, err := audit.Purge(ctx, pool, keep)
+			if n > 0 {
+				log.Info("Audit entries purged", "deleted", n, "older_than_days", cfg.Audit.RetentionDays)
+			}
+			return err
+		}})
+	}
 	runner.AddPeriodic(jobs.Periodic{Name: "reembed", Every: time.Minute, Run: reembedder.Run})
 	// A long entry is saved with its first sections embedded; this task embeds the rest, so that
 	// saving answers at once and does not depend on how long the embedding service needs.

@@ -300,3 +300,15 @@ func TestMigrationURLFromEnvironment(t *testing.T) {
 		t.Fatalf("from the file: %q %v", cfg.Database.MigrationURL, err)
 	}
 }
+
+func TestAuditRetentionNeedsAtLeastThirtyDays(t *testing.T) {
+	for days, ok := range map[int]bool{0: true, 7: false, 29: false, 30: true, 365: true, -1: false} {
+		cfg := Defaults()
+		cfg.Instance.BaseURL = "https://x.example"
+		cfg.Audit.RetentionDays = days
+		err := cfg.Validate()
+		if ok && err != nil && strings.Contains(err.Error(), "audit.retention_days") || !ok && (err == nil || !strings.Contains(err.Error(), "audit.retention_days")) {
+			t.Errorf("retention_days=%d: %v", days, err)
+		}
+	}
+}

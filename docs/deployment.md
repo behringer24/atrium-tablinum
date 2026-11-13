@@ -49,6 +49,13 @@ Then set `database.url` to `postgres://atrium_app:<app password>@<host>:5432/<da
 
 The test suite can run the integration tests with the restricted account (`ATRIUM_TEST_RESTRICTED=1 go test -p 1 ./...`), to check that no code path needs more. The one test that tampers with the schema on purpose (switching triggers off) fails in that mode, which is the point.
 
+## Audit log outside the database
+
+The audit log lives in the table `audit_log`. With the separate database accounts the server can only append to it, but anybody who owns the database can still change it. Two settings under `audit:` in `config.yaml` deal with that and with its growth:
+
+- **`audit.stdout: true`** writes every event as one JSON line to the standard output, as it is recorded: `{"log":"audit","time":"…","action":"store","user_id":"…","client":"claude","space_id":"…","document_id":"…","details":{…}}`. The application log goes to the standard error, so a collector (Docker's logging driver, Loki, Splunk, Elastic, a SIEM) can keep the two apart and store the audit lines where the server cannot change them. The lines carry the same information as the table: user and space as ids, no e-mail address, and events inside personal spaces without details. A transaction that is rolled back after the event was recorded leaves a line without a row. Off by default, because the lines contain metadata (who did what, when) that you then have to protect in the collector.
+- **`audit.retention_days: N`** deletes entries older than N days from the table once a day (0 = keep for ever; at least 30). The server account may not delete from the table, so the deletion goes through a database function that refuses to touch anything younger than 30 days: a server that is taken over cannot erase the recent trail. Each purge is recorded as `audit_purge` with the number of entries and the age. Turn it on together with `audit.stdout`, if you need the history later.
+
 ## Icon
 
 Clients show an icon next to the server. Atrium serves one without login at `/favicon.ico` and `/icon` and also names it in the server info (`icons`), so clients that read either find it. The built-in Atrium icon is used unless `instance.icon_file` points to an image (svg, png, ico, jpg or webp, up to 256 KB). Which of the two sources a client uses is up to the client; many only fetch the favicon of the domain. For that, the proxy must forward `/favicon.ico` to Atrium and not answer it itself, otherwise the favicon of the proxy's default site is shown.

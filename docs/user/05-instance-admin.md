@@ -229,7 +229,11 @@ Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
 | Instance | `admin_context_set`, `admin_context_clear`, `admin_instance_set`, `admin_quota_set` (scope, target, old and new values) |
 
-Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
+The server records `audit_purge` when the retention deletes old entries. Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
+
+### A copy outside the database and retention
+
+Two settings in `config.yaml` (`audit:`) let you keep the audit log where the server cannot change it and keep the table from growing for ever: `audit.stdout` writes every event as a JSON line to the standard output for a log collector, and `audit.retention_days` deletes entries older than that many days (at least 30) once a day. Details in [Deployment](../deployment.md#audit-log-outside-the-database).
 
 ### Useful questions
 

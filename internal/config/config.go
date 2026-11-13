@@ -27,6 +27,7 @@ type Config struct {
 	Reranker  Reranker  `yaml:"reranker"`
 	Search    Search    `yaml:"search"`
 	Chunking  Chunking  `yaml:"chunking"`
+	Audit     Audit     `yaml:"audit"`
 	Spaces    Spaces    `yaml:"spaces"`
 	Policy    Policy    `yaml:"policy"`
 	Tools     Tools     `yaml:"tools"`
@@ -171,6 +172,19 @@ type Spaces struct {
 	HandoffTTLDays   int               `yaml:"handoff_ttl_days"`
 	DefaultSpaceByGr map[string]string `yaml:"default_space_by_group"`
 }
+
+// Audit controls where the audit log goes besides the database table.
+type Audit struct {
+	// Stdout writes every audit event as one JSON line ("log":"audit") to the standard output, for a
+	// log collector. The application log goes to the standard error. Off by default.
+	Stdout bool `yaml:"stdout"`
+	// RetentionDays deletes entries older than this many days from the table, daily. 0 keeps them
+	// for ever; otherwise at least audit.MinRetentionDays (30).
+	RetentionDays int `yaml:"retention_days"`
+}
+
+// MinAuditRetentionDays is the shortest retention the database accepts.
+const MinAuditRetentionDays = 30
 
 type PersonalSpaces struct {
 	Enabled                       bool  `yaml:"enabled"`
@@ -365,6 +379,9 @@ func (c *Config) Validate() error {
 		if !validIPOrCIDR(p) {
 			add("instance.trusted_proxies: %q is neither an IP nor a CIDR", p)
 		}
+	}
+	if d := c.Audit.RetentionDays; d != 0 && d < MinAuditRetentionDays {
+		add("audit.retention_days must be 0 (keep for ever) or at least %d", MinAuditRetentionDays)
 	}
 	if c.Instance.DevMode {
 		// A static token without expiry is only acceptable where nobody else can reach it.

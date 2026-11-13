@@ -106,6 +106,15 @@ chunking:
   target_tokens: 500
   max_tokens: 800
 
+audit:
+  # A copy of the audit log outside the database. true: every event is also written to the standard
+  # output as one JSON line ("log":"audit"), for a log collector; the application log goes to the
+  # standard error. Off by default. docs/deployment.md, "Audit log outside the database".
+  stdout: false
+  # Delete entries older than this many days from the table, once a day. 0 = keep for ever; otherwise
+  # at least 30. Keep a copy elsewhere first (stdout above) if you need the history.
+  retention_days: 0
+
 spaces:
   personal:
     enabled: true

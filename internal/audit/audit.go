@@ -4,7 +4,9 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,6 +31,73 @@ type Event struct {
 	Details  map[string]any
 }
 
+// sink receives every event as one JSON line, in addition to the table (SetSink). It lets an
+// operator keep a copy of the audit log outside the database, for example in a log collector.
+var (
+	sinkMu sync.Mutex
+	sink   io.Writer
+)
+
+// SetSink writes every event that is recorded from now on to w as one JSON line (nil = off). The
+// line carries "log":"audit" so that a collector can tell it from the application log, which goes
+// to another stream. Events of personal spaces carry no details here either (Event.Personal). A
+// line is written when the event is recorded: a transaction that is rolled back afterwards leaves
+// a line without a table row.
+func SetSink(w io.Writer) {
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+	sink = w
+}
+
+func writeSink(ev Event) {
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+	if sink == nil {
+		return
+	}
+	line := map[string]any{"log": "audit", "time": time.Now().UTC().Format(time.RFC3339Nano), "action": ev.Action}
+	if ev.UserID != nil {
+		line["user_id"] = ev.UserID
+	}
+	if ev.Client != "" {
+		line["client"] = ev.Client
+	}
+	if ev.SpaceID != nil {
+		line["space_id"] = ev.SpaceID
+	}
+	if ev.DocumentID != nil {
+		line["document_id"] = ev.DocumentID
+	}
+	if !ev.Personal && len(ev.Details) > 0 {
+		line["details"] = ev.Details
+	}
+	b, err := json.Marshal(line)
+	if err != nil {
+		return
+	}
+	_, _ = sink.Write(append(b, '\n'))
+}
+
+// Purge deletes the audit entries older than the given age and records that it did. Entries
+// younger than MinRetention are never deleted: the database function refuses (see migration
+// 00014), so even a server that is taken over cannot erase the recent trail.
+func Purge(ctx context.Context, pool *pgxpool.Pool, olderThan time.Duration) (int64, error) {
+	var n int64
+	if err := pool.QueryRow(ctx, `SELECT audit_log_purge(now() - make_interval(secs => $1))`,
+		olderThan.Seconds()).Scan(&n); err != nil {
+		return 0, err
+	}
+	if n > 0 {
+		err := Insert(ctx, pool, Event{Client: "system", Action: "audit_purge",
+			Details: map[string]any{"deleted": n, "older_than_days": int(olderThan.Hours() / 24)}})
+		return n, err
+	}
+	return n, nil
+}
+
+// MinRetention is the shortest time an entry stays in the table; shorter periods are refused.
+const MinRetention = 30 * 24 * time.Hour
+
 func Insert(ctx context.Context, ex Execer, ev Event) error {
 	var details []byte
 	if !ev.Personal && len(ev.Details) > 0 {
@@ -40,6 +109,9 @@ func Insert(ctx context.Context, ex Execer, ev Event) error {
 	_, err := ex.Exec(ctx, `INSERT INTO audit_log (user_id, client, action, space_id, document_id, details)
 		VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6)`,
 		ev.UserID, ev.Client, ev.Action, ev.SpaceID, ev.DocumentID, details)
+	if err == nil {
+		writeSink(ev)
+	}
 	return err
 }
 

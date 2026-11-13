@@ -22,7 +22,7 @@ Sending an entry or a skill to a colleague's personal space is built ([docs/shar
 ### Security, remainder of the audit of 2026-11-03
 
 - consent page before a new client is connected
-- audit log leaving the database (JSON line on stdout, optionally a hash chain) and a retention period; the Postgres account that can only append to it is in place (hardened accounts)
+- audit log: an optional hash chain over the entries, so that a gap or a change is detectable. The copy on stdout, the retention period and the append-only server account exist.
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
 - confirmation when storing into spaces of others
 

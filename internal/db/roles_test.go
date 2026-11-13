@@ -145,4 +145,16 @@ func TestHardenedAccountsOnAFreshDatabase(t *testing.T) {
 			t.Errorf("the server account can %s", name)
 		}
 	}
+
+	// Retention goes through the purge function: old entries yes, the last 30 days never.
+	var n int64
+	if err := app.QueryRow(ctx, `SELECT audit_log_purge(now() - interval '7 days')`).Scan(&n); err == nil {
+		t.Error("the server account purged entries younger than 30 days")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE audit_log SET ts = now() - interval '100 days'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.QueryRow(ctx, `SELECT audit_log_purge(now() - interval '90 days')`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("purging old entries: %d %v", n, err)
+	}
 }
