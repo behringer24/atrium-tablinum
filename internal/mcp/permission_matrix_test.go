@@ -60,6 +60,9 @@ type mxOp struct {
 	seen   func(out map[string]any, id string) bool
 	check  func(r mxRole, out map[string]any) string
 	hidden int // callers below this rank must not learn that the target exists
+	// allow, if set, decides instead of min, for rights that do not follow the rank (a space
+	// admin of another space).
+	allow func(r mxRole) bool
 }
 
 type matrix struct {
@@ -289,6 +292,9 @@ func (m *matrix) run(kind string, ops []mxOp, roles []mxRole) {
 					allowed = op.seen(out, id)
 				}
 				want := r.rank >= op.min
+				if op.allow != nil {
+					want = op.allow(r)
+				}
 				if allowed != want {
 					t.Fatalf("%s as %s: allowed=%v, the rule says %v (message %q)", op.name, r.name, allowed, want, msg)
 				}
