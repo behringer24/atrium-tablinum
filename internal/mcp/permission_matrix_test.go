@@ -1,8 +1,10 @@
 package mcpserver
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -89,6 +91,31 @@ func (m *matrix) store(email string, args map[string]any) string {
 		m.t.Fatalf("store as %s: %v", email, out)
 	}
 	return out["id"].(string)
+}
+
+// callTool is env.call for the matrix: a call that the server refuses at the protocol level, as it
+// does for a tool the caller is not offered, counts as a refusal with the error as its message.
+func (m *matrix) callTool(t *testing.T, email, tool string, args map[string]any) (map[string]any, string) {
+	t.Helper()
+	res, err := m.as(email).CallTool(m.e.ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+	if err != nil {
+		return nil, err.Error()
+	}
+	if res.IsError {
+		var sb strings.Builder
+		for _, c := range res.Content {
+			if tc, ok := c.(*mcp.TextContent); ok {
+				sb.WriteString(tc.Text)
+			}
+		}
+		return nil, sb.String()
+	}
+	b, _ := json.Marshal(res.StructuredContent)
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("%s: %v", tool, err)
+	}
+	return out, ""
 }
 
 func (m *matrix) archive(email, id string) {
@@ -256,7 +283,7 @@ func (m *matrix) run(kind string, ops []mxOp, roles []mxRole) {
 				if op.name == "search" {
 					args = map[string]any{"query": fmt.Sprintf("mxtoken%d", m.n), "limit": 20}
 				}
-				out, msg := m.e.call(t, m.as(r.email), op.tool, args)
+				out, msg := m.callTool(t, r.email, op.tool, args)
 				allowed := msg == ""
 				if allowed && op.seen != nil {
 					allowed = op.seen(out, id)
@@ -276,7 +303,7 @@ func (m *matrix) run(kind string, ops []mxOp, roles []mxRole) {
 					if ghost == nil {
 						ghost = op.args(uuid.New().String())
 					}
-					gout, gmsg := m.e.call(t, m.as(r.email), op.tool, ghost)
+					gout, gmsg := m.callTool(t, r.email, op.tool, ghost)
 					if got, base := answer(out, msg), answer(gout, gmsg); got != base {
 						t.Fatalf("%s as %s reveals that the target exists: %q, for a missing one: %q", op.name, r.name, got, base)
 					}
