@@ -1,6 +1,6 @@
-# Atrium Pro: licence and guided offboarding
+# Atrium Pro: licence, guided offboarding and content separation
 
-This guide is for the **instance admins** (and, for one section, the space admins) of an organisation that runs the **Pro** edition. It covers what the Community edition does not have: installing and renewing a licence, and the guided offboarding. Everything else works as described in the [instance admin guide](../user/05-instance-admin.md) and the other guides. Which edition has what is listed in [Editions](../licensing.md).
+This guide is for the **instance admins** (and, for one section, the space admins) of an organisation that runs the **Pro** edition. It covers what the Community edition does not have: installing and renewing a licence, the guided offboarding and the separation of content from operations. Everything else works as described in the [instance admin guide](../user/05-instance-admin.md) and the other guides. Which edition has what is listed in [Editions](../licensing.md).
 
 The Pro edition is the official image. Until a licence is installed it behaves exactly like Community (up to 8 active accounts), so you can install the image first and add the licence when you have it.
 
@@ -12,6 +12,7 @@ The Pro edition is the official image. Until a licence is installed it behaves e
 - [Updating Atrium with a licence](#updating-atrium-with-a-licence)
 - [The user limit](#the-user-limit)
 - [Guided offboarding](#guided-offboarding)
+- [Separating content from operations](#separating-content-from-operations)
 - [FAQ](#faq)
 
 ## The licence
@@ -20,7 +21,7 @@ A licence is one line of text that starts with `atrium-license-v1.`. You receive
 
 - **It is checked on your server, offline.** Atrium never calls anybody to check it, and nothing about your instance is sent anywhere.
 - **It belongs to your instance.** It is issued for the host of your `instance.base_url`, so tell us the address you run under. A licence installed on an instance with another address is refused.
-- **It lists what it switches on:** the number of users (`users`; 0 means unlimited) and features such as `offboarding`.
+- **It lists what it switches on:** the number of users (`users`; 0 means unlimited) and features such as `offboarding` and `content_separation`.
 - **It is for one major version and runs for a term.** It names the major version it covers (`major`) and, for a subscription or a trial, the day it ends (`expires`). Licences issued earlier carry a maintenance date (`maintenance_until`) instead of a major version; they keep working as described at the end of this section.
 
 **One major version, one term.** Atrium versions are numbered `major.minor.patch` (1.4.2); `server_info` and `admin_license` name the version and release line of the running build. A licence for major version 1 covers every build of 1.x, so each minor release and patch of that version is included while the licence runs. A build of a *newer* major version (2.0 and later) needs a licence for that major version; a licence for a newer major version also covers the earlier ones, so you can go back. When the term ends, the instance runs as Community until a new licence is installed. Renewing brings the licence for the major version that is current then.
@@ -93,6 +94,26 @@ Entries that name the person as responsible keep the name, marked `former`, unti
 - The new person must be active and able to read the space. Entries in spaces they cannot read are left as they are and reported.
 - No new versions are written; the audit log records `owner_reassign`.
 
+## Separating content from operations
+
+In every edition an instance admin is admin in every team space: they run the system and can read all content. For organisations where the people who run Atrium should not read everything, for example because management and IT are different people, the Pro feature `content_separation` takes the automatic content access away. Personal spaces are closed to everybody in every edition.
+
+*"Show the content access of the instance admins."* (`admin_content_access`, action `get`) tells the current setting and whether your licence includes the feature. *"Instance admins should no longer read all team spaces."* (`set` with `admins_read_content=false`, after confirmation) switches the access off; `true` brings the default back. The change applies at once and is recorded in the audit log (`admin_content_access_set`).
+
+**What changes when it is off:**
+
+- An instance admin reads, searches, reviews and changes only the spaces they are **members of**, with the role they hold there (or the default role of the space), like any other user. They no longer see the content of other team spaces, archived ones included, and an export (which needs the admin role of a space) covers only the spaces they are admin of as members.
+- They still **manage every space**: create, change, archive and restore spaces, see and change members (`space_members`, `space_add_member`, `space_remove_member`), manage users, groups, logins, the allowlist, quotas and the audit log, and use all other `admin_*` tools.
+- **Getting in when it is necessary:** an instance admin adds themselves to the space (*"Add me as reader to the HR space."*, `space_add_member`). That is possible by design and is recorded in the audit log with who, which space and which role, so that it cannot happen unnoticed. Check the audit log from time to time for `space_add_member` by instance admins.
+
+**What the setting does not do:**
+
+- It is a protective default with a trace, not a lock against an instance admin who wants to get in: every instance admin can add themselves to a space or switch the setting back, and the audit log records both. Keep the group of instance admins small, and use the audit log as the control.
+- It does not change who may grant the instance admin right, publish skills of risk class C or delete skills; those remain with every instance admin.
+- People with direct access to the database or backups are not affected by it (see [Operating the system](../user/05-instance-admin.md#operating-the-system)).
+
+Without the feature in the licence, or when the licence lapses, instance admins read all team spaces again whatever was set; the tool tells so.
+
 ## FAQ
 
 **Do I need a licence to try the official image?** No. It runs as Community until you install one.
@@ -106,6 +127,8 @@ Entries that name the person as responsible keep the name, marked `former`, unti
 **Does Atrium phone home to check the licence?** No. The check is offline, and neither edition sends telemetry.
 
 **Do I have to restart after installing a licence?** No.
+
+**Can management read everything without running the system, or IT run it without reading everything?** Yes, with the feature `content_separation`: see [Separating content from operations](#separating-content-from-operations).
 
 **Who sees the licence?** Only instance admins, through `admin_license`. Other users see the edition and the release line in `server_info`.
 

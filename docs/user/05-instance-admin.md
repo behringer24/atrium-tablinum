@@ -112,7 +112,7 @@ What to know:
 - **You cannot revoke your own right**, nor a right from the configuration. Another instance admin revokes yours.
 - **A granted right takes effect for the tools at the next connection** of the person's assistant (assistants read the tool list once per connection); a revoked right ends at the next call.
 - **Offboarding removes a granted right** (`admin_offboard_user`), so reactivating an account does not bring it back. A locked account cannot be granted the right.
-- A person who may only read the content of all spaces, or a leader who should not run the system, cannot be modelled with this right alone; every instance admin has both.
+- This right always carries both: the content of all team spaces and the operation of the system. The Pro edition can separate them ([Atrium Pro](../pro/pro-edition.md#separating-content-from-operations)).
 
 ### Groups
 
@@ -408,7 +408,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 
 **How do I make someone an instance admin?** Ask your assistant: *"Make maria@example.com an instance admin."* (`admin_instance_admins`, `grant`). The person must have logged in once and gets the tools at the next connection of their assistant. Addresses in `auth.bootstrap_admins` stay instance admins whatever is done through the tool.
 
-**Can management read everything without running the system?** Not with this right: an instance admin is admin in all team spaces and can use all admin tools. Only personal spaces stay closed to everybody.
+**Can management read everything without running the system, or IT run it without reading everything?** Not with the instance admin right alone: it makes a person admin in all team spaces and gives all admin tools; only personal spaces stay closed to everybody. The Pro edition can take the automatic content access away from instance admins, so that they manage all spaces but read only those they are members of ([Atrium Pro](../pro/pro-edition.md#separating-content-from-operations)).
 
 **Can I turn approval on for an existing space?** Yes (`admin_update_space`). Existing entries keep their status.
 
