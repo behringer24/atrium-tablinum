@@ -43,7 +43,7 @@ The assistant calls `store_knowledge`. It files only when you ask, and names the
 
 What Atrium does when you file:
 
-1. **Space.** If you name none, the entry goes to your default space (normally your personal space). If the name is ambiguous or you cannot write there, the assistant lists the possible spaces and nothing is saved.
+1. **Space.** If you name none, the entry goes to your default space (normally your personal space). If that default is a team space, nothing is saved until you have confirmed (`confirm=true`), because colleagues can read it; naming the space yourself needs no confirmation. If the name is ambiguous or you cannot write there, the assistant lists the possible spaces and nothing is saved.
 2. **Checks.** Atrium checks size (about 200 KB per entry), tags (up to 20, 50 characters each, no line breaks) and rejects text that looks like passwords, keys or other credentials.
 3. **Duplicates.** If very similar entries already exist, nothing is saved yet. The assistant shows them and asks whether you want to update the existing entry or file a new one anyway.
 4. **Status.** In a space without approval your entry is *approved* immediately and every reader sees it. In a space with approval it becomes a *draft* (see [Drafts and approval](#drafts-and-approval)). Personal spaces have no drafts.
@@ -91,7 +91,7 @@ Details of the process are in [Drafts and approval](../approval.md).
 
 | You say | What happens |
 |---|---|
-| *"Update the entry about X: the limit is now 50."* | The assistant loads the current text (`get_knowledge`), applies your change and saves the complete new text (`update_knowledge`). A new version is recorded |
+| *"Update the entry about X: the limit is now 50."* | The assistant loads the current text (`get_knowledge`), applies your change and saves the complete new text (`update_knowledge`, with the version it loaded, so a change by somebody else in the meantime is not overwritten). A new version is recorded |
 | *"Move that entry to the Engineering space."* | `move_knowledge` after your confirmation. You need write rights in the target, and the entry must be approved (drafts and returned entries cannot be moved). Authors cannot move an approved entry out of a space that requires approval; a curator does that. In a target space with approval it becomes a draft there |
 | *"Archive that entry."* | `archive_knowledge` after your confirmation. It disappears from search and lists but is kept, and you can restore it |
 | *"Show my archived entries."* / *"Restore that entry."* | `list_knowledge` with `status=archived`, then `unarchive_knowledge` (an approved entry in a space with approval goes back to review) |
@@ -229,6 +229,8 @@ Where your organisation has switched it on, you can send an entry or a skill to 
 **Can I attach files or images to entries?** No. Entries are Markdown text. Skills can carry text files only.
 
 **What if two people file the same thing?** The duplicate check catches very similar entries in the same space. Update the existing entry.
+
+**What if two assistants change the same entry at once?** The assistant passes the version it loaded (`expected_version`). If the entry has changed since, the save is refused and nothing is overwritten: the assistant loads the current text, merges your change into it and saves again.
 
 **Can I make a skill available to everyone?** File it in a space everybody reads. Curators decide on publication; a space for the whole organisation is set up by an instance admin.
 

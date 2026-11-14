@@ -274,6 +274,7 @@ type storeIn struct {
 	Tags    []string `json:"tags,omitempty" jsonschema:"Optional keywords"`
 	Force   bool     `json:"force,omitempty" jsonschema:"true = store despite similar entries (only after checking with the user)"`
 	Draft   bool     `json:"draft,omitempty" jsonschema:"true = store as a draft that a curator of the space reviews and approves first (team spaces only, only on the explicit request of the user)"`
+	Confirm bool     `json:"confirm,omitempty" jsonschema:"true only after the user confirmed saving to their default space, which is a team space; needed only when no space is named"`
 	Type    string   `json:"type,omitempty" jsonschema:"Optional knowledge type: rule (binding; curators and admins of the space only), documentation (default), recommendation or experience"`
 	Owner   string   `json:"owner,omitempty" jsonschema:"Optional: e-mail of the person responsible for the entry (team spaces; they must be able to read the space). Only when the user names one"`
 	// ReviewDue is a date so that an assistant cannot pass a relative phrase.
@@ -287,7 +288,7 @@ type similarInfo struct {
 }
 
 type storeOut struct {
-	// Result is "stored", "similar_found" or "choose_space"; only "stored" saved anything.
+	// Result is "stored", "similar_found", "choose_space" or "confirm_needed"; only "stored" saved anything.
 	Result  string        `json:"result"`
 	Message string        `json:"message"`
 	ID      string        `json:"id,omitempty"`
@@ -323,6 +324,17 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 			Result:  "choose_space",
 			Message: "There is no default space. Nothing was saved - please ask the user which space to save to.",
 			Spaces:  s.spaceInfos(writable, a),
+		}, nil
+	}
+
+	// An entry without a named space lands in the default space. If that is a team space, the user
+	// has not said that colleagues may read it: the assistant has to ask first.
+	if strings.TrimSpace(in.Space) == "" && target.Type == "team" && !in.Confirm {
+		return storeOut{
+			Result: "confirm_needed",
+			Message: fmt.Sprintf("No space was named, and the default space is the team space %q, where colleagues can read the entry "+
+				"(or, if the space requires approval, a curator reviews it first). Nothing was saved - ask the user whether it should be "+
+				"saved there (then call again with confirm=true) or in another space (space=...), for example their personal space.", target.Name),
 		}, nil
 	}
 
@@ -507,12 +519,14 @@ func (s *Server) getKnowledge(ctx context.Context, c *call, in idIn) (docInfo, e
 }
 
 type updateIn struct {
-	ID      string    `json:"id" jsonschema:"ID of the entry"`
-	Title   *string   `json:"title,omitempty" jsonschema:"New title"`
-	Content *string   `json:"content,omitempty" jsonschema:"Complete new content (Markdown)"`
-	Tags    *[]string `json:"tags,omitempty" jsonschema:"New complete tag list"`
-	Type    *string   `json:"type,omitempty" jsonschema:"New knowledge type: rule (binding; curators and admins of the space only), documentation, recommendation or experience"`
-	Owner   *string   `json:"owner,omitempty" jsonschema:"E-mail of the new responsible person (team spaces; must be able to read the space); an empty string removes the responsible person"`
+	ID string `json:"id" jsonschema:"ID of the entry"`
+	// ExpectedVersion makes the update safe against a concurrent change.
+	ExpectedVersion *int      `json:"expected_version,omitempty" jsonschema:"The version of the entry you loaded (the version field of get_knowledge). If somebody changed the entry since, nothing is saved and the answer names the current version: load it again, merge and retry. Always pass it."`
+	Title           *string   `json:"title,omitempty" jsonschema:"New title"`
+	Content         *string   `json:"content,omitempty" jsonschema:"Complete new content (Markdown)"`
+	Tags            *[]string `json:"tags,omitempty" jsonschema:"New complete tag list"`
+	Type            *string   `json:"type,omitempty" jsonschema:"New knowledge type: rule (binding; curators and admins of the space only), documentation, recommendation or experience"`
+	Owner           *string   `json:"owner,omitempty" jsonschema:"E-mail of the new responsible person (team spaces; must be able to read the space); an empty string removes the responsible person"`
 	// ReviewDue is a date so that an assistant cannot pass a relative phrase.
 	ReviewDue *string `json:"review_due,omitempty" jsonschema:"New review date (YYYY-MM-DD); an empty string removes it"`
 }
@@ -525,7 +539,7 @@ func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (doc
 	if in.Title == nil && in.Content == nil && in.Tags == nil && in.Type == nil && in.Owner == nil && in.ReviewDue == nil {
 		return docInfo{}, userErr("Nothing to change was passed.")
 	}
-	p := docs.UpdateParams{ID: id, Title: in.Title, Content: in.Content, Tags: in.Tags}
+	p := docs.UpdateParams{ID: id, Title: in.Title, Content: in.Content, Tags: in.Tags, ExpectedVersion: in.ExpectedVersion}
 	if in.Type != nil {
 		t, err := parseType(*in.Type)
 		if err != nil {

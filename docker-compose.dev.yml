@@ -1,5 +1,8 @@
 # Development: the server runs locally via `go run ./cmd/server`, Compose only provides Postgres + TEI.
 # No nginx/certbot. For tests with claude.ai/ChatGPT: start the tunnel agent separately (see docs/deployment.md, variant C).
+# The project name is its own, so that starting this file never replaces the containers or volumes of
+# the production stack (docker-compose.yml, project "atrium-tablinum") on the same machine.
+name: atriumdev
 services:
   postgres:
     image: pgvector/pgvector:0.8.0-pg17

@@ -412,8 +412,20 @@ func TestDefaultSpaceSetting(t *testing.T) {
 		t.Errorf("reader space as default: %q", msg)
 	}
 	e.mustCall(t, anna, "set_default_space", map[string]any{"space": "support"})
-	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "x"}); out["space"] != "Support" {
+	// no space named and the default is a team space: the user is asked first, nothing is saved
+	out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "x"})
+	if out["result"] != "confirm_needed" || out["id"] != nil {
+		t.Fatalf("no confirmation asked: %v", out)
+	}
+	if n := queryCount(t, e, `SELECT count(*) FROM documents`); n != 0 {
+		t.Fatalf("%d entries saved without confirmation", n)
+	}
+	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "x", "confirm": true}); out["space"] != "Support" {
 		t.Errorf("default space not used: %v", out)
+	}
+	// naming the space is the user's own choice: no question
+	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T1", "content": "named", "space": "support", "force": true}); out["result"] != "stored" {
+		t.Errorf("named space asked for confirmation: %v", out)
 	}
 	spaces := e.mustCall(t, anna, "list_spaces", nil)["spaces"].([]any)
 	var defaults int
@@ -428,6 +440,15 @@ func TestDefaultSpaceSetting(t *testing.T) {
 	e.mustCall(t, anna, "set_default_space", map[string]any{})
 	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T2", "content": "y"}); out["space"] != "My personal space" {
 		t.Errorf("reset: %v", out)
+	}
+}
+
+// An entry for the personal space needs no question: only the user can read it.
+func TestStoreToPersonalDefaultNeedsNoConfirmation(t *testing.T) {
+	e := setup(t, 0)
+	anna := e.session(t, "anna@x.de")
+	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "mine"}); out["result"] != "stored" || out["space"] != "My personal space" {
+		t.Errorf("personal default: %v", out)
 	}
 }
 
@@ -746,9 +767,13 @@ func TestSessionTools(t *testing.T) {
 	anna := e.session(t, "anna@x.de")
 	boss := e.session(t, "boss@x.de")
 
-	got := e.mustCall(t, anna, "my_sessions", map[string]any{})["sessions"].([]any)
+	mine := e.mustCall(t, anna, "my_sessions", map[string]any{})
+	got := mine["sessions"].([]any)
 	if len(got) != 1 || got[0].(map[string]any)["client"] != "Claude" {
 		t.Errorf("my_sessions: %v", got)
+	}
+	if n, _ := mine["notice"].(string); !strings.Contains(n, "data") || !strings.Contains(n, "chosen by the clients") {
+		t.Errorf("client names are not marked as data: %v", mine["notice"])
 	}
 	if _, msg := e.call(t, anna, "revoke_my_sessions", map[string]any{"confirm": false}); !strings.Contains(msg, "confirmation") {
 		t.Errorf("without confirmation: %q", msg)

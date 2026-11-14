@@ -10,7 +10,6 @@ The guiding question for all knowledge features: does an assistant find the righ
 
 ### Reliable knowledge (candidate for 0.6)
 
-- **Optimistic locking for updates:** `update_knowledge` replaces the complete content, but a client cannot say which version it started from. If two assistants load version 3 and both save, the second silently overwrites the first. Add an optional `expected_version` (the version `get_knowledge` returns); on a mismatch the call fails with a structured conflict and the assistant reloads and merges. The server already re-checks the version inside the transaction, so this only needs the client-side half. Later make it mandatory for assistants through the tool description.
 - **Review reminders:** knowledge types, responsible people and review dates are built ([design](docs/design/knowledge-metadata.md)); overdue reviews show in entries, `list_knowledge review=due` and `whats_new`. Still open: telling responsible people and curators actively when a review falls due (needs the notifications below), and recording the last review as its own date.
 - **Systematic permission tests:** the matrix of roles (outsider, reader, author, curator, space admin, instance admin) across tools and space kinds is built for knowledge ([`permission_matrix_test.go`](internal/mcp/permission_matrix_test.go)), for skills ([`permission_matrix_skills_test.go`](internal/mcp/permission_matrix_skills_test.go)) and for the administration tools ([`permission_matrix_admin_test.go`](internal/mcp/permission_matrix_admin_test.go): all `admin_*` tools, and the space admin tools in their own, a foreign and an archived space): every cell calls the real tool and compares with the rule, and callers who may not see a target must get the same answer as for one that does not exist. Still open: sending (`share_*`), the skill export route, the edition tools, and the cells for search excerpts, versions and counts.
 - **Rights report for instance admins:** a read-only `admin_*` tool that lists who holds which role where (space admins, default roles, spaces open to everyone, instance admins), so an operator can check the configuration of a running instance. The permission matrix proves the code, this shows the setup.
@@ -25,14 +24,6 @@ Sending an entry or a skill to a colleague's personal space is built ([docs/shar
 - consent page before a new client is connected
 - audit log: an optional hash chain over the entries, so that a gap or a change is detectable. The copy on stdout, the retention period and the append-only server account exist.
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
-- confirmation when storing into spaces of others
-
-### Security, remainder of the second audit (2026-11-04)
-
-The findings of the second audit (external attack surface, authorisation and integrity) that are fixed are listed in the changelog. Still open:
-
-- **Package cleanup token:** `PACKAGES_PAT` is a classic token with `delete:packages`; replace it with a narrower credential as soon as GitHub offers one for container packages.
-- A client whose `client_name` is shown in `my_sessions` should be marked as data.
 
 ### Editions and release
 
