@@ -111,7 +111,7 @@ You can ask the assistant to extend it as well:
 
 **Your personal space is private.** Nobody else can read it through Atrium, instance admins included. Direct access to the database or to backups is a different matter and is not covered by that. Your space is for work-related notes and has a limit (by default 500 entries and 10 MB; archived entries do not count). If you leave the organisation, you are asked to move what belongs to the team before your last day, and the rest is deleted after a deadline. See [Offboarding](../offboarding.md).
 
-Without a space named, new entries go to your default space, normally your personal space. Say *"Make the Support space my default"* to change that.
+Without a space named, new entries go to your default space, normally your personal space. Say *"Make the Support space my default"* to change that. If your default is a team space and you name no space, the assistant asks first, because colleagues can read what lands there; name the space or answer yes to continue.
 
 ## 4. Share knowledge with colleagues
 
