@@ -266,7 +266,7 @@ Two settings in `config.yaml` (`audit:`) let you keep the audit log where the se
 
 - **Personal spaces** appear only as "personal space" with time and action, never with names, titles or contents.
 - **Denied attempts** are logged as `denied` with the tool and the reason (`role does not allow this`, `approval required`, `own version cannot be approved`, `no permission for this tool`, `write rate limit`, `read rate limit`), no arguments, at most once a minute per user, tool and reason. A missing item (`not found`) is not logged, because it may simply not exist. There are **no alerts**; the log is only read by you. Plan a regular review (see [Routines](#routines)).
-- The log lives in the same database as the content. Anyone with database administration rights could alter it. Protect the database accordingly; an off-box copy and tamper protection are on the [roadmap](../../ROADMAP.md).
+- The log lives in the same database as the content. Anyone with database administration rights could alter it. Protect the database accordingly. Switch on the copy on the standard output (see [A copy outside the database and retention](#a-copy-outside-the-database-and-retention)) and let a log collector keep it, so that a changed or missing entry in the database shows up against the copy. A hash chain over the entries, which makes a gap or a change detectable on its own, is on the [roadmap](../../ROADMAP.md).
 - For request-level detail set `instance.log_level: debug`: the server then logs one line per MCP request (method, tool, resource, client) to its log.
 
 ## Operating the system
