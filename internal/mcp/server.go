@@ -339,6 +339,11 @@ func (s *Server) allowed(ctx context.Context, min tier, a docs.Actor) bool {
 // adminSpaces lists the team spaces the actor administers (all of them for instance
 // admins). Personal spaces never count: their owner is admin there by construction.
 func (s *Server) adminSpaces(ctx context.Context, a docs.Actor) ([]spaces.Space, error) {
+	if a.User.InstanceAdmin {
+		// Not through the roles: whether an instance admin also reads the content of every space
+		// is a separate question (authz.AdminsReadContent); managing the spaces is their job.
+		return s.Spaces.ListAllTeam(ctx)
+	}
 	return s.teamSpacesAtLeast(ctx, a, authz.Admin)
 }
 

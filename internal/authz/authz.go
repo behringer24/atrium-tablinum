@@ -14,6 +14,12 @@ import (
 // DefaultCacheTTL is how long a user's computed roles are reused.
 const DefaultCacheTTL = 30 * time.Second
 
+// AdminsReadContent says whether instance admins hold the admin role in every team space (and see
+// the archived ones). It is called whenever the roles of an instance admin are computed; an edition
+// may replace it. The default is yes. If it says no, an instance admin has the roles of a member
+// of each space like any other user, while the admin tools still work on all spaces (adminSpaces).
+var AdminsReadContent = func(context.Context, *pgxpool.Pool) bool { return true }
+
 // spaceRow is one space together with what the database knows about the caller's
 // membership in it. Loading and deciding are separate so the rules are unit-testable.
 type spaceRow struct {
@@ -114,6 +120,9 @@ func (c *Checker) EffectiveRoles(ctx context.Context, u users.User) (Roles, erro
 	rows, err := c.load(ctx, u.ID)
 	if err != nil {
 		return nil, err
+	}
+	if u.InstanceAdmin && !AdminsReadContent(ctx, c.pool) {
+		u.InstanceAdmin = false // compute then gives the account the roles of a member, like anybody else
 	}
 	roles := compute(u, rows)
 

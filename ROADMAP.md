@@ -72,7 +72,7 @@ Atrium becomes the controlled registry and distribution service for company-wide
 
 ## Later
 
-- **Roles for customers with high protection needs:** instance admins are admin in every team space today and can read everything there. Some customers need a split between "manage users and operations" and "read content" (for example for management or HR). This includes separate roles, a waiting period with a second admin when transferring personal spaces, and notifications. Personal spaces are already closed to everyone except their owner.
+- **Roles for customers with high protection needs:** instance admins are admin in every team space by default. The Pro edition can separate operations from content (instance admins then read only the spaces they are members of, see [Atrium Pro](docs/pro/pro-edition.md#separating-content-from-operations)). Still open: a waiting period with a second admin when transferring personal spaces, a separate right for reading the audit log, and notifications. Personal spaces are already closed to everyone except their owner.
 - **Review notifications:** curators already find waiting drafts with `list_knowledge status=draft` and see the counts of all their spaces in `whats_new`; authors learn of approvals and returns only by looking. Start with a review queue and an optional digest, later e-mail and chat integrations. Notifications must not carry metadata to people who may not see the entry.
 - **A draft next to the released version:** authors of spaces that require approval cannot change approved entries today.
 - **Correction reports:** readers flag an entry as wrong, incomplete, unclear or outdated, with a reason and the place concerned. The owners get a reviewable item; reports never overwrite binding knowledge directly.
