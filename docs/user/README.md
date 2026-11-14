@@ -9,6 +9,7 @@ You do not operate Atrium through a screen of its own. You talk to your AI assis
 | Guide | For | You will learn |
 |---|---|---|
 | [Why Atrium](00-why-atrium.md) | Everybody, and anyone who still needs convincing | What Atrium brings you, your team and the organisation, a day with it, your first ten minutes, and the honest limits. A good document to share first |
+| [Getting started](00-getting-started.md) | New users | Connect your assistant, ask a first question, save a first note and find it again in a new chat, in about five minutes. The first guide to read |
 | [1. Everyday use](01-user.md) | Everybody who has an Atrium login | Connect an assistant, find knowledge, use skills, work in your personal space, hand work over to another assistant, stay safe |
 | [2. Authors](02-author.md) | People who may write in team spaces | File and maintain knowledge, work with drafts and approval, write and propose skills |
 | [3. Curators](03-curator.md) | People who review and approve | Review knowledge and skills, judge risk, publish, block, keep a space tidy |
