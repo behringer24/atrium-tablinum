@@ -61,7 +61,9 @@ var defaultDescriptions = map[string]string{
 		`and point out an overdue review (review_overdue).`,
 
 	"update_knowledge": `Changes an existing entry in the "{{.ProductName}}" knowledge store. Call ONLY on explicit instruction from the user. ` +
-		`First load the current state with get_knowledge and pass the complete new content (not just the change). ` +
+		`First load the current state with get_knowledge and pass the complete new content (not just the change), ` +
+		`together with expected_version (the version that get_knowledge returned): if somebody changed the entry in the meantime, ` +
+		`nothing is saved and the answer names the current version, so load the entry again, merge and retry. ` +
 		`Fields not passed stay unchanged. A returned draft (status rejected, note in review_note) ` +
 		`goes back into review after it has been revised. type, owner (e-mail; empty removes) and review_due (YYYY-MM-DD; empty removes) ` +
 		`change the knowledge type, the responsible person and the review date; owner and review_due alone create no new version. ` +
