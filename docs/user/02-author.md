@@ -43,7 +43,7 @@ The assistant calls `store_knowledge`. It files only when you ask, and names the
 
 What Atrium does when you file:
 
-1. **Space.** If you name none, the entry goes to your default space (normally your personal space). If the name is ambiguous or you cannot write there, the assistant lists the possible spaces and nothing is saved.
+1. **Space.** If you name none, the entry goes to your default space (normally your personal space). If that default is a team space, nothing is saved until you have confirmed (`confirm=true`), because colleagues can read it; naming the space yourself needs no confirmation. If the name is ambiguous or you cannot write there, the assistant lists the possible spaces and nothing is saved.
 2. **Checks.** Atrium checks size (about 200 KB per entry), tags (up to 20, 50 characters each, no line breaks) and rejects text that looks like passwords, keys or other credentials.
 3. **Duplicates.** If very similar entries already exist, nothing is saved yet. The assistant shows them and asks whether you want to update the existing entry or file a new one anyway.
 4. **Status.** In a space without approval your entry is *approved* immediately and every reader sees it. In a space with approval it becomes a *draft* (see [Drafts and approval](#drafts-and-approval)). Personal spaces have no drafts.
