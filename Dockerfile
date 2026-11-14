@@ -15,7 +15,7 @@ COPY . .
 # Migrations are in the binary via go:embed, the image needs no further files.
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -tags "${GO_TAGS}" -ldflags="-s -w -X github.com/behringer24/atrium-tablinum/internal/product.Version=${VERSION} -X github.com/behringer24/atrium-tablinum/internal/product.BuildDate=${BUILD_DATE}" -o /out/atrium-tablinum ./cmd/server
 
-FROM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 RUN apk add --no-cache ca-certificates tzdata \
     && adduser -D -u 10001 atrium
 USER atrium
