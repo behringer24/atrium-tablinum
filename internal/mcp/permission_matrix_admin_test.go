@@ -114,6 +114,8 @@ func adminOps(m *matrix) []mxOp {
 		op("list users", "admin_list_users", fixed(nil)),
 		withUser("offboard user", "admin_offboard_user", confirm),
 		offboarded,
+		op("list instance admins", "admin_instance_admins", fixed(map[string]any{"action": "list"})),
+		withUser("grant instance admin", "admin_instance_admins", map[string]any{"action": "grant", "confirm": true}),
 		op("list groups", "admin_groups", fixed(map[string]any{"action": "list"})),
 		op("create group", "admin_groups", func(string) map[string]any {
 			return map[string]any{"action": "create", "name": m.uniq("group")}
