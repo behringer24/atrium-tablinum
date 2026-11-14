@@ -519,12 +519,14 @@ func (s *Server) getKnowledge(ctx context.Context, c *call, in idIn) (docInfo, e
 }
 
 type updateIn struct {
-	ID      string    `json:"id" jsonschema:"ID of the entry"`
-	Title   *string   `json:"title,omitempty" jsonschema:"New title"`
-	Content *string   `json:"content,omitempty" jsonschema:"Complete new content (Markdown)"`
-	Tags    *[]string `json:"tags,omitempty" jsonschema:"New complete tag list"`
-	Type    *string   `json:"type,omitempty" jsonschema:"New knowledge type: rule (binding; curators and admins of the space only), documentation, recommendation or experience"`
-	Owner   *string   `json:"owner,omitempty" jsonschema:"E-mail of the new responsible person (team spaces; must be able to read the space); an empty string removes the responsible person"`
+	ID string `json:"id" jsonschema:"ID of the entry"`
+	// ExpectedVersion makes the update safe against a concurrent change.
+	ExpectedVersion *int      `json:"expected_version,omitempty" jsonschema:"The version of the entry you loaded (the version field of get_knowledge). If somebody changed the entry since, nothing is saved and the answer names the current version: load it again, merge and retry. Always pass it."`
+	Title           *string   `json:"title,omitempty" jsonschema:"New title"`
+	Content         *string   `json:"content,omitempty" jsonschema:"Complete new content (Markdown)"`
+	Tags            *[]string `json:"tags,omitempty" jsonschema:"New complete tag list"`
+	Type            *string   `json:"type,omitempty" jsonschema:"New knowledge type: rule (binding; curators and admins of the space only), documentation, recommendation or experience"`
+	Owner           *string   `json:"owner,omitempty" jsonschema:"E-mail of the new responsible person (team spaces; must be able to read the space); an empty string removes the responsible person"`
 	// ReviewDue is a date so that an assistant cannot pass a relative phrase.
 	ReviewDue *string `json:"review_due,omitempty" jsonschema:"New review date (YYYY-MM-DD); an empty string removes it"`
 }
@@ -537,7 +539,7 @@ func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (doc
 	if in.Title == nil && in.Content == nil && in.Tags == nil && in.Type == nil && in.Owner == nil && in.ReviewDue == nil {
 		return docInfo{}, userErr("Nothing to change was passed.")
 	}
-	p := docs.UpdateParams{ID: id, Title: in.Title, Content: in.Content, Tags: in.Tags}
+	p := docs.UpdateParams{ID: id, Title: in.Title, Content: in.Content, Tags: in.Tags, ExpectedVersion: in.ExpectedVersion}
 	if in.Type != nil {
 		t, err := parseType(*in.Type)
 		if err != nil {
