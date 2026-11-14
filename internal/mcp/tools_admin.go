@@ -36,6 +36,7 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_list_users", "List users", tierInstanceAdmin, false, s.adminListUsers)
 	addTool(s, ms, "admin_offboard_user", "Offboard user", tierInstanceAdmin, true, s.adminOffboardUser)
 	addTool(s, ms, "admin_reactivate_user", "Reactivate user", tierInstanceAdmin, true, s.adminReactivateUser)
+	addTool(s, ms, "admin_instance_admins", "Manage instance admins", tierInstanceAdmin, true, s.adminInstanceAdmins)
 	addTool(s, ms, "admin_groups", "Manage groups", tierInstanceAdmin, true, s.adminGroups)
 	addTool(s, ms, "admin_revoke_sessions", "End a user's sessions", tierInstanceAdmin, true, s.adminRevokeSessions)
 	addTool(s, ms, "admin_revoke_all_sessions", "End all sessions of the instance", tierInstanceAdmin, true, s.adminRevokeAllSessions)
@@ -496,6 +497,15 @@ func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) 
 		// SetActive would restart the retention period.
 		out.Message = fmt.Sprintf("%s was already locked.", u.Email)
 	}
+	// A granted admin right does not come back by itself when the account is reactivated.
+	adminRemoved := false
+	if u.InstanceAdmin && !u.ConfigAdmin {
+		if err := s.Users.SetInstanceAdmin(ctx, u.ID, false); err != nil {
+			return offboardOut{}, err
+		}
+		adminRemoved = true
+		out.Message += " The instance admin right was removed."
+	}
 	if s.RevokeTokens != nil {
 		if out.RevokedTokens, err = s.RevokeTokens(ctx, u.ID); err != nil {
 			return offboardOut{}, err
@@ -518,8 +528,108 @@ func (s *Server) adminOffboardUser(ctx context.Context, c *call, in offboardIn) 
 		add(ctx, s, u, &out)
 	}
 	s.record(ctx, c.Actor, "admin_offboard_user", nil, map[string]any{"user": u.Email,
-		"revoked_tokens": out.RevokedTokens, "handoffs_deleted": out.HandoffsDeleted})
+		"revoked_tokens": out.RevokedTokens, "handoffs_deleted": out.HandoffsDeleted, "admin_right_removed": adminRemoved})
 	return out, nil
+}
+
+type instanceAdminsIn struct {
+	Action    string `json:"action" jsonschema:"list, grant or revoke"`
+	UserEmail string `json:"user_email,omitempty" jsonschema:"E-mail of the user (grant, revoke)"`
+	Confirm   bool   `json:"confirm,omitempty" jsonschema:"true only after the user confirmed exactly this change (grant, revoke)"`
+}
+
+type instanceAdminInfo struct {
+	Email     string `json:"email"`
+	Name      string `json:"name,omitempty"`
+	Source    string `json:"source"` // config: bootstrap_admins, cannot be removed here | granted: through this tool
+	Status    string `json:"status"`
+	LastLogin string `json:"last_login,omitempty"`
+}
+
+type instanceAdminsOut struct {
+	Message string              `json:"message,omitempty"`
+	Admins  []instanceAdminInfo `json:"admins"`
+	Note    string              `json:"note,omitempty"`
+}
+
+const instanceAdminNote = "Instance admins are admin in every team space and use all admin_* tools; personal spaces stay closed to them. " +
+	"A granted right takes effect for the tools at the next connection of the assistant; a revoked one ends at the next call."
+
+func (s *Server) instanceAdminList(ctx context.Context) ([]instanceAdminInfo, error) {
+	all, err := s.Users.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []instanceAdminInfo{}
+	for _, u := range all {
+		if !u.InstanceAdmin {
+			continue
+		}
+		ai := instanceAdminInfo{Email: u.Email, Name: u.DisplayName, Source: "granted", Status: "active"}
+		if u.ConfigAdmin {
+			ai.Source = "config"
+		}
+		if !u.Active {
+			ai.Status = "disabled"
+		}
+		if u.LastLoginAt != nil {
+			ai.LastLogin = u.LastLoginAt.Format(time.RFC3339)
+		}
+		out = append(out, ai)
+	}
+	return out, nil
+}
+
+// adminInstanceAdmins lists, grants and revokes the instance admin right. Accounts listed in
+// auth.bootstrap_admins keep it whatever is done here: they are the way back in.
+func (s *Server) adminInstanceAdmins(ctx context.Context, c *call, in instanceAdminsIn) (instanceAdminsOut, error) {
+	switch in.Action {
+	case "list":
+		admins, err := s.instanceAdminList(ctx)
+		return instanceAdminsOut{Admins: admins, Note: instanceAdminNote}, err
+	case "grant", "revoke":
+	default:
+		return instanceAdminsOut{}, userErr("action must be list, grant or revoke.")
+	}
+	grant := in.Action == "grant"
+	if !in.Confirm {
+		what := "Revoking the right takes the user's access to all team spaces and the admin tools away."
+		if grant {
+			what = "An instance admin is admin in every team space and uses all admin tools; only personal spaces stay closed."
+		}
+		return instanceAdminsOut{}, userErr(what + " Ask the user and then call again with confirm=true.")
+	}
+	u, err := s.knownUser(ctx, in.UserEmail)
+	if err != nil {
+		return instanceAdminsOut{}, err
+	}
+	var msg string
+	switch {
+	case grant && !u.Active:
+		return instanceAdminsOut{}, userErr(fmt.Sprintf("%s is locked; reactivate the account first.", u.Email))
+	case grant && u.InstanceAdmin:
+		msg = fmt.Sprintf("%s is already an instance admin.", u.Email)
+	case grant:
+		if err := s.Users.SetInstanceAdmin(ctx, u.ID, true); err != nil {
+			return instanceAdminsOut{}, err
+		}
+		s.record(ctx, c.Actor, "admin_grant_instance_admin", nil, map[string]any{"user": u.Email})
+		msg = fmt.Sprintf("%s is now an instance admin.", u.Email)
+	case u.ConfigAdmin:
+		return instanceAdminsOut{}, userErr(fmt.Sprintf("%s is listed in the configuration (auth.bootstrap_admins); that right cannot be revoked here.", u.Email))
+	case u.ID == c.Actor.User.ID:
+		return instanceAdminsOut{}, userErr("Your own admin right cannot be revoked here; ask another instance admin.")
+	case !u.InstanceAdmin:
+		msg = fmt.Sprintf("%s is not an instance admin.", u.Email)
+	default:
+		if err := s.Users.SetInstanceAdmin(ctx, u.ID, false); err != nil {
+			return instanceAdminsOut{}, err
+		}
+		s.record(ctx, c.Actor, "admin_revoke_instance_admin", nil, map[string]any{"user": u.Email})
+		msg = fmt.Sprintf("%s is no longer an instance admin.", u.Email)
+	}
+	admins, err := s.instanceAdminList(ctx)
+	return instanceAdminsOut{Message: msg, Admins: admins, Note: instanceAdminNote}, err
 }
 
 type reactivateIn struct {

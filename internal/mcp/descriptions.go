@@ -173,6 +173,11 @@ var defaultDescriptions = map[string]string{
 		`the deletion period of their personal space ends with it. Revoked tokens stay invalid, the user logs in again. ` +
 		`ONLY on explicit instruction.`,
 
+	"admin_instance_admins": `Shows and manages who is an instance admin at "{{.ProductName}}" (instance admin): action=list shows them with the source ` +
+		`(config = from the configuration, cannot be revoked here; granted = given through this tool), grant gives the right to an active user, revoke takes a granted right away. ` +
+		`An instance admin is admin in every team space and uses all admin tools; personal spaces stay closed to them. ` +
+		`grant and revoke need the user's explicit confirmation for exactly this person (confirm=true); your own right cannot be revoked. Everything is recorded in the audit log.`,
+
 	"admin_groups": `Manages local groups (instance admin): list, create, rename, delete, add_member, remove_member. ` +
 		`Groups from the identity provider are read-only. Before deleting, ask the user first and set confirm=true.`,
 

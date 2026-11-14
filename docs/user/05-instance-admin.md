@@ -2,7 +2,7 @@
 
 An **instance admin** runs one Atrium instance for the whole organisation: creates and structures spaces, decides who may log in, looks after users and groups, sets the context that tells assistants what Atrium contains, watches the audit log and keeps the system healthy. This guide assumes you know the guides for [everyday use](01-user.md), [authors](02-author.md), [curators](03-curator.md) and [space admins](04-space-admin.md).
 
-Instance admins are set in the server configuration (`auth.bootstrap_admins`, a list of e-mail addresses), not through a tool. Because the role is powerful, keep the list short (two to three people, never a shared account) and use accounts with multi-factor authentication at your identity provider.
+The first instance admins are set in the server configuration (`auth.bootstrap_admins`, a list of e-mail addresses). Instance admins can then give the right to other people with `admin_instance_admins` (see [Instance admins](#instance-admins)), for example to the management of a small company. Because the role is powerful, keep the group small, never use a shared account and use accounts with multi-factor authentication at your identity provider.
 
 ## Contents
 
@@ -27,7 +27,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
+- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; grant and revoke the instance admin right; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -97,6 +97,23 @@ The base list comes from `config.yaml` (allowed domains, addresses, tenants). Ex
 
 A user appears after their first login; someone must have logged in once before they can be added to a space.
 
+### Instance admins
+
+The instance admin right has two sources, and `admin_instance_admins` shows both:
+
+- **`config`:** the addresses in `auth.bootstrap_admins`. This right cannot be removed through a tool, so it is the way back in if somebody else's account is lost or misused. Change it in the configuration and restart.
+- **`granted`:** given through the tool. *"Make maria@example.com an instance admin."* (`grant`, after your confirmation) works for an active user who has logged in once. *"Take the admin right from maria@example.com."* (`revoke`, after confirmation) removes it again. Both are recorded in the audit log (`admin_grant_instance_admin`, `admin_revoke_instance_admin`).
+
+*"Who is an instance admin?"* (`list`) shows each admin with the source, the status and the last login. Check it from time to time.
+
+What to know:
+
+- **An instance admin is admin in every team space**, including spaces created later, and can use all `admin_*` tools. Personal spaces stay closed to them. Grant the right to as few people as needed; in a small company that is typically the management plus the person who runs the system.
+- **You cannot revoke your own right**, nor a right from the configuration. Another instance admin revokes yours.
+- **A granted right takes effect for the tools at the next connection** of the person's assistant (assistants read the tool list once per connection); a revoked right ends at the next call.
+- **Offboarding removes a granted right** (`admin_offboard_user`), so reactivating an account does not bring it back. A locked account cannot be granted the right.
+- A person who may only read the content of all spaces, or a leader who should not run the system, cannot be modelled with this right alone; every instance admin has both.
+
 ### Groups
 
 Local groups (`admin_groups`: `list`, `create`, `rename`, `delete`, `add_member`, `remove_member`) let you give a role to a set of people at once, for example "support-team". Groups from the identity provider are visible but read-only, and are not yet synchronised from the login token. Deleting a group needs your confirmation.
@@ -117,7 +134,7 @@ By default a login with a second provider and an already used e-mail address is 
 The full procedure and the data protection notes are in [Offboarding](../offboarding.md). In short:
 
 1. **Before the last day:** the person moves what belongs to the team out of their personal space.
-2. **Lock:** *"Offboard anna@example.com."* (`admin_offboard_user`, after confirmation). The account is locked at once, all tokens are revoked, handoffs are deleted. The personal space stays private; you see counts and the deletion date.
+2. **Lock:** *"Offboard anna@example.com."* (`admin_offboard_user`, after confirmation). The account is locked at once, all tokens are revoked, handoffs are deleted, a granted instance admin right is removed. The personal space stays private; you see counts and the deletion date.
 3. **Hand the content on:** in the Community edition a personal space cannot be handed on by an admin, so ask the person to move what belongs to the team before the last day, or lengthen the deadline of step 4. The Pro edition adds guided help for it ([Atrium Pro](../pro/pro-edition.md#guided-offboarding)).
 4. **Deadline:** personal spaces of locked accounts are deleted after `spaces.personal.retention_days_after_offboarding` days (default 30). `admin_reactivate_user` lifts the lock again and ends the deadline.
 5. **Responsibilities:** entries that name the person as responsible keep the name, marked `former`, until somebody takes over. A curator or the author changes the responsible person entry by entry (`update_knowledge` with `owner`); the Pro edition can hand them all on in one step.
@@ -225,7 +242,7 @@ Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `
 | Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, `share_send` (a sending to a colleague: kind, recipient id and digest, no title or name), reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
-| Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
+| Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user` (with `admin_right_removed`), `admin_reactivate_user`, `admin_grant_instance_admin`, `admin_revoke_instance_admin`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
 | Instance | `admin_context_set`, `admin_context_clear`, `admin_instance_set`, `admin_quota_set` (scope, target, old and new values) |
 
@@ -336,7 +353,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 | Credentials leaked in an entry | Treat them as compromised, rotate them first, then delete the entry |
 | Unwanted login attempts | `login_denied` entries; tighten the allowlist; check provider settings |
 | A curator or author misbehaves | Remove their role (space admin or you); review their recent changes in the audit log |
-| Instance admin account needs to change | Edit `auth.bootstrap_admins` and restart |
+| An instance admin leaves or should lose the right | A granted right: `admin_instance_admins` with `revoke`, or offboarding. A right from the configuration: edit `auth.bootstrap_admins` and restart |
 
 **Known limits (be honest with your organisation).** No notifications or alerts yet; the audit log is not tamper-proof against database administrators; unless you set up the [separate database accounts](#separate-database-accounts) the application connects to the database with a powerful account; and embedding services may process content outside your network if you choose a cloud backend. These points are on the roadmap.
 
@@ -389,7 +406,9 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 
 **Can I see who searched for what?** Searches are logged, but with the query text only when the search did not include the user's personal space (for example when the assistant restricted it to team spaces); otherwise only the number of hits is kept. Search events are not tied to a space, and reads of single entries are not logged.
 
-**How do I make someone an instance admin?** Add the address to `auth.bootstrap_admins` and restart.
+**How do I make someone an instance admin?** Ask your assistant: *"Make maria@example.com an instance admin."* (`admin_instance_admins`, `grant`). The person must have logged in once and gets the tools at the next connection of their assistant. Addresses in `auth.bootstrap_admins` stay instance admins whatever is done through the tool.
+
+**Can management read everything without running the system?** Not with this right: an instance admin is admin in all team spaces and can use all admin tools. Only personal spaces stay closed to everybody.
 
 **Can I turn approval on for an existing space?** Yes (`admin_update_space`). Existing entries keep their status.
 
