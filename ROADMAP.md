@@ -25,14 +25,6 @@ Sending an entry or a skill to a colleague's personal space is built ([docs/shar
 - consent page before a new client is connected
 - audit log: an optional hash chain over the entries, so that a gap or a change is detectable. The copy on stdout, the retention period and the append-only server account exist.
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
-- confirmation when storing into spaces of others
-
-### Security, remainder of the second audit (2026-11-04)
-
-The findings of the second audit (external attack surface, authorisation and integrity) that are fixed are listed in the changelog. Still open:
-
-- **Package cleanup token:** `PACKAGES_PAT` is a classic token with `delete:packages`; replace it with a narrower credential as soon as GitHub offers one for container packages.
-- A client whose `client_name` is shown in `my_sessions` should be marked as data.
 
 ### Editions and release
 

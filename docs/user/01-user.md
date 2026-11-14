@@ -111,7 +111,7 @@ Things to know:
 - **Nobody else can read it**, including instance admins. The separation applies within the application; people with direct access to the database or backups could technically read everything.
 - **Quota:** by default up to 500 entries and 10 MB (and 50 skills with 5 MB of skill files). Archived entries do not count, and handoffs count towards the size only. If you reach the limit, archive or delete something, or ask an instance admin for more room: limits can be raised for you personally at any time, without a restart.
 - **Work-related only.** If you leave the organisation, you are asked to move what belongs to the team before your last day; the rest of your personal space is deleted after a deadline. See [Offboarding](../offboarding.md).
-- **Default space.** Without naming a space, new entries go to your default space, normally your personal space. Say *"Make the Support space my default"* (`set_default_space`) to change this.
+- **Default space.** Without naming a space, new entries go to your default space, normally your personal space. Say *"Make the Support space my default"* (`set_default_space`) to change this. If your default is a team space and you name no space, the assistant asks first, because colleagues can read what lands there; name the space or answer yes to continue.
 - **No secrets.** Atrium rejects text that looks like passwords, API keys or private keys. Do not store personal customer data, passwords or credentials.
 
 ### Things colleagues send you
@@ -165,7 +165,7 @@ You can create your own private skills. Say *"File this as a skill called weekly
 
 ## Your logins and your safety
 
-- **Where am I logged in?** *"Show my Atrium sessions."* (`my_sessions`) lists the assistants you are connected with: name, start and last use.
+- **Where am I logged in?** *"Show my Atrium sessions."* (`my_sessions`) lists the assistants you are connected with: name, start and last use. The names are chosen by the assistants themselves when they connect, so read them as information, not as proof of who is behind them.
 - **Lost a device or suspect misuse?** *"End all my Atrium sessions."* (`revoke_my_sessions`) logs every connection out. Each assistant must log in again. Ask for one client only by naming it.
 - **What the assistant may store.** Only on your explicit request. Do not ask it to file passwords, keys or personal customer data.
 - **Confirmations.** Actions that change or remove things (moving, archiving, deleting, revoking logins) need your confirmation. Read what the assistant says before you agree.
