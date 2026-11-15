@@ -1,5 +1,7 @@
 # Deployment and reverse proxy
 
+For a step-by-step installation from an empty host see [Installing Atrium](user/00-installation.md); this page is the reference for operating variants, proxies and database accounts.
+
 The Go server only speaks HTTP (`instance.listen`, default `:8080`). TLS termination is **not part of the server** and is solved differently depending on the environment. The bundled nginx + certbot is therefore optional.
 
 ## Operating variants
