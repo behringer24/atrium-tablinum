@@ -4,6 +4,8 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-15
+
 ### Upgrade notes
 Read these before you update; the update is not a plain `docker compose pull`.
 
@@ -40,7 +42,7 @@ Read these before you update; the update is not a plain `docker compose pull`.
 ### Fixed
 - **Cache hints are private and never fresh:** for clients of protocol 2026-07-28 every answer that carries cache hints (`server/discover`, `tools/list`, `resources/list`, `resources/templates/list`, `resources/read`, and the answers of `skills/list` and `skills/get`, which had none) now says `cacheScope: "private"` and `ttlMs: 0`. The SDK default was `"public"`, although the tool list, the instructions and the skill files depend on who asks. A change of rights still shows at the next request.
 - **`dev_mode` token refused for an instance admin:** the static dev token failed with HTTP 500 ("token check failed") when `dev_user` was also listed in `auth.bootstrap_admins`, because the dev account was not marked as having a verified address. It now is; `dev_mode` still only runs on localhost.
-- **Release line:** `internal/product/line.txt` still named line 0.4 after 0.5.0 and 0.5.1; it now names 0.5, dated 2026-11-10, so that `server_info` shows the right line. [docs/release.md](docs/release.md) says when to set it.
+- **Release line:** `internal/product/line.txt` still named line 0.4 after 0.5.0 and 0.5.1; 0.6.0 sets it to line 0.6, dated 2026-11-15, so that `server_info` shows the right line. [docs/release.md](docs/release.md) says when to set it.
 
 ## [0.5.1] - 2026-11-11
 
@@ -189,7 +191,10 @@ Planned work is listed in the [ROADMAP.md](ROADMAP.md).
 
 First release: MCP server in Go with spaces and roles, hybrid search (pgvector and full text), OAuth 2.1 with Google, Entra and generic OIDC, approval workflow, audit log, offboarding and a selectable embedding backend (TEI, OpenAI compatible, Bedrock). The image is published to the GitHub Container Registry.
 
-[Unreleased]: https://github.com/behringer24/atrium-tablinum/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/behringer24/atrium-tablinum/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.5.1...v0.6.0
+[0.5.1]: https://github.com/behringer24/atrium-tablinum/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.1.1...v0.2.0
