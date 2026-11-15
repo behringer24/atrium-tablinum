@@ -111,6 +111,7 @@ func adminOps(m *matrix) []mxOp {
 		withSpace("update space", "admin_update_space", false, map[string]any{"require_approval": true}),
 		withSpace("archive space", "admin_archive_space", false, confirm),
 		withSpace("restore space", "admin_restore_space", true, nil),
+		withSpace("delete empty space", "admin_delete_space", false, confirm),
 		op("list users", "admin_list_users", fixed(nil)),
 		withUser("offboard user", "admin_offboard_user", confirm),
 		offboarded,

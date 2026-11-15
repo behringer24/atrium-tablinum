@@ -52,7 +52,7 @@ func TestToolListFollowsRole(t *testing.T) {
 	if curator["admin_create_space"] || sadmin["admin_create_space"] || sadmin["admin_update_space"] || sadmin["admin_audit_log"] {
 		t.Errorf("curator or space admin with instance admin tools")
 	}
-	for _, name := range []string{"admin_create_space", "admin_update_space", "admin_archive_space", "admin_restore_space", "admin_list_users",
+	for _, name := range []string{"admin_create_space", "admin_update_space", "admin_archive_space", "admin_restore_space", "admin_delete_space", "admin_list_users",
 		"admin_offboard_user", "admin_reactivate_user", "admin_groups", "admin_audit_log", "admin_health",
 		"admin_support_bundle", "space_members"} {
 		if !boss[name] {
@@ -282,6 +282,21 @@ func TestInstanceAdminSpaceLifecycle(t *testing.T) {
 	if !found {
 		t.Error("space not visible after restore")
 	}
+
+	// delete: only an empty team space, only with confirmation, and for good
+	if _, msg := e.call(t, boss, "admin_delete_space", map[string]any{"space": "technik", "confirm": false}); !strings.Contains(msg, "confirmation") {
+		t.Errorf("delete without confirm: %q", msg)
+	}
+	e.mustCall(t, e.session(t, "anna@x.de"), "store_knowledge", map[string]any{"title": "Keep", "content": "x", "space": "technik"})
+	if _, msg := e.call(t, boss, "admin_delete_space", map[string]any{"space": "technik", "confirm": true}); !strings.Contains(msg, "still holds") {
+		t.Errorf("delete of a space with content: %q", msg)
+	}
+	e.mustCall(t, boss, "admin_create_space", map[string]any{"slug": "leer", "name": "Leer"})
+	e.mustCall(t, boss, "admin_delete_space", map[string]any{"space": "leer", "confirm": true})
+	if _, msg := e.call(t, boss, "admin_archive_space", map[string]any{"space": "leer", "confirm": true}); msg == "" {
+		t.Error("deleted space still found")
+	}
+	e.mustCall(t, boss, "admin_create_space", map[string]any{"slug": "leer", "name": "Leer"}) // slug is free again
 }
 
 func TestDraftOnRequestAndReviewTool(t *testing.T) {

@@ -335,7 +335,7 @@ const TABLES = [
   "A personal space always has an owner, a team space never; the partial unique index allows at most one personal space per user.",
   "<code>require_approval</code> (team only): entries from roles below <code>curator</code> go to review as drafts (<code>internal/docs/write.go</code>).",
   "<code>default_role</code> (team only): base role for all users without a membership; the effective role is the higher of membership and base role (<code>internal/authz</code>).",
-  "<code>status = 'archived'</code> is set by <code>admin_archive_space</code> and reset by <code>admin_restore_space</code>."]},
+  "<code>status = 'archived'</code> is set by <code>admin_archive_space</code> and reset by <code>admin_restore_space</code>; <code>admin_delete_space</code> removes an empty team space (members and quota overrides go with it, nothing else references it)."]},
 
 {name:"space_members", area:"spaces", mig:[1],
  purpose:"Roles in a space (reader, author, curator, admin), granted to a single user or to a whole group.",

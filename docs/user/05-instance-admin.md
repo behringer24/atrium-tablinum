@@ -27,7 +27,7 @@ The first instance admins are set in the server configuration (`auth.bootstrap_a
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; grant and revoke the instance admin right; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
+- Use the **`admin_*` tools**: create, change, archive, restore and delete (empty) spaces; list users; lock and reactivate; grant and revoke the instance admin right; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -83,6 +83,7 @@ A checklist for the first days. The technical steps are in the [README](../../RE
 
 - `admin_update_space` changes name, description, approval and default role. Changing the description needs your confirmation after the new text was shown, because it reaches every user's assistant. Existing entries keep their status when you switch approval on or off.
 - `admin_archive_space` hides a whole space from everybody but instance admins; the content is kept. `admin_restore_space` brings it back.
+- `admin_delete_space` removes an **empty** team space for good, with its members, default role and quota settings. A space that still holds an entry of any state (archived ones included) or a skill is refused: move or delete the content first, or archive the space instead. It needs `confirm=true` and cannot be undone; the audit log keeps slug and name (`admin_delete_space`).
 - Personal spaces are not listed here and cannot be archived through these tools.
 
 ## Users, groups and logins
@@ -250,7 +251,7 @@ Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `
 |---|---|
 | Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, `share_send` (a sending to a colleague: kind, recipient id and digest, no title or name), reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
-| Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
+| Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `admin_delete_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `client_consent` and `client_consent_denied` (client id, the name it gave, the host it sends the user back to), `account_linked`, `admin_offboard_user` (with `admin_right_removed`), `admin_reactivate_user`, `admin_grant_instance_admin`, `admin_revoke_instance_admin`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
 | Instance | `admin_context_set`, `admin_context_clear`, `admin_instance_set`, `admin_quota_set` (scope, target, old and new values) |
@@ -422,7 +423,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 
 **Can I turn approval on for an existing space?** Yes (`admin_update_space`). Existing entries keep their status.
 
-**What happens to a space I archive?** It disappears for everybody except instance admins; content is kept and can be restored.
+**What happens to a space I archive?** It disappears for everybody except instance admins; content is kept and can be restored. An empty space can also be deleted for good (`admin_delete_space`); one with content cannot.
 
 **Can I change someone's role in a space?** Yes, as admin of every team space (`space_add_member`). Prefer asking the space admin.
 
