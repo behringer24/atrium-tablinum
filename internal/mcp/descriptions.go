@@ -161,6 +161,10 @@ var defaultDescriptions = map[string]string{
 
 	"admin_restore_space": `Restores an archived team space (instance admin).`,
 
+	"admin_delete_space": `Deletes an EMPTY team space for good (instance admin): members, default role and quota settings go with it. ` +
+		`A space that still holds entries (any status, archived ones included) or skills is refused; archive it instead. ` +
+		`It cannot be undone. ONLY on explicit instruction: ask the user first, then call with confirm=true.`,
+
 	"admin_list_users": `Lists all users with status, last login and - for personal spaces - only count, size and last change (instance admin). ` +
 		`The content of personal spaces cannot be viewed by anyone.`,
 

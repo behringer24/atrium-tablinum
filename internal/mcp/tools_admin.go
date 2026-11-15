@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -33,6 +34,7 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_update_space", "Update space", tierInstanceAdmin, true, s.adminUpdateSpace)
 	addTool(s, ms, "admin_archive_space", "Archive space", tierInstanceAdmin, true, s.adminArchiveSpace)
 	addTool(s, ms, "admin_restore_space", "Restore space", tierInstanceAdmin, true, s.adminRestoreSpace)
+	addTool(s, ms, "admin_delete_space", "Delete empty space", tierInstanceAdmin, true, s.adminDeleteSpace)
 	addTool(s, ms, "admin_list_users", "List users", tierInstanceAdmin, false, s.adminListUsers)
 	addTool(s, ms, "admin_offboard_user", "Offboard user", tierInstanceAdmin, true, s.adminOffboardUser)
 	addTool(s, ms, "admin_reactivate_user", "Reactivate user", tierInstanceAdmin, true, s.adminReactivateUser)
@@ -375,6 +377,24 @@ func (s *Server) adminRestoreSpace(ctx context.Context, c *call, in spaceRef) (m
 	}
 	s.record(ctx, c.Actor, "admin_restore_space", sp, nil)
 	return messageOut{Message: fmt.Sprintf("The space \"%s\" has been restored.", sp.Name)}, nil
+}
+
+func (s *Server) adminDeleteSpace(ctx context.Context, c *call, in archiveSpaceIn) (messageOut, error) {
+	if !in.Confirm {
+		return messageOut{}, userErr("Deleting needs a confirmation: ask the user and then call again with confirm=true. It cannot be undone.")
+	}
+	sp, err := s.adminSpace(ctx, c.Actor, in.Space)
+	if err != nil {
+		return messageOut{}, err
+	}
+	if err := s.Spaces.Delete(ctx, sp.ID); err != nil {
+		if errors.Is(err, spaces.ErrNotEmpty) {
+			return messageOut{}, userErr(fmt.Sprintf("The space \"%s\" still holds entries or skills. Only an empty space can be deleted: move or delete the content first, or archive the space instead.", sp.Name))
+		}
+		return messageOut{}, err
+	}
+	s.record(ctx, c.Actor, "admin_delete_space", sp, map[string]any{"slug": sp.Slug, "name": sp.Name})
+	return messageOut{Message: fmt.Sprintf("The empty space \"%s\" was deleted for good.", sp.Name)}, nil
 }
 
 // ---- instance admin: users and groups ---------------------------------------------------------
