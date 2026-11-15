@@ -11,7 +11,6 @@ The guiding question for all knowledge features: does an assistant find the righ
 ### Reliable knowledge (candidate for 0.6)
 
 - **Review reminders:** knowledge types, responsible people and review dates are built ([design](docs/design/knowledge-metadata.md)); overdue reviews show in entries, `list_knowledge review=due` and `whats_new`. Still open: telling responsible people and curators actively when a review falls due (needs the notifications below), and recording the last review as its own date.
-- **Rights report for instance admins:** a read-only `admin_*` tool that lists who holds which role where (space admins, default roles, spaces open to everyone, instance admins), so an operator can check the configuration of a running instance. The permission matrix proves the code, this shows the setup.
 - **Summarising with `replaces`:** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported.
 
 ### Sending to a colleague, follow-ups
