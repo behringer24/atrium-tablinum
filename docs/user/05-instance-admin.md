@@ -41,7 +41,7 @@ The first instance admins are set in the server configuration (`auth.bootstrap_a
 
 ## Setting up a new instance
 
-A checklist for the first days. The technical steps are in the [README](../../README.md) and [deployment](../deployment.md).
+A checklist for the first days. The installation itself, step by step, is in [Installing Atrium](00-installation.md); the technical reference is in the [README](../../README.md) and [deployment](../deployment.md).
 
 1. **Install and verify.** Follow a deployment variant (bundled nginx, your own proxy or a tunnel). Check `https://<domain>/healthz` and `/readyz`. Set `instance.trusted_proxies` correctly: the limits per address depend on it.
 2. **Identity provider.** Configure Google, Entra or another OIDC provider and the allowed domains, addresses or tenants (with the shipped `config.example.yaml` the domain is `ATRIUM_ALLOWED_DOMAIN` and the Google credentials are `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`). Test a login. Use `admin_allowlist` later to extend the list without a restart.
