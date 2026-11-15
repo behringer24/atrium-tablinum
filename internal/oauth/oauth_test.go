@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -151,8 +152,9 @@ func (e *env) authorizeURL(clientID, redirect string, p pkce, extra url.Values) 
 	return "/oauth/authorize?" + q.Encode()
 }
 
-// login runs authorize -> IdP -> callback and returns the final redirect to the client.
-func (e *env) login(authorizeURL string) *url.URL {
+// loginToCallback runs authorize -> IdP -> callback and returns the answer of the callback: the
+// redirect to the client, or the consent page for a client the user has not allowed yet.
+func (e *env) loginToCallback(authorizeURL string) (*http.Response, string) {
 	e.t.Helper()
 	resp, body := e.do(http.MethodGet, authorizeURL, nil, nil)
 	if resp.StatusCode != http.StatusFound {
@@ -163,7 +165,35 @@ func (e *env) login(authorizeURL string) *url.URL {
 	if resp.StatusCode != http.StatusFound {
 		e.t.Fatalf("idp: %d", resp.StatusCode)
 	}
-	resp, body = e.do(http.MethodGet, resp.Header.Get("Location"), nil, nil)
+	return e.do(http.MethodGet, resp.Header.Get("Location"), nil, nil)
+}
+
+var consentRequestRe = regexp.MustCompile(`name="r" value="([^"]+)"`)
+
+// consentRequest reads the request value out of a consent page.
+func (e *env) consentRequest(page string) string {
+	e.t.Helper()
+	m := consentRequestRe.FindStringSubmatch(page)
+	if m == nil {
+		e.t.Fatalf("no consent form in the page: %s", page)
+	}
+	return m[1]
+}
+
+// answerConsent posts the answer ("allow" or "deny") to a consent page.
+func (e *env) answerConsent(request, decision string) (*http.Response, string) {
+	e.t.Helper()
+	return e.do(http.MethodPost, "/oauth/consent", url.Values{"r": {request}, "decision": {decision}}, nil)
+}
+
+// login runs authorize -> IdP -> callback, allows the client when the consent page asks, and
+// returns the final redirect to the client.
+func (e *env) login(authorizeURL string) *url.URL {
+	e.t.Helper()
+	resp, body := e.loginToCallback(authorizeURL)
+	if resp.StatusCode == http.StatusOK {
+		resp, body = e.answerConsent(e.consentRequest(body), "allow")
+	}
 	if resp.StatusCode != http.StatusFound {
 		e.t.Fatalf("callback: %d %s", resp.StatusCode, body)
 	}
@@ -583,8 +613,9 @@ func TestStateIsSingleUseAndBoundToProvider(t *testing.T) {
 	resp, _ = e.do(http.MethodGet, resp.Header.Get("Location"), nil, nil)
 	callback := resp.Header.Get("Location")
 
-	if resp, _ = e.do(http.MethodGet, callback, nil, nil); resp.StatusCode != 302 {
-		t.Fatalf("first call: %d", resp.StatusCode)
+	// the first call consumes the state; a new client gets the consent page, not yet a code
+	if resp, body := e.do(http.MethodGet, callback, nil, nil); resp.StatusCode != 200 || !strings.Contains(body, "Allow this connection?") {
+		t.Fatalf("first call: %d %s", resp.StatusCode, body)
 	}
 	if resp, body := e.do(http.MethodGet, callback, nil, nil); resp.StatusCode != 400 || strings.Contains(resp.Header.Get("Location"), "code=") {
 		t.Errorf("state reusable: %d %s", resp.StatusCode, body)

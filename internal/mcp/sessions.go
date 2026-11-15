@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/behringer24/atrium-tablinum/internal/safetext"
 )
 
 // untrustedHint is the standing rule for everything read out of the store: entries are
@@ -31,26 +32,7 @@ const maxClientNameRunes = 80
 // cleanClientName makes a client-chosen name safe to show: control and invisible formatting
 // characters (line breaks, bidirectional overrides, zero-width characters) become a space, runs of
 // white space shrink to one, and the name is cut to maxClientNameRunes.
-func cleanClientName(name string) string {
-	var b strings.Builder
-	gap := false
-	for _, r := range name {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.IsSpace(r) {
-			gap = true
-			continue
-		}
-		if gap && b.Len() > 0 {
-			b.WriteByte(' ')
-		}
-		gap = false
-		b.WriteRune(r)
-	}
-	out := []rune(b.String())
-	if len(out) > maxClientNameRunes {
-		return string(out[:maxClientNameRunes]) + "…"
-	}
-	return string(out)
-}
+func cleanClientName(name string) string { return safetext.Line(name, maxClientNameRunes) }
 
 // SessionInfo is one client a user is logged in with.
 type SessionInfo struct {

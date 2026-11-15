@@ -33,8 +33,9 @@ You connect an assistant once per assistant. You need the address of your Atrium
 
 1. In your assistant, add a custom connector (Claude, ChatGPT) or MCP server (Claude Code and others) and enter the address.
 2. The assistant opens a login page of Atrium. Log in with your organisation account (for example Google or Microsoft). Only accounts your administrator allowed can log in.
-3. After the login the assistant can use Atrium. Tools may be loaded on demand: in a fresh chat the assistant sometimes needs a moment before it knows what Atrium contains.
-4. Try it: *"Which Atrium spaces can I use?"* The assistant answers with your spaces and roles.
+3. The first time you connect an assistant, Atrium asks you to **allow** it. You see the name the application gave itself, the address it sends you back to (for example `claude.ai`) and your account. Allow it only if you started this connection yourself; if the question is unexpected, choose **Deny**. The name is chosen by the application and is no proof of who it is, so look at the address as well. Atrium remembers your answer for that assistant and does not ask again at the next login.
+4. After the login the assistant can use Atrium. Tools may be loaded on demand: in a fresh chat the assistant sometimes needs a moment before it knows what Atrium contains.
+5. Try it: *"Which Atrium spaces can I use?"* The assistant answers with your spaces and roles.
 
 Connections last as long as you stay active. Atrium ends every login after 90 days at the latest, and you log in again. You can see where you are logged in and end logins yourself (see [Your logins and your safety](#your-logins-and-your-safety)).
 
@@ -166,7 +167,7 @@ You can create your own private skills. Say *"File this as a skill called weekly
 ## Your logins and your safety
 
 - **Where am I logged in?** *"Show my Atrium sessions."* (`my_sessions`) lists the assistants you are connected with: name, start and last use. The names are chosen by the assistants themselves when they connect, so read them as information, not as proof of who is behind them.
-- **Lost a device or suspect misuse?** *"End all my Atrium sessions."* (`revoke_my_sessions`) logs every connection out. Each assistant must log in again. Ask for one client only by naming it.
+- **Lost a device or suspect misuse?** *"End all my Atrium sessions."* (`revoke_my_sessions`) logs every connection out. Each assistant must log in again and is allowed again by you. Ask for one client only by naming it.
 - **What the assistant may store.** Only on your explicit request. Do not ask it to file passwords, keys or personal customer data.
 - **Confirmations.** Actions that change or remove things (moving, archiving, deleting, revoking logins) need your confirmation. Read what the assistant says before you agree.
 - **Limits for everybody.** Atrium limits how fast one user can read (120 requests a minute) and write (20 a minute). You will only notice it if an assistant loops; wait a minute.

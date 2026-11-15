@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/behringer24/atrium-tablinum/internal/audit"
+	"github.com/behringer24/atrium-tablinum/internal/safetext"
 )
 
 var (
@@ -28,9 +30,10 @@ var (
 )
 
 const (
-	loginStateTTL = 10 * time.Minute
-	codeTTL       = 2 * time.Minute
-	maxClients    = 5000
+	loginStateTTL     = 10 * time.Minute
+	consentRequestTTL = 10 * time.Minute
+	codeTTL           = 2 * time.Minute
+	maxClients        = 5000
 	// ErrTooManyClients is returned when dynamic registration is saturated.
 )
 
@@ -156,6 +159,56 @@ func (s *Store) scanLogin(row pgx.Row) (LoginState, error) {
 	return st, err
 }
 
+// ---- consent (the user allows a client before it gets a code) -----------------------
+
+// ConsentRequest is the pending question "may this client act as you?" while the user decides.
+type ConsentRequest struct {
+	ClientID      string
+	UserID        uuid.UUID
+	RedirectURI   string
+	CodeChallenge string
+	ClientState   string
+	Resource      string
+}
+
+// HasConsent tells whether the user already allowed the client.
+func (s *Store) HasConsent(ctx context.Context, userID uuid.UUID, clientID string) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM oauth_consents WHERE user_id = $1 AND client_id = $2)`,
+		userID, clientID).Scan(&ok)
+	return ok, err
+}
+
+// GrantConsent remembers that the user allowed the client.
+func (s *Store) GrantConsent(ctx context.Context, userID uuid.UUID, clientID string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO oauth_consents (user_id, client_id) VALUES ($1, $2)
+		ON CONFLICT (user_id, client_id) DO UPDATE SET granted_at = now()`, userID, clientID)
+	return err
+}
+
+// CreateConsentRequest stores the pending question and returns the random value the form carries.
+func (s *Store) CreateConsentRequest(ctx context.Context, c ConsentRequest) (string, error) {
+	raw := randomToken("")
+	_, err := s.pool.Exec(ctx, `
+INSERT INTO oauth_consent_requests (request_hash, client_id, user_id, redirect_uri, code_challenge, client_state, resource, expires_at)
+VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, $8)`,
+		hash(raw), c.ClientID, c.UserID, c.RedirectURI, c.CodeChallenge, c.ClientState, c.Resource, time.Now().Add(consentRequestTTL))
+	return raw, err
+}
+
+// TakeConsentRequest consumes the pending question (single use, also when the answer is no).
+func (s *Store) TakeConsentRequest(ctx context.Context, raw string) (ConsentRequest, error) {
+	var c ConsentRequest
+	err := s.pool.QueryRow(ctx, `
+DELETE FROM oauth_consent_requests WHERE request_hash = $1 AND expires_at > now()
+RETURNING client_id, user_id, redirect_uri, code_challenge, COALESCE(client_state, ''), resource`, hash(raw)).
+		Scan(&c.ClientID, &c.UserID, &c.RedirectURI, &c.CodeChallenge, &c.ClientState, &c.Resource)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ConsentRequest{}, ErrNotFound
+	}
+	return c, err
+}
+
 // ---- authorization codes -------------------------------------------------------------
 
 type Code struct {
@@ -228,7 +281,7 @@ type RefreshResult struct {
 
 // Rotate exchanges a refresh token for a new pair and revokes the old one. Presenting an
 // already used refresh token signals theft: every token of that user and client is
-// revoked and the request fails.
+// revoked, the user's consent for that client is forgotten and the request fails.
 func (s *Store) Rotate(ctx context.Context, rawRefresh, clientID string) (RefreshResult, error) {
 	t, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -256,6 +309,9 @@ func (s *Store) Rotate(ctx context.Context, rawRefresh, clientID string) (Refres
 	if revoked != nil {
 		if _, err := t.Exec(ctx, `UPDATE oauth_tokens SET revoked_at = now()
 			WHERE user_id = $1 AND client_id = $2 AND revoked_at IS NULL`, userID, clientID); err != nil {
+			return RefreshResult{}, err
+		}
+		if _, err := t.Exec(ctx, `DELETE FROM oauth_consents WHERE user_id = $1 AND client_id = $2`, userID, clientID); err != nil {
 			return RefreshResult{}, err
 		}
 		if err := t.Commit(ctx); err != nil {
@@ -353,20 +409,32 @@ ORDER BY min(t.session_started_at) DESC`, userID)
 }
 
 // RevokeClient ends the sessions of one client of the user (all its tokens).
+// It also forgets the user's consent for that client, so that it has to ask again.
 func (s *Store) RevokeClient(ctx context.Context, userID uuid.UUID, clientID string) (int64, error) {
+	if _, err := s.pool.Exec(ctx, `DELETE FROM oauth_consents WHERE user_id = $1 AND client_id = $2`, userID, clientID); err != nil {
+		return 0, err
+	}
 	tag, err := s.pool.Exec(ctx, `UPDATE oauth_tokens SET revoked_at = now()
 		WHERE user_id = $1 AND client_id = $2 AND revoked_at IS NULL`, userID, clientID)
 	return tag.RowsAffected(), err
 }
 
-// RevokeUser revokes all tokens of a user (offboarding, "revoke sessions").
+// RevokeUser revokes all tokens of a user (offboarding, "revoke sessions") and forgets all the
+// clients the user allowed.
 func (s *Store) RevokeUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	if _, err := s.pool.Exec(ctx, `DELETE FROM oauth_consents WHERE user_id = $1`, userID); err != nil {
+		return 0, err
+	}
 	tag, err := s.pool.Exec(ctx, `UPDATE oauth_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, userID)
 	return tag.RowsAffected(), err
 }
 
-// RevokeAll revokes every token of every user (incident response).
+// RevokeAll revokes every token of every user (incident response) and forgets every consent:
+// each user allows their clients again at the next login.
 func (s *Store) RevokeAll(ctx context.Context) (int64, error) {
+	if _, err := s.pool.Exec(ctx, `DELETE FROM oauth_consents`); err != nil {
+		return 0, err
+	}
 	tag, err := s.pool.Exec(ctx, `UPDATE oauth_tokens SET revoked_at = now() WHERE revoked_at IS NULL`)
 	return tag.RowsAffected(), err
 }
@@ -378,6 +446,7 @@ func (s *Store) Cleanup(ctx context.Context) error {
 	for _, q := range []string{
 		`DELETE FROM oauth_codes WHERE expires_at < now()`,
 		`DELETE FROM oauth_login_states WHERE expires_at < now()`,
+		`DELETE FROM oauth_consent_requests WHERE expires_at < now()`,
 		`DELETE FROM oauth_tokens WHERE expires_at < now() - interval '7 days'`,
 		`DELETE FROM oauth_clients c WHERE c.created_at < now() - interval '1 hour' AND ` + unusedClient,
 	} {
@@ -406,7 +475,26 @@ func (s *Store) RecordLogin(ctx context.Context, userID uuid.UUID, provider stri
 	}
 }
 
+// RecordConsent writes the audit entry for the answer to a consent page. The client name is data
+// the client chose itself; it is kept (cleaned) so that a reviewer can tell clients apart, next to
+// the id and the host the user is sent back to.
+func (s *Store) RecordConsent(ctx context.Context, userID uuid.UUID, c Client, redirectURI string, allowed bool) {
+	action := "client_consent"
+	if !allowed {
+		action = "client_consent_denied"
+	}
+	details := map[string]any{"client_id": c.ID, "client_name": safetext.Line(c.Name, 80)}
+	if u, err := url.Parse(redirectURI); err == nil {
+		details["redirect_host"] = u.Host
+	}
+	if err := audit.Insert(ctx, s.pool, audit.Event{UserID: &userID, Client: "system", Action: action, Details: details}); err != nil {
+		slog.Error("audit entry for consent failed", "error", err)
+	}
+}
+
 // unusedClient selects (for a table alias c) clients that never completed or started a login.
 const unusedClient = `NOT EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.client_id = c.client_id)
 	AND NOT EXISTS (SELECT 1 FROM oauth_codes k WHERE k.client_id = c.client_id)
-	AND NOT EXISTS (SELECT 1 FROM oauth_login_states l WHERE l.client_id = c.client_id)`
+	AND NOT EXISTS (SELECT 1 FROM oauth_login_states l WHERE l.client_id = c.client_id)
+	AND NOT EXISTS (SELECT 1 FROM oauth_consent_requests q WHERE q.client_id = c.client_id)
+	AND NOT EXISTS (SELECT 1 FROM oauth_consents n WHERE n.client_id = c.client_id)`

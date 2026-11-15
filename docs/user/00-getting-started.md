@@ -43,8 +43,9 @@ The names and options differ between assistants, and not every user may create c
 ### Step 2: log in
 
 1. Select **Atrium** in your assistant and choose **Connect** (or the equivalent option). If you are already connected, this step does not appear.
-2. A login page opens. Log in with your organisation account, for example Google or Microsoft, and confirm the permissions if you are asked.
-3. After the login your assistant can use Atrium with your own rights.
+2. A login page opens. Log in with your organisation account, for example Google or Microsoft.
+3. The first time you connect an assistant, Atrium asks whether to **allow** it: you see the name the application gave itself, the address it sends you back to (for example `claude.ai`) and your account. Choose **Allow** only if you started this connection yourself. If the question is unexpected, choose **Deny**. Atrium remembers your answer for that assistant, so you are not asked again when you log in again.
+4. After the login your assistant can use Atrium with your own rights.
 
 There is no separate Atrium password. If the login fails, ask your administrator whether your account is allowed to use Atrium. Tools may be loaded on demand, so in a fresh chat the assistant sometimes needs a moment before it knows what Atrium contains. Each assistant you use is connected and logged in once.
 
