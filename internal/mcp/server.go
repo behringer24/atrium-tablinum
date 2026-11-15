@@ -30,6 +30,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/reembed"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
@@ -45,6 +46,8 @@ type Settings struct {
 	// PersonalRetentionDays is how long the personal space of a disabled account is kept
 	// before it is purged; 0 = never.
 	PersonalRetentionDays int
+	// SharingEnabled lists the tools that send an entry or a skill to another user (sharing.enabled).
+	SharingEnabled bool
 	// DescriptionOverrides replaces default tool descriptions (Go templates).
 	DescriptionOverrides map[string]string
 	// DefaultSpaceByGroup maps a group name to the slug of its default target space.
@@ -85,6 +88,8 @@ type Deps struct {
 	Pool *pgxpool.Pool
 	// RevokeTokens revokes all OAuth tokens of a user (offboarding); nil without OAuth.
 	RevokeTokens func(ctx context.Context, user uuid.UUID) (int64, error)
+	// RevokeAllTokens revokes the OAuth tokens of all users (admin_revoke_all_sessions); nil without OAuth.
+	RevokeAllTokens func(ctx context.Context) (int64, error)
 	// Allowlist and LoginProviders serve admin_allowlist; Allowlist nil = not managed.
 	Allowlist      *allowlist.Store
 	LoginProviders []LoginProvider
@@ -168,6 +173,21 @@ func (s *Server) Handler(verifier auth.TokenVerifier, resourceMetadataURL string
 	})(s.skillsRPC(h))
 }
 
+// Cache hints (ttlMs and cacheScope, protocol 2026-07-28) of every answer that carries them. What
+// the server tells a caller depends on who asks: the tool list and the instructions follow the roles,
+// skill files and lists follow the space rights. So nothing may be shared between callers
+// ("private"), and nothing is fresh for any time ("ttlMs" 0), because a change of rights has to show
+// at the next request. The SDK default would be "public".
+const (
+	cacheScopePrivate = "private"
+	cacheTTLMs        = 0
+)
+
+// privateCacheable is the SetCacheable hook of every per-caller MCP server.
+func privateCacheable(_ context.Context, _ mcp.Request, c *mcp.Cacheable) {
+	c.TTLMs, c.CacheScope = cacheTTLMs, cacheScopePrivate
+}
+
 // instructions are the server-level hints a client shows its model. Users mostly say the
 // short name, so the model has to connect it with this server.
 func (s *Server) instructions() string {
@@ -202,7 +222,7 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 	if s.Skills != nil {
 		caps.AddExtension(skillsExtension, nil)
 	}
-	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName, Icons: s.icons()}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a), Capabilities: caps})
+	ms := mcp.NewServer(&mcp.Implementation{Name: s.set.ProductName, Icons: s.icons()}, &mcp.ServerOptions{Instructions: s.instructionsFor(r.Context(), a), Capabilities: caps, SetCacheable: privateCacheable})
 	s.registerUserTools(ms)
 	if s.Skills != nil {
 		s.registerSkillResources(ms)
@@ -319,6 +339,11 @@ func (s *Server) allowed(ctx context.Context, min tier, a docs.Actor) bool {
 // adminSpaces lists the team spaces the actor administers (all of them for instance
 // admins). Personal spaces never count: their owner is admin there by construction.
 func (s *Server) adminSpaces(ctx context.Context, a docs.Actor) ([]spaces.Space, error) {
+	if a.User.InstanceAdmin {
+		// Not through the roles: whether an instance admin also reads the content of every space
+		// is a separate question (authz.AdminsReadContent); managing the spaces is their job.
+		return s.Spaces.ListAllTeam(ctx)
+	}
 	return s.teamSpacesAtLeast(ctx, a, authz.Admin)
 }
 
@@ -351,7 +376,8 @@ func translate(tool string, err error) error {
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
 		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap),
-		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived), errors.Is(err, skills.ErrQuota), errors.Is(err, skills.ErrChanged), errors.Is(err, skills.ErrNameTaken), errors.Is(err, users.ErrUserLimit):
+		errors.Is(err, skills.ErrForbidden), errors.Is(err, skills.ErrInvalid), errors.Is(err, skills.ErrState), errors.Is(err, skills.ErrOwnVersion), errors.Is(err, skills.ErrTampered), errors.Is(err, skills.ErrArchived), errors.Is(err, skills.ErrQuota), errors.Is(err, skills.ErrChanged), errors.Is(err, skills.ErrNameTaken), errors.Is(err, users.ErrUserLimit),
+		errors.Is(err, share.ErrDisabled), errors.Is(err, share.ErrSelf), errors.Is(err, share.ErrUndeliverable):
 		return err
 	}
 	slog.Error("Tool error", "tool", tool, "error", err)

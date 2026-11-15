@@ -32,7 +32,10 @@ type User struct {
 	Subject     string
 	Active      bool
 	// InstanceAdmin is the effective flag: stored flag OR listed in bootstrap_admins.
-	InstanceAdmin   bool
+	InstanceAdmin bool
+	// ConfigAdmin says the account is listed in bootstrap_admins: such an admin right comes from the
+	// configuration and cannot be removed through a tool.
+	ConfigAdmin     bool
 	DefaultSpaceID  *uuid.UUID
 	PersonalSpaceID *uuid.UUID // nil when personal spaces are disabled
 	LastLoginAt     *time.Time
@@ -107,7 +110,8 @@ func (s *Store) scan(row pgx.Row) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
-	u.InstanceAdmin = u.InstanceAdmin || s.bootstrap[strings.ToLower(u.Email)]
+	u.ConfigAdmin = s.bootstrap[strings.ToLower(u.Email)]
+	u.InstanceAdmin = u.InstanceAdmin || u.ConfigAdmin
 	return u, nil
 }
 

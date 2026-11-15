@@ -30,6 +30,7 @@ Do not confuse the two admin roles. A **space admin** manages **one** space. An 
 | Publish skills of risk class C | no | yes |
 | Create a space, change its name, description, approval requirement or default role | no | yes (`admin_create_space`, `admin_update_space`) |
 | Archive or restore the whole space | no | yes (`admin_archive_space`, `admin_restore_space`) |
+| Delete an empty space for good | no | yes (`admin_delete_space`, only without entries and skills) |
 | Create groups, manage logins, read the audit log | no | yes |
 | See and manage spaces you do not administer | no | all team spaces |
 | Read personal spaces | no | no |

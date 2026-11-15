@@ -58,10 +58,10 @@ auth:
   allow_loopback_redirects: true   # local clients such as Claude Code (http://localhost:<port>/...)
 
 database:
-  # Out of the box one account does everything (and is a superuser in the compose setup). For
-  # production, create two accounts with scripts/db-roles.sql: url is the server's account, which
-  # cannot change the schema or alter the audit log, and migration_url the account that runs the
-  # migrations at start. docs/deployment.md, "Separate database accounts".
+  # The compose setup runs the server with an account that cannot change the schema or alter the
+  # audit log (DATABASE_URL) and applies the migrations with a second one (DATABASE_MIGRATION_URL, read
+  # from the environment when migration_url below stays out). Without compose, create the two accounts
+  # with scripts/db-roles.sql. docs/deployment.md, "Separate database accounts".
   # migration_url: "postgres://atrium_migrate:<password>@postgres:5432/knowledge"
   url: "${DATABASE_URL}"
 
@@ -106,6 +106,15 @@ chunking:
   target_tokens: 500
   max_tokens: 800
 
+audit:
+  # A copy of the audit log outside the database. true: every event is also written to the standard
+  # output as one JSON line ("log":"audit"), for a log collector; the application log goes to the
+  # standard error. Off by default. docs/deployment.md, "Audit log outside the database".
+  stdout: false
+  # Delete entries older than this many days from the table, once a day. 0 = keep for ever; otherwise
+  # at least 30. Keep a copy elsewhere first (stdout above) if you need the history.
+  retention_days: 0
+
 spaces:
   personal:
     enabled: true
@@ -144,6 +153,17 @@ skills:
   # All limits in this file are defaults. An instance admin overrides them at runtime (tool
   # admin_quotas) for all personal spaces, all team spaces, one user or one space; the change
   # applies to the next write and survives a restart. docs/user/05-instance-admin.md.
+
+sharing:
+  # true: users can send a knowledge entry or a skill to a colleague (tools share_knowledge and
+  # share_skill). It lands in the recipient's personal space as a draft that only the recipient
+  # can approve or return; nothing reaches their assistant before that. Off by default.
+  # Needs spaces.personal.enabled. docs/sharing.md.
+  enabled: false
+  # Received items that wait unanswered in one personal space (drafts and returned ones), from
+  # everybody and from one sender. They keep somebody from filling another user's review list.
+  max_pending_per_recipient: 20
+  max_pending_per_sender: 3
 
 tools:
   descriptions: {}

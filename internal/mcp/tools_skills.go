@@ -55,8 +55,8 @@ func (s *Server) registerSpaceAdminSkillTools(ms *mcp.Server, member bool) {
 }
 
 func (s *Server) registerCuratorSkillTools(ms *mcp.Server, member bool) {
-	addTool(s, ms, "review_skill", "Review skill", tierCurator, true, s.reviewSkill, s.compactFor("review_skill", member))
-	addTool(s, ms, "publish_skill", "Publish skill", tierCurator, true, s.publishSkill, s.compactFor("publish_skill", member))
+	addTool(s, ms, "review_skill", "Review skill", tierUser, true, s.reviewSkill, s.compactFor("review_skill", member))
+	addTool(s, ms, "publish_skill", "Publish skill", tierUser, true, s.publishSkill, s.compactFor("publish_skill", member))
 	addTool(s, ms, "block_skill", "Block skill", tierCurator, true, s.blockSkill, s.compactFor("block_skill", member))
 }
 
@@ -212,11 +212,18 @@ type skillVersionInfo struct {
 	RequestedTools string `json:"requested_tools,omitempty"`
 	ReviewNote     string `json:"review_note,omitempty"`
 	BlockReason    string `json:"block_reason,omitempty"`
+	// Author is who wrote the version, shown while it is not released: a reviewer has to know whether
+	// the draft is a colleague's or came from another user (sent to the personal space).
+	Author string `json:"author,omitempty"`
 }
 
 func versionInfo(v skills.Version) skillVersionInfo {
-	return skillVersionInfo{Version: v.Version, Status: v.Status, RiskClass: v.RiskClass, Digest: v.Digest,
+	info := skillVersionInfo{Version: v.Version, Status: v.Status, RiskClass: v.RiskClass, Digest: v.Digest,
 		RequestedTools: v.RequestedTools, ReviewNote: v.ReviewNote, BlockReason: v.BlockReason}
+	if v.Status != skills.StatusPublished {
+		info.Author = v.Author
+	}
+	return info
 }
 
 type skillResourceInfo struct {

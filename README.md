@@ -7,7 +7,7 @@ A self-hosted, vendor-neutral knowledge store for AI assistants (MCP). Knowledge
 ## Quick start (production)
 
 1. `cp .env.example .env` and `cp config.example.yaml config.yaml`. A basic setup fills in only `.env`: `POSTGRES_PASSWORD`,
-   `ATRIUM_BASE_URL`, `ATRIUM_ALLOWED_DOMAIN`, `ADMIN_EMAIL` and the Google credentials; `config.yaml` stays as it is unless you need other providers or settings.
+   `APP_DB_PASSWORD`, `MIGRATE_DB_PASSWORD`, `ATRIUM_BASE_URL`, `ATRIUM_ALLOWED_DOMAIN`, `ADMIN_EMAIL` and the Google credentials; `config.yaml` stays as it is unless you need other providers or settings.
 2. Choose a deployment variant (details and proxy requirements in [docs/deployment.md](docs/deployment.md)):
 
 | Variant | Steps |
@@ -28,9 +28,11 @@ Contributing: [CONTRIBUTING.md](CONTRIBUTING.md); contributions need the [Contri
 
 The embedding backend is selectable: your own TEI server, OpenAI and compatible services, or Amazon Bedrock. Settings, memory requirements and data protection: [docs/embedding.md](docs/embedding.md).
 
-**Why Atrium, and user guides** for every group of users (everyday use, authors, curators, space admins, instance admins), with FAQs and as PDF: start with [docs/user/00-why-atrium.md](docs/user/00-why-atrium.md), index in [docs/user/README.md](docs/user/README.md).
+**Why Atrium, and user guides** for every group of users (everyday use, authors, curators, space admins, instance admins), with FAQs and as PDF: start with [docs/user/00-why-atrium.md](docs/user/00-why-atrium.md) and, for new users, [docs/user/00-getting-started.md](docs/user/00-getting-started.md), index in [docs/user/README.md](docs/user/README.md).
 
 Drafts, mandatory approval and review by curators: [docs/approval.md](docs/approval.md). Knowledge types (binding rule, documentation, recommendation, experience), responsible people and review dates: [docs/design/knowledge-metadata.md](docs/design/knowledge-metadata.md).
+
+Sending an entry or a skill to a colleague's personal space, where the recipient reviews it (off by default): [docs/sharing.md](docs/sharing.md).
 
 Company-wide skills (approved working instructions for assistants) with their own review and immutable versions: [docs/skills.md](docs/skills.md). Two skills for filing sources and checking spaces ship with Atrium, to be installed and reviewed by each organisation: [skills/README.md](skills/README.md).
 
@@ -41,6 +43,8 @@ docker compose -f docker-compose.dev.yml up -d
 ATRIUM_TEST_DATABASE_URL=postgres://knowledge:knowledge@localhost:5432/knowledge go test ./...
 go run ./cmd/server -config config.yaml
 ```
+
+The development compose file has its own project name (`atriumdev`), so it can run next to a production stack on the same machine without touching it.
 
 The data model after the latest migration (all tables with columns, keys, constraints, indexes, triggers, relationships and what each table is for) is an interactive page: [docs/data-model.html](docs/data-model.html). Open it in a browser from a checkout; GitHub shows HTML files as source only. It needs no network access. A migration that changes the schema updates the page in the same change; `node tools/docs/check-data-model.mjs` compares the page with the migrations and names every difference.
 
@@ -55,6 +59,10 @@ The data model after the latest migration (all tables with columns, keys, constr
 Restore: `gunzip -c backups/atrium-tablinum-….sql.gz | docker compose exec -T postgres psql -U knowledge -d knowledge` into an empty database. Embeddings are included in the dump; a model change, however, requires reindexing.
 
 The dump also contains personal spaces. Protect its storage and access accordingly.
+
+## Security
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). What an instance admin does in an incident is in [docs/incident.md](docs/incident.md).
 
 ## License
 

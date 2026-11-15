@@ -21,6 +21,7 @@ var (
 	ErrSlugTaken = errors.New("slug is already taken")
 	ErrInvalid   = errors.New("invalid input")
 	ErrNotTeam   = errors.New("team spaces only")
+	ErrNotEmpty  = errors.New("space still holds entries or skills")
 )
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,62}$`)
@@ -210,6 +211,48 @@ func (s *Store) SetArchived(ctx context.Context, id uuid.UUID, archived bool) er
 	}
 	if tag.RowsAffected() == 0 {
 		return s.notFoundOrNotTeam(ctx, id)
+	}
+	s.changed()
+	return nil
+}
+
+// Delete removes an empty team space for good: members, default role and quota overrides go with
+// it. A space that still holds an entry of any status or a skill is refused with ErrNotEmpty;
+// handoffs do not count, they expire anyway. The space row is locked first, so nothing can be
+// stored into it between the check and the deletion.
+func (s *Store) Delete(ctx context.Context, id uuid.UUID) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var typ string
+	if err := tx.QueryRow(ctx, `SELECT type FROM spaces WHERE id = $1 FOR UPDATE`, id).Scan(&typ); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if typ != "team" {
+		return ErrNotTeam
+	}
+	var used bool
+	if err := tx.QueryRow(ctx, `
+SELECT EXISTS (SELECT 1 FROM documents WHERE space_id = $1 AND kind = 'knowledge')
+    OR EXISTS (SELECT 1 FROM skills WHERE space_id = $1)`, id).Scan(&used); err != nil {
+		return err
+	}
+	if used {
+		return ErrNotEmpty
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM quotas WHERE scope = 'space' AND scope_id = $1`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM spaces WHERE id = $1`, id); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
 	}
 	s.changed()
 	return nil

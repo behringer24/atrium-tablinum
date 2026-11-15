@@ -110,6 +110,10 @@ func TestSkillsExtension(t *testing.T) {
 	if res["resultType"] != "complete" {
 		t.Fatalf("resultType: %v", res)
 	}
+	// What a user may see depends on the user, so the answer is not shareable and not fresh.
+	if res["cacheScope"] != "private" || res["ttlMs"] != float64(0) {
+		t.Fatalf("cache hints of skills/list: %v", res)
+	}
 	list := res["skills"].([]any)
 	if len(list) != 1 {
 		t.Fatalf("skills/list: %v", list)
@@ -131,7 +135,11 @@ func TestSkillsExtension(t *testing.T) {
 	}
 
 	// skills/get returns the same entry; unknown and foreign skills are the same error.
-	got := e.rpc(t, "bob@x.de", "skills/get", map[string]any{"uri": uri})["result"].(map[string]any)["skill"].(map[string]any)
+	gotRes := e.rpc(t, "bob@x.de", "skills/get", map[string]any{"uri": uri})["result"].(map[string]any)
+	if gotRes["cacheScope"] != "private" || gotRes["ttlMs"] != float64(0) {
+		t.Fatalf("cache hints of skills/get: %v", gotRes)
+	}
+	got := gotRes["skill"].(map[string]any)
 	if a, b := mustJSON(t, got), mustJSON(t, entry); a != b {
 		t.Fatalf("skills/get differs from skills/list:\n%s\n%s", a, b)
 	}

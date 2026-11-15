@@ -10,30 +10,25 @@ The guiding question for all knowledge features: does an assistant find the righ
 
 ### Reliable knowledge (candidate for 0.6)
 
-- **Optimistic locking for updates:** `update_knowledge` replaces the complete content, but a client cannot say which version it started from. If two assistants load version 3 and both save, the second silently overwrites the first. Add an optional `expected_version` (the version `get_knowledge` returns); on a mismatch the call fails with a structured conflict and the assistant reloads and merges. The server already re-checks the version inside the transaction, so this only needs the client-side half. Later make it mandatory for assistants through the tool description.
 - **Review reminders:** knowledge types, responsible people and review dates are built ([design](docs/design/knowledge-metadata.md)); overdue reviews show in entries, `list_knowledge review=due` and `whats_new`. Still open: telling responsible people and curators actively when a review falls due (needs the notifications below), and recording the last review as its own date.
-- **Systematic permission tests:** a test matrix of roles (reader, author, curator, admin, instance admin) across personal and team spaces and across every tool: drafts, archive, versions, search excerpts, direct ids, counts and error texts must not leak anything. Many negative tests exist in the packages; the matrix makes the gaps visible.
 - **Summarising with `replaces`:** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported.
+
+### Sending to a colleague, follow-ups
+
+Sending an entry or a skill to a colleague's personal space is built ([docs/sharing.md](docs/sharing.md)). Still open: a notice to the recipient when something arrives (needs the notifications above), the sender seeing the outcome and recalling an item that is still waiting (needs a small table of sent items, which the first version avoids on purpose), a switch for a single user to refuse items, and sending to a group of people or a team space (which would be an ordinary draft in that space, not a personal one).
 
 ### Security, remainder of the audit of 2026-11-03
 
-- consent page before a new client is connected
-- audit log leaving the database (JSON line on stdout, Postgres role with `INSERT` only, optionally a hash chain) and a retention period
-- `SECURITY.md` with a reporting route, an incident runbook (`docs/incident.md`) and a tool that revokes all tokens of the instance
+- audit log: an optional hash chain over the entries, so that a gap or a change is detectable. The copy on stdout, the retention period and the append-only server account exist.
 - abuse detection (unusually many reads, failed token checks) in `admin_health`
-- confirmation when storing into spaces of others
-
-### Security, remainder of the second audit (2026-11-04)
-
-The findings of the second audit (external attack surface, authorisation and integrity) that are fixed are listed in the changelog. Still open:
-
-- **Package cleanup token:** `PACKAGES_PAT` is a classic token with `delete:packages`; replace it with a narrower credential as soon as GitHub offers one for container packages.
-- **Database roles by default:** the separate accounts are opt-in (`scripts/db-roles.sql`); make them part of the compose setup and the install steps, so that new installations start hardened.
-- A client whose `client_name` is shown in `my_sessions` should be marked as data.
 
 ### Editions and release
 
-Community (this repository, up to 8 active accounts) and Pro are built from one code base ([docs/licensing.md](docs/licensing.md)). Still open on the public side: `SECURITY.md` with a reporting route (the CRA reporting duty applies since 11 September 2026).
+Community (this repository, up to 8 active accounts) and Pro are built from one code base ([docs/licensing.md](docs/licensing.md)).
+
+### Tool list after a change of rights (open gap)
+
+Clients read the tool list once per connection and do not reliably refresh it. A user who becomes curator or space admin may therefore keep seeing the compact form of the curator and space admin tools until the connector is reconnected. Only the listed tools and their descriptions are stale: rights are checked on every call. Atrium marks its answers as not cacheable (`ttlMs: 0`, scope `private`) and sends no `notifications/tools/list_changed`. In a measurement with Claude Code 2.1.321 no refresh followed a change of rights within five minutes; one reload came after exactly six minutes, for a reason not yet established. Unsolved. Options: send list-changed notifications over `subscriptions/listen` (needs a long-lived server and a registry of open streams per user instead of one server per request), after finding out which clients act on them.
 
 ### Documentation and operations
 
@@ -74,7 +69,7 @@ Atrium becomes the controlled registry and distribution service for company-wide
 
 ## Later
 
-- **Roles for customers with high protection needs:** instance admins are admin in every team space today and can read everything there. Some customers need a split between "manage users and operations" and "read content" (for example for management or HR). This includes separate roles, a waiting period with a second admin when transferring personal spaces, and notifications. Personal spaces are already closed to everyone except their owner.
+- **Roles for customers with high protection needs:** instance admins are admin in every team space by default. The Pro edition can separate operations from content (instance admins then read only the spaces they are members of, see [Atrium Pro](docs/pro/pro-edition.md#separating-content-from-operations)). Still open: a waiting period with a second admin when transferring personal spaces, a separate right for reading the audit log, and notifications. Personal spaces are already closed to everyone except their owner.
 - **Review notifications:** curators already find waiting drafts with `list_knowledge status=draft` and see the counts of all their spaces in `whats_new`; authors learn of approvals and returns only by looking. Start with a review queue and an optional digest, later e-mail and chat integrations. Notifications must not carry metadata to people who may not see the entry.
 - **A draft next to the released version:** authors of spaces that require approval cannot change approved entries today.
 - **Correction reports:** readers flag an entry as wrong, incomplete, unclear or outdated, with a reason and the place concerned. The owners get a reviewable item; reports never overwrite binding knowledge directly.

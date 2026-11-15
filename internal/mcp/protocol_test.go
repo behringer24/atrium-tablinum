@@ -29,6 +29,29 @@ func (e *env) post(t *testing.T, email string, headers map[string]string, body s
 	return resp.StatusCode, string(b)
 }
 
+// The tool list and the instructions depend on the caller's roles, so no answer that carries cache
+// hints may be marked as shareable, and none may be fresh for any time: a change of rights has to
+// show at the next request.
+func TestCacheHintsArePrivate(t *testing.T) {
+	e := setup(t, 0)
+	e.session(t, "anna@x.de")
+
+	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",` +
+		`"io.modelcontextprotocol/clientInfo":{"name":"probe","version":"1"},` +
+		`"io.modelcontextprotocol/clientCapabilities":{}}`
+	for _, method := range []string{"server/discover", "tools/list", "resources/templates/list"} {
+		status, body := e.post(t, "anna@x.de",
+			map[string]string{"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": method},
+			`{"jsonrpc":"2.0","id":1,"method":"`+method+`","params":{`+meta+`}}`)
+		if status != http.StatusOK {
+			t.Fatalf("%s: HTTP %d: %.300s", method, status, body)
+		}
+		if !strings.Contains(body, `"cacheScope":"private"`) || !strings.Contains(body, `"ttlMs":0`) || strings.Contains(body, `"public"`) {
+			t.Errorf("%s: cache hints: %.400s", method, body)
+		}
+	}
+}
+
 // Clients of the sessionless protocol (2026-07-28) send no initialize and no session id: protocol
 // version, client info and capabilities travel with every request. A stateful server rejects
 // them, so the endpoint has to stay stateless.

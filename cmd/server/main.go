@@ -18,6 +18,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 
 	"github.com/behringer24/atrium-tablinum/internal/allowlist"
+	"github.com/behringer24/atrium-tablinum/internal/audit"
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/chunk"
 	"github.com/behringer24/atrium-tablinum/internal/config"
@@ -35,6 +36,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/reembed"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
@@ -63,6 +65,9 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		_ = level.UnmarshalText([]byte(cfg.Instance.LogLevel))
 	}
 
+	if cfg.Audit.Stdout {
+		audit.SetSink(os.Stdout)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -133,13 +138,15 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		Team: quota.Limits{Documents: cfg.Spaces.Team.MaxDocuments, Bytes: cfg.Spaces.Team.MaxBytes,
 			Skills: cfg.Skills.TeamMaxSkills, SkillBytes: cfg.Skills.TeamMaxBytes, SkillVersions: cfg.Skills.MaxVersionsPerSkill},
 	})
+	shareOpt := share.Options{Enabled: cfg.Sharing.Enabled, MaxPerRecipient: cfg.Sharing.MaxPendingPerRecipient, MaxPerSender: cfg.Sharing.MaxPendingPerSender}
 	docStore := docs.New(pool, spaceStore, ing, docs.Options{
 		Quota:               quotaStore,
 		HandoffTTLDays:      cfg.Spaces.HandoffTTLDays,
 		DuplicateThreshold:  cfg.Policy.DuplicateThreshold,
 		InlineIndexSections: cfg.Policy.InlineIndexSections,
+		Share:               shareOpt,
 	})
-	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval, Quota: quotaStore})
+	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval, Quota: quotaStore, Share: shareOpt})
 	searchSvc, err := search.New(pool, emb, search.Config{
 		FTSLanguages: cfg.Search.FTSLanguages, CandidatesPerMethod: cfg.Search.CandidatesPerMethod, RRFK: cfg.Search.RRFK,
 		DefaultLimit: cfg.Search.DefaultLimit, MaxLimit: cfg.Search.MaxLimit, HNSWEfSearch: cfg.Search.HNSWEfSearch,
@@ -152,6 +159,16 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	// After a change of the embedding model an instance admin starts the rebuild of the vectors
 	// (admin_reembed); this task works through it in the background, also across restarts.
 	reembedder := reembed.New(pool, emb)
+	if cfg.Audit.RetentionDays > 0 {
+		keep := time.Duration(cfg.Audit.RetentionDays) * 24 * time.Hour
+		runner.AddPeriodic(jobs.Periodic{Name: "audit_retention", Every: 24 * time.Hour, Run: func(ctx context.Context) error {
+			n, err := audit.Purge(ctx, pool, keep)
+			if n > 0 {
+				log.Info("Audit entries purged", "deleted", n, "older_than_days", cfg.Audit.RetentionDays)
+			}
+			return err
+		}})
+	}
 	runner.AddPeriodic(jobs.Periodic{Name: "reembed", Every: time.Minute, Run: reembedder.Run})
 	// A long entry is saved with its first sections embedded; this task embeds the rest, so that
 	// saving answers at once and does not depend on how long the embedding service needs.
@@ -212,6 +229,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 			HandoffTTLDays: cfg.Spaces.HandoffTTLDays, DescriptionOverrides: cfg.Tools.Descriptions,
 			DefaultSpaceByGroup: cfg.Spaces.DefaultSpaceByGr, WritesPerMinute: cfg.Policy.RateLimitWritesPerMinute, ReadsPerMinute: cfg.Policy.RateLimitReadsPerMinute,
 			PersonalRetentionDays: cfg.Spaces.Personal.RetentionDaysAfterOffboarding,
+			SharingEnabled:        cfg.Sharing.Enabled,
 			// A reverse proxy on the same host reaches us via loopback with the public Host header.
 			DisableHostProtection: len(cfg.Instance.TrustedProxies) > 0,
 		})
@@ -254,6 +272,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		oauthSrv.Register(mux)
 		runner.AddPeriodic(jobs.Periodic{Name: "oauth_cleanup", Every: time.Hour, Run: oauthSrv.Cleanup})
 		mcpSrv.RevokeTokens = oauthSrv.RevokeUser // offboarding
+		mcpSrv.RevokeAllTokens = oauthSrv.RevokeAll
 		mcpSrv.ListSessions = func(ctx context.Context, user uuid.UUID) ([]mcpserver.SessionInfo, error) {
 			list, err := oauthSrv.Sessions(ctx, user)
 			out := make([]mcpserver.SessionInfo, 0, len(list))

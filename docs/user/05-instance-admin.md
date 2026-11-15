@@ -2,7 +2,7 @@
 
 An **instance admin** runs one Atrium instance for the whole organisation: creates and structures spaces, decides who may log in, looks after users and groups, sets the context that tells assistants what Atrium contains, watches the audit log and keeps the system healthy. This guide assumes you know the guides for [everyday use](01-user.md), [authors](02-author.md), [curators](03-curator.md) and [space admins](04-space-admin.md).
 
-Instance admins are set in the server configuration (`auth.bootstrap_admins`, a list of e-mail addresses), not through a tool. Because the role is powerful, keep the list short (two to three people, never a shared account) and use accounts with multi-factor authentication at your identity provider.
+The first instance admins are set in the server configuration (`auth.bootstrap_admins`, a list of e-mail addresses). Instance admins can then give the right to other people with `admin_instance_admins` (see [Instance admins](#instance-admins)), for example to the management of a small company. Because the role is powerful, keep the group small, never use a shared account and use accounts with multi-factor authentication at your identity provider.
 
 ## Contents
 
@@ -14,6 +14,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 - [The context for assistants](#the-context-for-assistants)
 - [Quotas](#quotas)
 - [Governing skills](#governing-skills)
+- [Sending between users](#sending-between-users)
 - [Audit log and monitoring](#audit-log-and-monitoring)
 - [Operating the system](#operating-the-system)
 - [Security responsibilities and incidents](#security-responsibilities-and-incidents)
@@ -26,7 +27,7 @@ Instance admins are set in the server configuration (`auth.bootstrap_admins`, a 
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive and restore spaces; list users; lock and reactivate; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
+- Use the **`admin_*` tools**: create, change, archive, restore and delete (empty) spaces; list users; lock and reactivate; grant and revoke the instance admin right; manage local groups; read the rights report; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -82,6 +83,7 @@ A checklist for the first days. The technical steps are in the [README](../../RE
 
 - `admin_update_space` changes name, description, approval and default role. Changing the description needs your confirmation after the new text was shown, because it reaches every user's assistant. Existing entries keep their status when you switch approval on or off.
 - `admin_archive_space` hides a whole space from everybody but instance admins; the content is kept. `admin_restore_space` brings it back.
+- `admin_delete_space` removes an **empty** team space for good, with its members, default role and quota settings. A space that still holds an entry of any state (archived ones included) or a skill is refused: move or delete the content first, or archive the space instead. It needs `confirm=true` and cannot be undone; the audit log keeps slug and name (`admin_delete_space`).
 - Personal spaces are not listed here and cannot be archived through these tools.
 
 ## Users, groups and logins
@@ -96,15 +98,46 @@ The base list comes from `config.yaml` (allowed domains, addresses, tenants). Ex
 
 A user appears after their first login; someone must have logged in once before they can be added to a space.
 
+### Instance admins
+
+The instance admin right has two sources, and `admin_instance_admins` shows both:
+
+- **`config`:** the addresses in `auth.bootstrap_admins`. This right cannot be removed through a tool, so it is the way back in if somebody else's account is lost or misused. Change it in the configuration and restart.
+- **`granted`:** given through the tool. *"Make maria@example.com an instance admin."* (`grant`, after your confirmation) works for an active user who has logged in once. *"Take the admin right from maria@example.com."* (`revoke`, after confirmation) removes it again. Both are recorded in the audit log (`admin_grant_instance_admin`, `admin_revoke_instance_admin`).
+
+*"Who is an instance admin?"* (`list`) shows each admin with the source, the status and the last login. Check it from time to time.
+
+What to know:
+
+- **An instance admin is admin in every team space**, including spaces created later, and can use all `admin_*` tools. Personal spaces stay closed to them. Grant the right to as few people as needed; in a small company that is typically the management plus the person who runs the system.
+- **You cannot revoke your own right**, nor a right from the configuration. Another instance admin revokes yours.
+- **A granted right takes effect for the tools at the next connection** of the person's assistant (assistants read the tool list once per connection); a revoked right ends at the next call.
+- **Offboarding removes a granted right** (`admin_offboard_user`), so reactivating an account does not bring it back. A locked account cannot be granted the right.
+- This right always carries both: the content of all team spaces and the operation of the system. The Pro edition can separate them ([Atrium Pro](../pro/pro-edition.md#separating-content-from-operations)).
+
 ### Groups
 
 Local groups (`admin_groups`: `list`, `create`, `rename`, `delete`, `add_member`, `remove_member`) let you give a role to a set of people at once, for example "support-team". Groups from the identity provider are visible but read-only, and are not yet synchronised from the login token. Deleting a group needs your confirmation.
 
+### Rights report
+
+*"Show me the rights report."* (`admin_rights_report`, read-only) lists on one page who holds which role where: the instance admins and whether they read the content of all team spaces, and for every team space its default role (reader or author for everybody logged in, none for members only), the approval setting, and every user and group with its role, highest first. Locked accounts are marked as former. Below it come hints, for example a space without a space admin, a group that holds the admin role, or a space open to everybody. The hints are things to look at, not errors. Personal spaces are not part of it. Use it for the access review and after bigger changes; it shows the configuration of your instance, which the checks in the code cannot.
+
 ### Sessions
 
 - `admin_revoke_sessions` ends all logins of a user at once (account stays active; they log in again). Use it when an access is suspected of misuse.
+- `admin_revoke_all_sessions` ends the logins of **all** users, yours included, and needs `confirm=true`. Accounts stay active; every assistant logs in again and is allowed again by its user (see [Allowing new clients](#allowing-new-clients)). Use it when tokens may have leaked and the scope is unclear; remove the source of the leak first. It does not touch a static token of a `dev_mode` setup.
 - Users end their own with `revoke_my_sessions`. Sessions last at most 90 days (`auth.session_max_age`); access tokens one hour, refresh tokens 30 days.
 - A locked account loses access immediately, even with a valid token: users are checked live on every request.
+
+### Allowing new clients
+
+Anybody can register a client (an assistant's connector) under any name, within the return addresses your instance allows. So that nobody connects one unnoticed, every user is asked once per client: after the login at the identity provider a page shows the name the client gave itself, the address it sends the user back to and the account, with the buttons Allow and Deny. Nothing is issued before the answer, and the answer is remembered for that user and client, so the next login of the same client asks nothing. Users who log in again with an assistant they already use are asked once after an update that brought this page; logins that are already running are not touched.
+
+- **Brief your users:** allow only a connection you started yourself; if the question is unexpected, deny. The name is the client's own choice and no proof of who it is. The address it sends the user back to is the better sign, and it can only be one of the addresses in `auth.allowed_redirect_uris`, so keep that list short.
+- **Cutting a client off makes it ask again:** ending a client's sessions (`revoke_my_sessions`), all sessions of a user (`admin_revoke_sessions`, offboarding) or of everybody (`admin_revoke_all_sessions`), and the detection of a reused refresh token also forget the consent. After `admin_revoke_all_sessions` every user allows their assistants again at the next login.
+- **Look at it in the audit log:** `client_consent` and `client_consent_denied` with the client id, the name it gave and the host it sends the user back to. Many denials, or a client name you do not know, are worth a look (*"Who allowed a client this week?"* with `action: client_consent`).
+- There is no setting to switch the page off.
 
 ### Account linking
 
@@ -115,7 +148,7 @@ By default a login with a second provider and an already used e-mail address is 
 The full procedure and the data protection notes are in [Offboarding](../offboarding.md). In short:
 
 1. **Before the last day:** the person moves what belongs to the team out of their personal space.
-2. **Lock:** *"Offboard anna@example.com."* (`admin_offboard_user`, after confirmation). The account is locked at once, all tokens are revoked, handoffs are deleted. The personal space stays private; you see counts and the deletion date.
+2. **Lock:** *"Offboard anna@example.com."* (`admin_offboard_user`, after confirmation). The account is locked at once, all tokens are revoked, handoffs are deleted, a granted instance admin right is removed. The personal space stays private; you see counts and the deletion date.
 3. **Hand the content on:** in the Community edition a personal space cannot be handed on by an admin, so ask the person to move what belongs to the team before the last day, or lengthen the deadline of step 4. The Pro edition adds guided help for it ([Atrium Pro](../pro/pro-edition.md#guided-offboarding)).
 4. **Deadline:** personal spaces of locked accounts are deleted after `spaces.personal.retention_days_after_offboarding` days (default 30). `admin_reactivate_user` lifts the lock again and ends the deadline.
 5. **Responsibilities:** entries that name the person as responsible keep the name, marked `former`, until somebody takes over. A curator or the author changes the responsible person entry by entry (`update_knowledge` with `owner`); the Pro edition can hand them all on in one step.
@@ -202,6 +235,16 @@ Skills are the highest-trust content in Atrium: assistants follow them. Your rol
 
 Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `skill_block`, `skill_move_*` and `skill_delete` (see below).
 
+## Sending between users
+
+Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `share_skill`). It lands in the recipient's personal space as a draft that only the recipient can read, approve or return; you cannot read it either. Details, rights and protections: [Sending to a colleague](../sharing.md).
+
+- **Off by default.** Switch it on with `sharing.enabled: true` in `config.yaml` (needs `spaces.personal.enabled`) and restart; the two tools are listed only then. The change reaches users when they reconnect.
+- **Limits:** `sharing.max_pending_per_recipient` (default 20) caps the received items that wait in one personal space, `sharing.max_pending_per_sender` (default 3) those of one sender in it. Both keep somebody from filling another user's review list. The recipient's quota applies too. They are settings, not runtime quotas.
+- **Skills are the point to watch.** A received skill is only a draft in a personal space until its owner releases it. The owner is the reviewer, so brief people to read every file, and expect that risk class C needs you, as everywhere. Block the skill with `block_skill` if one turns out to be harmful.
+- **No content in the log.** Every sending is `share_send` with the sender, the recipient (id), the kind and a digest; nothing says what was sent. Ask *"Who sent something to others this week?"* with the filter `action: share_send`.
+- **Not covered yet:** the sender is not told the decision, there is no recall and no per-user switch to refuse items (see the [roadmap](../../ROADMAP.md)).
+
 ## Audit log and monitoring
 
 *"Show the last audit entries."* (`admin_audit_log`). Filters: `user` (e-mail), `action` (exact or a prefix with `*`, for example `skill_*`), `space`, `document_id`, `skill` (skill name), `client`, `since`, `until` (RFC 3339 or `YYYY-MM-DD`), `limit` (default 50, at most 200).
@@ -211,13 +254,17 @@ Watch the audit log for `skill_publish`, `skill_approve` with `self_approved`, `
 | Area | Actions |
 |---|---|
 | Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
-| Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
-| Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
-| Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user`, `admin_reactivate_user`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
+| Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, `share_send` (a sending to a colleague: kind, recipient id and digest, no title or name), reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
+| Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `admin_delete_space`, `space_add_member`, `space_remove_member` |
+| Users and logins | `login`, `login_denied`, `client_consent` and `client_consent_denied` (client id, the name it gave, the host it sends the user back to), `account_linked`, `admin_offboard_user` (with `admin_right_removed`), `admin_reactivate_user`, `admin_grant_instance_admin`, `admin_revoke_instance_admin`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
 | Instance | `admin_context_set`, `admin_context_clear`, `admin_instance_set`, `admin_quota_set` (scope, target, old and new values) |
 
-Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
+The server records `audit_purge` when the retention deletes old entries. Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mcp-skills` for the `skills/*` methods, `api`, `system` for server-side events such as logins), action, space and details.
+
+### A copy outside the database and retention
+
+Two settings in `config.yaml` (`audit:`) let you keep the audit log where the server cannot change it and keep the table from growing for ever: `audit.stdout` writes every event as a JSON line to the standard output for a log collector, and `audit.retention_days` deletes entries older than that many days (at least 30) once a day. Details in [Deployment](../deployment.md#audit-log-outside-the-database).
 
 ### Useful questions
 
@@ -226,6 +273,7 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 - *Who reads which skill and by which route:* `action=skill_get` with `client=chatgpt`; look at `via`.
 - *What was moved or deleted:* `action=skill_move*`, `action=delete`, `action=skill_delete`.
 - *Failed logins:* `action=login_denied`.
+- *Which clients users allowed or denied:* `action=client_consent*`.
 - *Changes to members and spaces:* `action=space_add_member`, `action=admin_*`.
 - *What happened in a space last week:* `space=Support since=2026-11-01` (searches are not tied to a space).
 
@@ -233,7 +281,7 @@ Each entry has time, user, client label (`claude`, `chatgpt`, `claude-code`, `mc
 
 - **Personal spaces** appear only as "personal space" with time and action, never with names, titles or contents.
 - **Denied attempts** are logged as `denied` with the tool and the reason (`role does not allow this`, `approval required`, `own version cannot be approved`, `no permission for this tool`, `write rate limit`, `read rate limit`), no arguments, at most once a minute per user, tool and reason. A missing item (`not found`) is not logged, because it may simply not exist. There are **no alerts**; the log is only read by you. Plan a regular review (see [Routines](#routines)).
-- The log lives in the same database as the content. Anyone with database administration rights could alter it. Protect the database accordingly; an off-box copy and tamper protection are on the [roadmap](../../ROADMAP.md).
+- The log lives in the same database as the content. Anyone with database administration rights could alter it. Protect the database accordingly. Switch on the copy on the standard output (see [A copy outside the database and retention](#a-copy-outside-the-database-and-retention)) and let a log collector keep it, so that a changed or missing entry in the database shows up against the copy. A hash chain over the entries, which makes a gap or a change detectable on its own, is on the [roadmap](../../ROADMAP.md).
 - For request-level detail set `instance.log_level: debug`: the server then logs one line per MCP request (method, tool, resource, client) to its log.
 
 ## Operating the system
@@ -278,12 +326,12 @@ For more users and extra features, see [Editions](../licensing.md); with a Pro l
 
 ### Separate database accounts
 
-Out of the box the server connects to the database as its superuser. That is simple, but a flaw in the server (or anybody holding its connection string) could switch off the triggers that freeze released skills, rewrite the audit log or change the schema. The server logs a warning at start while it runs as a superuser. For production, set up two accounts once, with `scripts/db-roles.sql`:
+A flaw in the server (or anybody holding its connection string) must not be able to switch off the triggers that freeze released skills, rewrite the audit log or change the schema. The compose setup therefore runs the server with a restricted account and sets the accounts up itself at every start (the service `db-init`, with `APP_DB_PASSWORD` and `MIGRATE_DB_PASSWORD` from `.env`). Without compose (and in a setup that connects as the superuser, where the server logs a warning at start), set the accounts up once with `scripts/db-roles.sql`:
 
 - `atrium_app` (the server): reads and writes the data, can only **append** to the audit log, cannot change the schema, create or drop tables or switch triggers off.
 - `atrium_migrate`: owns the schema and runs the migrations at start.
 
-Then set `database.url` to the first and `database.migration_url` to the second in `config.yaml`. The steps are in [Deployment](../deployment.md#separate-database-accounts). An update that adds tables works without further steps.
+Then set `database.url` to the first and `database.migration_url` to the second in `config.yaml` (compose does this through the environment). The steps are in [Deployment](../deployment.md#separate-database-accounts). An update that adds tables works without further steps.
 
 ### Limits that protect the system
 
@@ -314,12 +362,13 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 | Situation | Steps |
 |---|---|
 | An account may be compromised | `admin_revoke_sessions` for the user; if confirmed, `admin_offboard_user` to lock it; review `admin_audit_log user=...` for what it did; reset access at the identity provider |
+| Tokens may have leaked and the scope is unclear | Remove the source of the leak, then `admin_revoke_all_sessions` (everybody logs in again); the full runbook is in `docs/incident.md` |
 | A harmful or wrong skill | Block the version (curator or you), check who loaded it (`skill=..., action=skill_get`), tell the users, have a fixed version reviewed. Delete only if it must disappear |
 | Sensitive data in an entry | Archive at once to stop it being served, then delete it for good (that works on archived entries); reads of knowledge entries are not logged, so the audit log shows who changed it and which searches ran, not who read it; tell the data protection officer |
 | Credentials leaked in an entry | Treat them as compromised, rotate them first, then delete the entry |
 | Unwanted login attempts | `login_denied` entries; tighten the allowlist; check provider settings |
 | A curator or author misbehaves | Remove their role (space admin or you); review their recent changes in the audit log |
-| Instance admin account needs to change | Edit `auth.bootstrap_admins` and restart |
+| An instance admin leaves or should lose the right | A granted right: `admin_instance_admins` with `revoke`, or offboarding. A right from the configuration: edit `auth.bootstrap_admins` and restart |
 
 **Known limits (be honest with your organisation).** No notifications or alerts yet; the audit log is not tamper-proof against database administrators; unless you set up the [separate database accounts](#separate-database-accounts) the application connects to the database with a powerful account; and embedding services may process content outside your network if you choose a cloud backend. These points are on the roadmap.
 
@@ -338,7 +387,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 - Read the changelog and plan updates.
 
 **Quarterly**
-- Access review: members, roles, groups and the allowlist, space by space with the space admins.
+- Access review: start with `admin_rights_report`, then go through members, roles, groups and the allowlist space by space with the space admins.
 - Skill review: which skills exist, which are used (audit reads), which are stale; archive what is unused.
 - Test a **restore** of the backup into an empty database.
 - Review the context and space descriptions for accuracy.
@@ -372,11 +421,15 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 
 **Can I see who searched for what?** Searches are logged, but with the query text only when the search did not include the user's personal space (for example when the assistant restricted it to team spaces); otherwise only the number of hits is kept. Search events are not tied to a space, and reads of single entries are not logged.
 
-**How do I make someone an instance admin?** Add the address to `auth.bootstrap_admins` and restart.
+**How do I see who may do what?** Ask for the rights report (`admin_rights_report`): every team space with its default role and all members and groups, plus the instance admins.
+
+**How do I make someone an instance admin?** Ask your assistant: *"Make maria@example.com an instance admin."* (`admin_instance_admins`, `grant`). The person must have logged in once and gets the tools at the next connection of their assistant. Addresses in `auth.bootstrap_admins` stay instance admins whatever is done through the tool.
+
+**Can management read everything without running the system, or IT run it without reading everything?** Not with the instance admin right alone: it makes a person admin in all team spaces and gives all admin tools; only personal spaces stay closed to everybody. The Pro edition can take the automatic content access away from instance admins, so that they manage all spaces but read only those they are members of ([Atrium Pro](../pro/pro-edition.md#separating-content-from-operations)).
 
 **Can I turn approval on for an existing space?** Yes (`admin_update_space`). Existing entries keep their status.
 
-**What happens to a space I archive?** It disappears for everybody except instance admins; content is kept and can be restored.
+**What happens to a space I archive?** It disappears for everybody except instance admins; content is kept and can be restored. An empty space can also be deleted for good (`admin_delete_space`); one with content cannot.
 
 **Can I change someone's role in a space?** Yes, as admin of every team space (`space_add_member`). Prefer asking the space admin.
 

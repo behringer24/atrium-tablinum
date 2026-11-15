@@ -172,6 +172,9 @@ type UpdateParams struct {
 	Content *string
 	Tags    *[]string
 	Type    *string
+	// ExpectedVersion is the version the caller started from. If it is set and the entry has moved
+	// on, nothing is changed and the call fails with a *VersionConflict.
+	ExpectedVersion *int
 	// OwnerID names a new responsible person, ClearOwner removes the one named; the caller checked
 	// that a new person is active and can read the space. ReviewDue and ClearReviewDue likewise.
 	OwnerID        *uuid.UUID
@@ -179,6 +182,18 @@ type UpdateParams struct {
 	ReviewDue      *time.Time
 	ClearReviewDue bool
 }
+
+// VersionConflict is the error of an update that started from an outdated version. It matches
+// ErrConflict, and its message tells the caller what to do.
+type VersionConflict struct{ Expected, Current int }
+
+func (e *VersionConflict) Error() string {
+	return fmt.Sprintf("the entry is at version %d, not %d: somebody changed it in the meantime. "+
+		"Nothing was saved. Load the entry again (get_knowledge), merge your change into the current text, "+
+		"and call again with expected_version=%d.", e.Current, e.Expected, e.Current)
+}
+
+func (e *VersionConflict) Is(target error) bool { return target == ErrConflict }
 
 // metaOnly reports whether p changes only the responsible person or the review date: neither
 // says anything new about the content, so no version is written and the entry is not re-indexed.
@@ -219,6 +234,9 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	// A binding rule is the curators' business, whatever is changed about it.
 	if cur.Type == TypeRule && sp.Type == "team" && role < authz.Curator {
 		return Document{}, ErrRule
+	}
+	if p.ExpectedVersion != nil && *p.ExpectedVersion != cur.Version {
+		return Document{}, &VersionConflict{Expected: *p.ExpectedVersion, Current: cur.Version}
 	}
 
 	title, content, tags, typ := cur.Title, cur.Content, cur.Tags, cur.Type

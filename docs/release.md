@@ -5,7 +5,7 @@ A release is a tag of the form `vX.Y.Z` on this repository, also as a pre-releas
 | Tag in the repo | Image tags |
 |---|---|
 | `v1.2.3` | `1.2.3`, `1.2`, `1`, `latest` |
-| `v0.5.1` | `0.5.1`, `0.5`, `latest` (no tag `0` for 0.x) |
+| `v0.6.0` | `0.6.0`, `0.6`, `latest` (no tag `0` for 0.x) |
 | `v1.2.3-rc1` | `1.2.3-rc1` (no `latest`) |
 
 ## Publishing
@@ -14,6 +14,10 @@ A release is a tag of the form `vX.Y.Z` on this repository, also as a pre-releas
 git tag -a v0.1.0 -m "Atrium Tablinum 0.1.0"
 git push origin v0.1.0
 ```
+
+**Upgrade notes:** a change that needs action from operators (a new required variable, a changed compose file, a migration that cannot be undone) goes under "Upgrade notes" at the top of "Unreleased" in the changelog, and the release description repeats it. Operators learn about it there, not from a failing start.
+
+**Before tagging a new minor or major version** (`X.Y.0`), set `line` and `date` in `internal/product/line.txt` to that version and its release day, in the commit that gets the tag. Patch releases (`X.Y.Z`) keep the file. The release line is shown by `server_info` and the start log.
 
 The progress of the tests is visible under "Actions" in this repo. The finished package appears under "Packages" and is linked to the repo through the label `org.opencontainers.image.source`.
 
@@ -56,8 +60,8 @@ With Docker, from a checkout of a release tag (use `main` or `dev` only for test
 ```bash
 git clone https://github.com/behringer24/atrium-tablinum.git
 cd atrium-tablinum
-git checkout v0.5.1
-docker build --build-arg VERSION=0.5.1 -t atrium-tablinum:0.5.1 .
+git checkout v0.6.0
+docker build --build-arg VERSION=0.6.0 -t atrium-tablinum:0.6.0 .
 ```
 
 `docker compose up -d` builds the same image by itself (`build: .` in `docker-compose.yml`), so a separate `docker build` is only needed to name or reuse the image. Without `VERSION`, `server_info` reports `dev`. `docker buildx build --platform linux/amd64,linux/arm64 ...` builds for both platforms.
@@ -73,7 +77,7 @@ The database migrations are part of the binary; Postgres with pgvector and an em
 
 ## Using the image
 
-In the Compose file, instead of `build: .` put the address with a fixed version, e.g. `ghcr.io/behringer24/atrium-tablinum:0.5.1`. A fixed version is better than `latest` because an update then happens deliberately.
+In the Compose file, instead of `build: .` put the address with a fixed version, e.g. `ghcr.io/behringer24/atrium-tablinum:0.6.0`. A fixed version is better than `latest` because an update then happens deliberately.
 
 If pulling needs a login, use a token (personal access token classic with `read:packages`):
 
@@ -85,8 +89,8 @@ echo "$TOKEN" | docker login ghcr.io -u <user> --password-stdin
 
 What the build depends on is pinned and checked:
 
-- **Go toolchain:** `go.mod` names the patch release (`toolchain go1.26.10`), so a local `go` and the CI use the same one, and the Dockerfile builds with `golang:1.26.10-alpine`. The standard library is part of what you ship: update the patch release when `govulncheck` reports a fix.
-- **Base images** are pinned by tag and digest (`golang:1.26.10-alpine@sha256:...`, `alpine:3.22@sha256:...`). To update one, take the new digest with `docker buildx imagetools inspect <image>`.
+- **Go toolchain:** `go.mod` names the patch release (`toolchain go1.26.11`), so a local `go` and the CI use the same one, and the Dockerfile builds with `golang:1.26.11-alpine`. The standard library is part of what you ship: update the patch release when `govulncheck` reports a fix.
+- **Base images** are pinned by tag and digest (`golang:1.26.11-alpine@sha256:...`, `alpine:3.22@sha256:...`). To update one, take the new digest with `docker buildx imagetools inspect <image>`.
 - **GitHub Actions** are pinned to commit SHAs, with the tag in a comment. A moved tag in an action repository cannot run other code in the build. Get a SHA with `git ls-remote --tags https://github.com/<owner>/<repo> refs/tags/<tag>`.
 - **`govulncheck`** runs in the test job of `test.yml` and fails the build when a known vulnerability is reachable from the code. Run it locally with `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`.
 - **Dependabot** (`.github/dependabot.yml`) opens weekly pull requests for Actions, Go modules and base images against `dev`, so that an update is tried as a canary build before it reaches `main`. Review them like any change; the tests and `govulncheck` run on them. Security updates that GitHub opens for a known vulnerability always target `main`.

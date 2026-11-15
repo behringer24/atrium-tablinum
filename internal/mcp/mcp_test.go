@@ -22,6 +22,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/search"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/skills"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 	"github.com/behringer24/atrium-tablinum/internal/users"
@@ -150,6 +151,12 @@ type env struct {
 
 func setup(t *testing.T, writesPerMinute int) *env {
 	t.Helper()
+	return setupSharing(t, writesPerMinute, share.Options{})
+}
+
+// setupSharing is setup with the sending of entries and skills configured.
+func setupSharing(t *testing.T, writesPerMinute int, shareOpt share.Options) *env {
+	t.Helper()
 	pool := dbtest.NewPool(t)
 	e := &env{ctx: context.Background(), tokens: map[string]string{}}
 	e.users = users.New(pool, users.Options{BootstrapAdmins: []string{"boss@x.de"}, PersonalEnabled: true})
@@ -163,14 +170,14 @@ func setup(t *testing.T, writesPerMinute int) *env {
 		t.Fatal(err)
 	}
 	e.quota = quota.New(pool, quota.Defaults{Personal: quota.Limits{Documents: 100, Bytes: 1 << 20}})
-	ds := docs.New(pool, e.spaces, ing, docs.Options{Quota: e.quota, HandoffTTLDays: 14, DuplicateThreshold: 0.9})
+	ds := docs.New(pool, e.spaces, ing, docs.Options{Quota: e.quota, HandoffTTLDays: 14, DuplicateThreshold: 0.9, Share: shareOpt})
 	sr, err := search.New(pool, fakeEmbedder{}, search.Config{FTSLanguages: langs, CandidatesPerMethod: 50, RRFK: 60, DefaultLimit: 5, MaxLimit: 20, HNSWEfSearch: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{Quota: e.quota}), Quota: e.quota, Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
+	e.srv = New(Deps{Users: e.users, Spaces: e.spaces, Docs: ds, Skills: skills.New(pool, e.spaces, skills.Options{Quota: e.quota, Share: shareOpt}), Quota: e.quota, Search: sr, Checker: checker, Pool: pool, EmbeddingModel: "fake", EmbeddingDimensions: dbtest.Dimensions,
 		Health: []HealthCheck{{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }}}},
-		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute})
+		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute, SharingEnabled: shareOpt.Enabled})
 
 	verifier := func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 		email, ok := e.tokens[token]
@@ -304,8 +311,8 @@ func TestToolListAndDescriptions(t *testing.T) {
 	}
 	for name := range defaultDescriptions {
 		if strings.HasPrefix(name, "admin_") || strings.HasPrefix(name, "space_") || name == "review_knowledge" ||
-			name == "review_skill" || name == "publish_skill" || name == "block_skill" || name == "unblock_skill" {
-			continue // tools for admins and curators depend on the role, see TestToolListFollowsRole
+			name == "review_skill" || name == "publish_skill" || name == "block_skill" || name == "unblock_skill" || strings.HasPrefix(name, "share_") {
+			continue // tools for admins and curators depend on the role, see TestToolListFollowsRole; share_* only where sharing is on, see TestShareToolsExistOnlyWhenEnabled
 		}
 		if got[name] == nil {
 			t.Errorf("tool %s missing", name)
@@ -405,8 +412,20 @@ func TestDefaultSpaceSetting(t *testing.T) {
 		t.Errorf("reader space as default: %q", msg)
 	}
 	e.mustCall(t, anna, "set_default_space", map[string]any{"space": "support"})
-	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "x"}); out["space"] != "Support" {
+	// no space named and the default is a team space: the user is asked first, nothing is saved
+	out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "x"})
+	if out["result"] != "confirm_needed" || out["id"] != nil {
+		t.Fatalf("no confirmation asked: %v", out)
+	}
+	if n := queryCount(t, e, `SELECT count(*) FROM documents`); n != 0 {
+		t.Fatalf("%d entries saved without confirmation", n)
+	}
+	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "x", "confirm": true}); out["space"] != "Support" {
 		t.Errorf("default space not used: %v", out)
+	}
+	// naming the space is the user's own choice: no question
+	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T1", "content": "named", "space": "support", "force": true}); out["result"] != "stored" {
+		t.Errorf("named space asked for confirmation: %v", out)
 	}
 	spaces := e.mustCall(t, anna, "list_spaces", nil)["spaces"].([]any)
 	var defaults int
@@ -421,6 +440,15 @@ func TestDefaultSpaceSetting(t *testing.T) {
 	e.mustCall(t, anna, "set_default_space", map[string]any{})
 	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T2", "content": "y"}); out["space"] != "My personal space" {
 		t.Errorf("reset: %v", out)
+	}
+}
+
+// An entry for the personal space needs no question: only the user can read it.
+func TestStoreToPersonalDefaultNeedsNoConfirmation(t *testing.T) {
+	e := setup(t, 0)
+	anna := e.session(t, "anna@x.de")
+	if out := e.mustCall(t, anna, "store_knowledge", map[string]any{"title": "T", "content": "mine"}); out["result"] != "stored" || out["space"] != "My personal space" {
+		t.Errorf("personal default: %v", out)
 	}
 }
 
@@ -739,9 +767,13 @@ func TestSessionTools(t *testing.T) {
 	anna := e.session(t, "anna@x.de")
 	boss := e.session(t, "boss@x.de")
 
-	got := e.mustCall(t, anna, "my_sessions", map[string]any{})["sessions"].([]any)
+	mine := e.mustCall(t, anna, "my_sessions", map[string]any{})
+	got := mine["sessions"].([]any)
 	if len(got) != 1 || got[0].(map[string]any)["client"] != "Claude" {
 		t.Errorf("my_sessions: %v", got)
+	}
+	if n, _ := mine["notice"].(string); !strings.Contains(n, "data") || !strings.Contains(n, "chosen by the clients") {
+		t.Errorf("client names are not marked as data: %v", mine["notice"])
 	}
 	if _, msg := e.call(t, anna, "revoke_my_sessions", map[string]any{"confirm": false}); !strings.Contains(msg, "confirmation") {
 		t.Errorf("without confirmation: %q", msg)
@@ -760,6 +792,18 @@ func TestSessionTools(t *testing.T) {
 	}
 	if len(revokedAll) != 2 {
 		t.Errorf("admin revoke: %v", revokedAll)
+	}
+	// ending everything: instance admins only, and only after confirmation
+	var allRevoked int
+	e.srv.RevokeAllTokens = func(context.Context) (int64, error) { allRevoked++; return 9, nil }
+	if toolNames(t, e, anna)["admin_revoke_all_sessions"] || !toolNames(t, e, boss)["admin_revoke_all_sessions"] {
+		t.Error("admin_revoke_all_sessions only for instance admins")
+	}
+	if _, msg := e.call(t, boss, "admin_revoke_all_sessions", map[string]any{"confirm": false}); !strings.Contains(msg, "confirm=true") || allRevoked != 0 {
+		t.Errorf("without confirmation: %q (%d)", msg, allRevoked)
+	}
+	if _, msg := e.call(t, boss, "admin_revoke_all_sessions", map[string]any{"confirm": true}); msg != "" || allRevoked != 1 {
+		t.Errorf("admin_revoke_all_sessions: %q (%d)", msg, allRevoked)
 	}
 }
 

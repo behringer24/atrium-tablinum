@@ -203,6 +203,9 @@ func TestCacheExpiryPicksUpDirectChanges(t *testing.T) {
 	ctx := context.Background()
 	us, ss := users.New(pool, users.Options{PersonalEnabled: true}), spaces.New(pool)
 	ch := authz.NewChecker(pool, 50*time.Millisecond)
+	// A fake clock: a slow database must not let the TTL run out between the steps.
+	now := time.Now()
+	ch.SetClock(func() time.Time { return now })
 	anna, _ := us.Provision(ctx, users.Identity{EmailVerified: true, IDP: "g", Subject: "a", Email: "a@x.de"})
 	sp, _ := ss.CreateTeam(ctx, spaces.CreateParams{Slug: "t1", Name: "T"})
 
@@ -216,7 +219,7 @@ func TestCacheExpiryPicksUpDirectChanges(t *testing.T) {
 	if r, _ = ch.EffectiveRoles(ctx, anna); r.Can(sp.ID, authz.Reader) {
 		t.Fatal("cache was not used")
 	}
-	time.Sleep(80 * time.Millisecond)
+	now = now.Add(80 * time.Millisecond)
 	if r, _ = ch.EffectiveRoles(ctx, anna); !r.Can(sp.ID, authz.Reader) {
 		t.Fatal("change not visible after TTL")
 	}

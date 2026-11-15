@@ -1,6 +1,6 @@
 # Drafts and approval
 
-An entry in a team space has one of four states: `draft`, `approved`, `rejected` (returned) or `archived` (see [Archive and context](archive-and-context.md)). All members can read and search only approved entries. Drafts and returned entries are visible only to their author and the curators of the space. Personal spaces have no drafts.
+An entry in a team space has one of four states: `draft`, `approved`, `rejected` (returned) or `archived` (see [Archive and context](archive-and-context.md)). All members can read and search only approved entries. Drafts and returned entries are visible only to their author and the curators of the space. Personal spaces have no drafts of their own; the only drafts in one are items that another user sent to its owner, who reviews them (see [sending to a colleague](sharing.md)).
 
 ## When an entry becomes a draft
 

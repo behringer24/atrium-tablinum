@@ -20,6 +20,7 @@ import (
 
 	"github.com/behringer24/atrium-tablinum/internal/httpx"
 	"github.com/behringer24/atrium-tablinum/internal/idp"
+	"github.com/behringer24/atrium-tablinum/internal/safetext"
 	"github.com/behringer24/atrium-tablinum/internal/users"
 )
 
@@ -81,6 +82,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /oauth/authorize", s.authorize)
 	mux.HandleFunc("GET /oauth/login", s.login)
 	mux.HandleFunc("GET /oauth/callback/{provider}", s.callback)
+	mux.HandleFunc("POST /oauth/consent", s.consent)
 	mux.HandleFunc("POST /oauth/token", s.token)
 	mux.HandleFunc("POST /oauth/revoke", s.revoke)
 }
@@ -452,15 +454,133 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.store.RecordLogin(r.Context(), u.ID, providerID)
-	code, err := s.store.CreateCode(r.Context(), Code{
-		ClientID: st.ClientID, UserID: u.ID, RedirectURI: st.RedirectURI, CodeChallenge: st.CodeChallenge, Resource: st.Resource,
-	})
+
+	// A client the user has not allowed yet gets no code before the user says yes: anybody can
+	// register a client under any name, and a user who is already logged in at the IdP would
+	// otherwise connect it without noticing.
+	client, err := s.store.GetClient(r.Context(), st.ClientID)
 	if err != nil {
-		s.log.Error("create code", "error", err)
+		s.log.Error("consent: client", "error", err)
 		deny("Login failed")
 		return
 	}
-	s.redirectClient(w, r, st.RedirectURI, st.ClientState, map[string]string{"code": code})
+	allowed, err := s.store.HasConsent(r.Context(), u.ID, client.ID)
+	if err != nil {
+		s.log.Error("consent: lookup", "error", err)
+		deny("Login failed")
+		return
+	}
+	if allowed {
+		s.issueCode(w, r, ConsentRequest{ClientID: client.ID, UserID: u.ID, RedirectURI: st.RedirectURI,
+			CodeChallenge: st.CodeChallenge, ClientState: st.ClientState, Resource: st.Resource})
+		return
+	}
+	raw, err := s.store.CreateConsentRequest(r.Context(), ConsentRequest{ClientID: client.ID, UserID: u.ID,
+		RedirectURI: st.RedirectURI, CodeChallenge: st.CodeChallenge, ClientState: st.ClientState, Resource: st.Resource})
+	if err != nil {
+		s.log.Error("consent: create request", "error", err)
+		deny("Login failed")
+		return
+	}
+	redirectHost := ""
+	if ru, err := url.Parse(st.RedirectURI); err == nil {
+		redirectHost = ru.Host
+	}
+	s.consentHeaders(w, st.RedirectURI)
+	_ = consentTmpl.Execute(w, map[string]any{
+		"Product": s.cfg.ProductName, "Client": safetext.Line(client.Name, 80), "Host": redirectHost,
+		"Account": u.Email, "Request": raw,
+	})
+}
+
+// issueCode creates the authorization code for an allowed client and sends the user back to it.
+func (s *Server) issueCode(w http.ResponseWriter, r *http.Request, c ConsentRequest) {
+	code, err := s.store.CreateCode(r.Context(), Code{
+		ClientID: c.ClientID, UserID: c.UserID, RedirectURI: c.RedirectURI, CodeChallenge: c.CodeChallenge, Resource: c.Resource,
+	})
+	if err != nil {
+		s.log.Error("create code", "error", err)
+		s.redirectClient(w, r, c.RedirectURI, c.ClientState, map[string]string{"error": "access_denied", "error_description": "Login failed"})
+		return
+	}
+	s.redirectClient(w, r, c.RedirectURI, c.ClientState, map[string]string{"code": code})
+}
+
+// consent receives the answer of the user to the consent page. The request value in the form is
+// random, single use and short lived; it is what ties the answer to the login that asked.
+func (s *Server) consent(w http.ResponseWriter, r *http.Request) {
+	if !s.authLimit.Allow(s.clientIP(r)) {
+		s.errorPage(w, http.StatusTooManyRequests, "Too many requests, please try again later.")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	if err := r.ParseForm(); err != nil {
+		s.errorPage(w, http.StatusBadRequest, "The request is not valid. Please reconnect in your AI assistant.")
+		return
+	}
+	req, err := s.store.TakeConsentRequest(r.Context(), r.PostForm.Get("r"))
+	if err != nil {
+		s.errorPage(w, http.StatusBadRequest, "This request has expired or was already answered. Please reconnect in your AI assistant.")
+		return
+	}
+	client, err := s.store.GetClient(r.Context(), req.ClientID)
+	if err != nil {
+		s.errorPage(w, http.StatusBadRequest, "Unknown client. Please set up the connection in your AI assistant again.")
+		return
+	}
+	deny := func(desc string) {
+		s.redirectClient(w, r, req.RedirectURI, req.ClientState, map[string]string{"error": "access_denied", "error_description": desc})
+	}
+	if r.PostForm.Get("decision") != "allow" {
+		s.store.RecordConsent(r.Context(), req.UserID, client, req.RedirectURI, false)
+		deny("The user did not allow the connection")
+		return
+	}
+	if u, err := s.users.Get(r.Context(), req.UserID); err != nil || !u.Active {
+		deny("This account is not available")
+		return
+	}
+	if err := s.store.GrantConsent(r.Context(), req.UserID, client.ID); err != nil {
+		s.log.Error("consent: grant", "error", err)
+		deny("Login failed")
+		return
+	}
+	s.store.RecordConsent(r.Context(), req.UserID, client, req.RedirectURI, true)
+	s.issueCode(w, r, req)
+}
+
+var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Product}} – Allow connection?</title>
+<style>body{font:16px system-ui,sans-serif;max-width:30rem;margin:10vh auto;padding:0 1rem;line-height:1.45}
+dl{margin:1rem 0;padding:.75rem 1rem;border:1px solid #8886;border-radius:.5rem}dt{font-size:.85rem;opacity:.7;margin-top:.5rem}dt:first-child{margin-top:0}dd{margin:0;word-break:break-all}
+.row{display:flex;gap:.75rem;margin-top:1.25rem}
+button{flex:1;font:inherit;padding:.75rem 1rem;border:1px solid #888;border-radius:.5rem;cursor:pointer;background:transparent;color:inherit}
+button.allow{background:#2563eb;border-color:#2563eb;color:#fff}
+small{opacity:.75}</style></head>
+<body><h1>Allow this connection?</h1>
+<p>An application wants to connect to <strong>{{.Product}}</strong> as you.</p>
+<dl>
+<dt>Application name (chosen by the application itself)</dt><dd>{{if .Client}}{{.Client}}{{else}}(no name given){{end}}</dd>
+<dt>After you decide you are sent back to</dt><dd>{{.Host}}</dd>
+<dt>You are signed in as</dt><dd>{{.Account}}</dd>
+</dl>
+<p>If you allow it, the application can read and change in {{.Product}} whatever your account may, until you disconnect it. <strong>Only allow it if you started this connection yourself in your AI assistant.</strong> The name above is not a proof of who the application is; the address it sends you back to tells more.</p>
+<form method="post" action="/oauth/consent">
+<input type="hidden" name="r" value="{{.Request}}">
+<div class="row"><button type="submit" name="decision" value="deny">Deny</button><button type="submit" name="decision" value="allow" class="allow">Allow</button></div>
+</form>
+<p><small>You can end the connection later: ask your assistant to show your {{.Product}} sessions and end the one you do not want.</small></p>
+</body></html>`))
+
+// consentHeaders sets the headers of the consent page. Browsers also apply form-action to the
+// redirect that answers a form, so the page has to name the address the user is sent back to.
+func (s *Server) consentHeaders(w http.ResponseWriter, redirectURI string) {
+	htmlHeaders(w)
+	w.Header().Set("Cache-Control", "no-store")
+	if u, err := url.Parse(redirectURI); err == nil && u.Scheme != "" && u.Host != "" {
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' "+u.Scheme+"://"+u.Host)
+	}
 }
 
 // ---- token endpoint -------------------------------------------------------------------------
@@ -607,6 +727,11 @@ func contains(list []string, v string) bool {
 // RevokeUser is exposed for offboarding (admin tools).
 func (s *Server) RevokeUser(ctx context.Context, id uuid.UUID) (int64, error) {
 	return s.store.RevokeUser(ctx, id)
+}
+
+// RevokeAll ends every login of every user (incident response, admin tools).
+func (s *Server) RevokeAll(ctx context.Context) (int64, error) {
+	return s.store.RevokeAll(ctx)
 }
 
 // Sessions lists the clients a user is logged in with.

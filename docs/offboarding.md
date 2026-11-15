@@ -5,7 +5,7 @@ Personal spaces are visible only to their owner, not even to instance admins. Wh
 ## Procedure
 
 1. **Before the last working day:** The employee moves what belongs to the team themselves with `move_knowledge`. This is the cleanest way because they decide themselves.
-2. **Lock:** `admin_offboard_user` locks the account immediately, revokes all OAuth tokens and deletes the handoffs. The personal space stays private; only count, size and deletion date (`purge_after`) are returned.
+2. **Lock:** `admin_offboard_user` locks the account immediately, revokes all OAuth tokens, deletes the handoffs and removes a granted instance admin right (`admin_instance_admins`). The personal space stays private; only count, size and deletion date (`purge_after`) are returned.
 3. **Handing the content on:** an admin cannot read or hand on a personal space in the Community edition, so the person moves what belongs to the team before the last day (step 1). If you need time, lengthen or switch off the deadline of step 5. The Pro edition adds guided help for handing a personal space on ([Atrium Pro](pro/pro-edition.md#guided-offboarding)).
 4. **Responsibilities:** entries in team spaces that name the person as responsible keep the name, marked `former`. A curator or the author changes the responsible person entry by entry with `update_knowledge` (`owner`). The Pro edition can hand all of them on in one step ([Atrium Pro](pro/pro-edition.md#handing-on-responsibilities-space-admin-instance-admin)).
 5. **Deadline:** Personal spaces of locked accounts are deleted together with their content after `spaces.personal.retention_days_after_offboarding` days (default 30), unless the space was handed on. A background job checks this hourly; `0` turns deletion off.

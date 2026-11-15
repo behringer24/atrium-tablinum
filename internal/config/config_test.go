@@ -261,3 +261,54 @@ func TestExampleConfigNeedsOnlyEnvironment(t *testing.T) {
 		}
 	}
 }
+
+func TestSharingIsOffByDefaultAndNeedsPersonalSpaces(t *testing.T) {
+	vars := env(map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "postgres://x"})
+	cfg, err := Parse([]byte(minimal), vars)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sharing.Enabled || cfg.Sharing.MaxPendingPerRecipient != 20 || cfg.Sharing.MaxPendingPerSender != 3 {
+		t.Errorf("defaults: %+v", cfg.Sharing)
+	}
+	if _, err := Parse([]byte(minimal+"sharing:\n  enabled: true\nspaces:\n  personal:\n    enabled: false\n"), vars); err == nil || !strings.Contains(err.Error(), "sharing.enabled") {
+		t.Errorf("sharing without personal spaces: %v", err)
+	}
+	if _, err := Parse([]byte(minimal+"sharing:\n  max_pending_per_sender: 0\n"), vars); err == nil || !strings.Contains(err.Error(), "max_pending") {
+		t.Errorf("a limit of 0: %v", err)
+	}
+	if cfg, err := Parse([]byte(minimal+"sharing:\n  enabled: true\n"), vars); err != nil || !cfg.Sharing.Enabled {
+		t.Errorf("enabled: %v", err)
+	}
+}
+
+func TestMigrationURLFromEnvironment(t *testing.T) {
+	base := map[string]string{"GOOGLE_SECRET": "s", "DATABASE_URL": "postgres://app"}
+	cfg, err := Parse([]byte(minimal), env(base))
+	if err != nil || cfg.Database.MigrationURL != "" {
+		t.Fatalf("without the variable: %q %v", cfg.Database.MigrationURL, err)
+	}
+	base["DATABASE_MIGRATION_URL"] = "postgres://migrate"
+	cfg, err = Parse([]byte(minimal), env(base))
+	if err != nil || cfg.Database.MigrationURL != "postgres://migrate" {
+		t.Fatalf("from the environment: %q %v", cfg.Database.MigrationURL, err)
+	}
+	// a value in the file wins
+	withFile := strings.Replace(minimal, "database:", "database:\n  migration_url: \"postgres://file\"", 1)
+	cfg, err = Parse([]byte(withFile), env(base))
+	if err != nil || cfg.Database.MigrationURL != "postgres://file" {
+		t.Fatalf("from the file: %q %v", cfg.Database.MigrationURL, err)
+	}
+}
+
+func TestAuditRetentionNeedsAtLeastThirtyDays(t *testing.T) {
+	for days, ok := range map[int]bool{0: true, 7: false, 29: false, 30: true, 365: true, -1: false} {
+		cfg := Defaults()
+		cfg.Instance.BaseURL = "https://x.example"
+		cfg.Audit.RetentionDays = days
+		err := cfg.Validate()
+		if ok && err != nil && strings.Contains(err.Error(), "audit.retention_days") || !ok && (err == nil || !strings.Contains(err.Error(), "audit.retention_days")) {
+			t.Errorf("retention_days=%d: %v", days, err)
+		}
+	}
+}

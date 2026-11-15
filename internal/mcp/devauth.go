@@ -28,7 +28,9 @@ func DevVerifier(store *users.Store, token, email string) auth.TokenVerifier {
 		}
 		once.Do(func() {
 			var u users.User
-			u, err = store.Provision(ctx, users.Identity{IDP: "dev", Subject: email, Email: email, DisplayName: "Dev"})
+			// The operator set the token and the address in the configuration, so the address is as
+			// good as verified; without it a dev account that is listed in bootstrap_admins is refused.
+			u, err = store.Provision(ctx, users.Identity{IDP: "dev", Subject: email, Email: email, DisplayName: "Dev", EmailVerified: true})
 			id = u.ID.String()
 		})
 		if err != nil {

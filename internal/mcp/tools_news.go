@@ -56,6 +56,14 @@ type newsOut struct {
 	Entries          []newsEntry  `json:"entries"`
 	Skills           []newsSkill  `json:"skills"`
 	WaitingForReview []reviewWait `json:"waiting_for_review,omitempty"`
+	// SentToYou counts the entries and skills other users sent to the caller that wait in their
+	// personal space for their review (only where sending is enabled).
+	SentToYou *sentToYou `json:"sent_to_you,omitempty"`
+}
+
+type sentToYou struct {
+	Entries int `json:"entries"`
+	Skills  int `json:"skills"`
 }
 
 // parseSince reads a date or a time; empty means newsDefaultDays ago.
@@ -171,7 +179,22 @@ func (s *Server) whatsNew(ctx context.Context, c *call, in newsIn) (newsOut, err
 			out.WaitingForReview = append(out.WaitingForReview, *w)
 		}
 	}
-	if len(out.Entries) == 0 && len(out.Skills) == 0 && len(out.WaitingForReview) == 0 {
+	if s.set.SharingEnabled && a.User.PersonalSpaceID != nil {
+		own := []uuid.UUID{*a.User.PersonalSpaceID}
+		var recv sentToYou
+		if m, err := s.Docs.DraftCounts(ctx, a, own); err == nil {
+			recv.Entries = m[own[0]]
+		}
+		if s.Skills != nil {
+			if m, err := s.Skills.DraftCounts(ctx, a, own); err == nil {
+				recv.Skills = m[own[0]]
+			}
+		}
+		if recv.Entries+recv.Skills > 0 {
+			out.SentToYou = &recv
+		}
+	}
+	if len(out.Entries) == 0 && len(out.Skills) == 0 && len(out.WaitingForReview) == 0 && out.SentToYou == nil {
 		out.Message = fmt.Sprintf("Nothing new in %s since %s.", spacesPhrase(selected), since.Format("2006-01-02"))
 	}
 	return out, nil

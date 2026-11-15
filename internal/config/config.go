@@ -27,10 +27,12 @@ type Config struct {
 	Reranker  Reranker  `yaml:"reranker"`
 	Search    Search    `yaml:"search"`
 	Chunking  Chunking  `yaml:"chunking"`
+	Audit     Audit     `yaml:"audit"`
 	Spaces    Spaces    `yaml:"spaces"`
 	Policy    Policy    `yaml:"policy"`
 	Tools     Tools     `yaml:"tools"`
 	Skills    Skills    `yaml:"skills"`
+	Sharing   Sharing   `yaml:"sharing"`
 	// License is opaque here: only the edition that supports a licence knows its keys (internal/edition).
 	License yaml.Node `yaml:"license"`
 }
@@ -110,7 +112,8 @@ type Database struct {
 	// MigrationURL, if set, is the account that applies the schema migrations at start (it owns the
 	// schema); URL can then be an account that cannot change the schema, disable triggers or alter
 	// the audit log. Empty = the migrations run with URL, as before. scripts/db-roles.sql sets both
-	// accounts up (docs/deployment.md, "Separate database accounts").
+	// accounts up (docs/deployment.md, "Separate database accounts"). The environment variable
+	// DATABASE_MIGRATION_URL sets it when the file leaves it empty.
 	MigrationURL string `yaml:"migration_url"`
 }
 
@@ -170,6 +173,19 @@ type Spaces struct {
 	DefaultSpaceByGr map[string]string `yaml:"default_space_by_group"`
 }
 
+// Audit controls where the audit log goes besides the database table.
+type Audit struct {
+	// Stdout writes every audit event as one JSON line ("log":"audit") to the standard output, for a
+	// log collector. The application log goes to the standard error. Off by default.
+	Stdout bool `yaml:"stdout"`
+	// RetentionDays deletes entries older than this many days from the table, daily. 0 keeps them
+	// for ever; otherwise at least audit.MinRetentionDays (30).
+	RetentionDays int `yaml:"retention_days"`
+}
+
+// MinAuditRetentionDays is the shortest retention the database accepts.
+const MinAuditRetentionDays = 30
+
 type PersonalSpaces struct {
 	Enabled                       bool  `yaml:"enabled"`
 	MaxDocuments                  int   `yaml:"max_documents"`
@@ -215,6 +231,17 @@ type Skills struct {
 	TeamMaxBytes  int64 `yaml:"team_max_bytes"`
 }
 
+// Sharing configures sending a knowledge entry or a skill to another user's personal space, where
+// the recipient reviews it. Off by default.
+type Sharing struct {
+	Enabled bool `yaml:"enabled"`
+	// MaxPendingPerRecipient caps the received items (drafts and returned ones, sent by anybody)
+	// that wait in one personal space; MaxPendingPerSender those of one sender in one personal
+	// space. They keep somebody from filling another user's review list.
+	MaxPendingPerRecipient int `yaml:"max_pending_per_recipient"`
+	MaxPendingPerSender    int `yaml:"max_pending_per_sender"`
+}
+
 type Tools struct {
 	Descriptions map[string]string `yaml:"descriptions"`
 }
@@ -254,7 +281,8 @@ func Defaults() Config {
 			Team:           TeamSpaces{MaxDocuments: 5000, MaxBytes: 200 << 20},
 			HandoffTTLDays: 14,
 		},
-		Skills: Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
+		Skills:  Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
+		Sharing: Sharing{MaxPendingPerRecipient: 20, MaxPendingPerSender: 3},
 		Policy: Policy{
 			DuplicateThreshold:       0.90,
 			MaxDocumentBytes:         200000,
@@ -306,6 +334,11 @@ func Parse(raw []byte, lookup func(string) (string, bool)) (*Config, error) {
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
+	if v, ok := lookup("DATABASE_MIGRATION_URL"); ok && v != "" && cfg.Database.MigrationURL == "" {
+		// The compose setup passes the migration account through the environment, so that a
+		// config.yaml written before the two accounts existed keeps working.
+		cfg.Database.MigrationURL = v
+	}
 	if cfg.Instance.ShortName == "" {
 		cfg.Instance.ShortName = cfg.Instance.ProductName
 		if cfg.Instance.ProductName == product.DefaultName {
@@ -346,6 +379,9 @@ func (c *Config) Validate() error {
 		if !validIPOrCIDR(p) {
 			add("instance.trusted_proxies: %q is neither an IP nor a CIDR", p)
 		}
+	}
+	if d := c.Audit.RetentionDays; d != 0 && d < MinAuditRetentionDays {
+		add("audit.retention_days must be 0 (keep for ever) or at least %d", MinAuditRetentionDays)
 	}
 	if c.Instance.DevMode {
 		// A static token without expiry is only acceptable where nobody else can reach it.
@@ -460,6 +496,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Spaces.HandoffTTLDays < 1 {
 		add("spaces.handoff_ttl_days must be >= 1")
+	}
+	if c.Sharing.MaxPendingPerRecipient < 1 || c.Sharing.MaxPendingPerSender < 1 {
+		add("sharing: max_pending_per_recipient and max_pending_per_sender must be >= 1")
+	}
+	if c.Sharing.Enabled && !c.Spaces.Personal.Enabled {
+		add("sharing.enabled needs spaces.personal.enabled: received items land in the personal space")
 	}
 
 	if len(errs) > 0 {

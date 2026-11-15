@@ -21,9 +21,27 @@ func TestParseLine(t *testing.T) {
 	}
 }
 
+func TestLineMajor(t *testing.T) {
+	for name, want := range map[string]int{"3.4": 3, "0.5": 0, "12.0": 12, "7": 7} {
+		got, err := Line{Name: name}.Major()
+		if err != nil || got != want {
+			t.Errorf("%s: %d %v, want %d", name, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "x.1", "-1.0", ".4"} {
+		if _, err := (Line{Name: bad}).Major(); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}
+
 // The line.txt in this tree must be valid: a build with a broken one would not start.
 func TestTheEmbeddedLineIsValid(t *testing.T) {
-	if l := CurrentLine(); l.Name == "" || l.Date.IsZero() {
+	l := CurrentLine()
+	if l.Name == "" || l.Date.IsZero() {
 		t.Fatalf("%+v", l)
+	}
+	if _, err := l.Major(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -29,7 +29,12 @@ var compactSummaries = map[string]string{
 	"space_remove_member": "Removes a user or a group from a space the user manages.",
 }
 
+// reviewHint is for the review tools: they are also the owner's tools for what other users sent to
+// their personal space.
+const reviewHint = " For curators of a team space, and for what other users sent to your personal space: the role is checked per item, otherwise the call is refused."
+
 var compactHints = map[string]string{
+	"review_knowledge": reviewHint, "review_skill": reviewHint, "publish_skill": reviewHint,
 	"unblock_skill": spaceAdminHint, "space_members": spaceAdminHint,
 	"space_add_member": spaceAdminHint, "space_remove_member": spaceAdminHint,
 }

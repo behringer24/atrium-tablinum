@@ -19,9 +19,10 @@ Atrium Tablinum comes in two editions.
 | Knowledge, knowledge types, skills, search, spaces, roles, review, audit log, handoffs, personal spaces | yes | yes |
 | Users | up to 8 active accounts | more or unlimited |
 | Guided offboarding (handing a personal space on, reassigning responsibilities) | | yes |
+| Separating content from operations (instance admins without automatic access to all team spaces) | | yes |
 | Further features for scale, integration and governance | | planned, see the [roadmap](../ROADMAP.md) |
 
-Each feature of the guides says which edition has it. How a Pro licence is installed and what the guided offboarding does: [Atrium Pro](pro/pro-edition.md).
+Each feature of the guides says which edition has it. How a Pro licence is installed and what the guided offboarding and the separation of content from operations do: [Atrium Pro](pro/pro-edition.md).
 
 ## FAQ
 
