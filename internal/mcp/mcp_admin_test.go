@@ -52,7 +52,7 @@ func TestToolListFollowsRole(t *testing.T) {
 	if curator["admin_create_space"] || sadmin["admin_create_space"] || sadmin["admin_update_space"] || sadmin["admin_audit_log"] {
 		t.Errorf("curator or space admin with instance admin tools")
 	}
-	for _, name := range []string{"admin_create_space", "admin_update_space", "admin_archive_space", "admin_restore_space", "admin_delete_space", "admin_list_users",
+	for _, name := range []string{"admin_create_space", "admin_update_space", "admin_archive_space", "admin_restore_space", "admin_delete_space", "admin_rights_report", "admin_list_users",
 		"admin_offboard_user", "admin_reactivate_user", "admin_groups", "admin_audit_log", "admin_health",
 		"admin_support_bundle", "space_members"} {
 		if !boss[name] {

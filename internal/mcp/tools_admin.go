@@ -40,6 +40,7 @@ func (s *Server) registerInstanceAdminTools(ms *mcp.Server) {
 	addTool(s, ms, "admin_reactivate_user", "Reactivate user", tierInstanceAdmin, true, s.adminReactivateUser)
 	addTool(s, ms, "admin_instance_admins", "Manage instance admins", tierInstanceAdmin, true, s.adminInstanceAdmins)
 	addTool(s, ms, "admin_groups", "Manage groups", tierInstanceAdmin, true, s.adminGroups)
+	addTool(s, ms, "admin_rights_report", "Report rights", tierInstanceAdmin, false, s.adminRightsReport)
 	addTool(s, ms, "admin_revoke_sessions", "End a user's sessions", tierInstanceAdmin, true, s.adminRevokeSessions)
 	addTool(s, ms, "admin_revoke_all_sessions", "End all sessions of the instance", tierInstanceAdmin, true, s.adminRevokeAllSessions)
 	addTool(s, ms, "admin_allowlist", "Manage login allowlist", tierInstanceAdmin, true, s.adminAllowlist)

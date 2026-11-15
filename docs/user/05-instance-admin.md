@@ -27,7 +27,7 @@ The first instance admins are set in the server configuration (`auth.bootstrap_a
 **Can:**
 
 - Act as **admin in every team space**: read, review, change, delete and manage members everywhere (source: `internal/authz`, an instance admin gets the admin role in all active team spaces).
-- Use the **`admin_*` tools**: create, change, archive, restore and delete (empty) spaces; list users; lock and reactivate; grant and revoke the instance admin right; manage local groups; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
+- Use the **`admin_*` tools**: create, change, archive, restore and delete (empty) spaces; list users; lock and reactivate; grant and revoke the instance admin right; manage local groups; read the rights report; end a user's logins; manage the login allowlist; set the assistants' context and the names of the instance; query the audit log; set storage limits (quotas); check health.
 - **Publish skills of risk class C**, **delete skills** in team spaces, and review and release their **own** skills (the audit marks it `self_approved`).
 - See and restore **archived team spaces**.
 
@@ -118,6 +118,10 @@ What to know:
 ### Groups
 
 Local groups (`admin_groups`: `list`, `create`, `rename`, `delete`, `add_member`, `remove_member`) let you give a role to a set of people at once, for example "support-team". Groups from the identity provider are visible but read-only, and are not yet synchronised from the login token. Deleting a group needs your confirmation.
+
+### Rights report
+
+*"Show me the rights report."* (`admin_rights_report`, read-only) lists on one page who holds which role where: the instance admins and whether they read the content of all team spaces, and for every team space its default role (reader or author for everybody logged in, none for members only), the approval setting, and every user and group with its role, highest first. Locked accounts are marked as former. Below it come hints, for example a space without a space admin, a group that holds the admin role, or a space open to everybody. The hints are things to look at, not errors. Personal spaces are not part of it. Use it for the access review and after bigger changes; it shows the configuration of your instance, which the checks in the code cannot.
 
 ### Sessions
 
@@ -383,7 +387,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 - Read the changelog and plan updates.
 
 **Quarterly**
-- Access review: members, roles, groups and the allowlist, space by space with the space admins.
+- Access review: start with `admin_rights_report`, then go through members, roles, groups and the allowlist space by space with the space admins.
 - Skill review: which skills exist, which are used (audit reads), which are stale; archive what is unused.
 - Test a **restore** of the backup into an empty database.
 - Review the context and space descriptions for accuracy.
@@ -416,6 +420,8 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 **Can I read an employee's personal space?** No. Not even for investigations. For leavers, ask them to move team knowledge out before the last day.
 
 **Can I see who searched for what?** Searches are logged, but with the query text only when the search did not include the user's personal space (for example when the assistant restricted it to team spaces); otherwise only the number of hits is kept. Search events are not tied to a space, and reads of single entries are not logged.
+
+**How do I see who may do what?** Ask for the rights report (`admin_rights_report`): every team space with its default role and all members and groups, plus the instance admins.
 
 **How do I make someone an instance admin?** Ask your assistant: *"Make maria@example.com an instance admin."* (`admin_instance_admins`, `grant`). The person must have logged in once and gets the tools at the next connection of their assistant. Addresses in `auth.bootstrap_admins` stay instance admins whatever is done through the tool.
 
