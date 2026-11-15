@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
+	"github.com/behringer24/atrium-tablinum/internal/share"
 )
 
 // The permission matrix: who may do what with knowledge, in which kind of space. Every case calls
@@ -248,7 +249,7 @@ func storedOK(out map[string]any, _ string) bool { return out["result"] == "stor
 // movedOK: a move to a space the caller cannot write to answers without an error, but moves nothing.
 func movedOK(out map[string]any, _ string) bool { return out["result"] == "moved" }
 
-var spaceName = regexp.MustCompile(`space "[^"]*"`)
+var spaceName = regexp.MustCompile(`(?i)space "[^"]*"`)
 
 // answer is what the caller learns from a call: the error text, or the result and message of a
 // call that went through without storing anything.
@@ -319,8 +320,11 @@ func (m *matrix) run(kind string, ops []mxOp, roles []mxRole) {
 	}
 }
 
-func newMatrix(t *testing.T) *matrix {
-	e := setup(t, 0)
+func newMatrix(t *testing.T) *matrix { return newMatrixSharing(t, share.Options{}) }
+
+// newMatrixSharing is newMatrix with the sending of entries and skills configured.
+func newMatrixSharing(t *testing.T, shareOpt share.Options) *matrix {
+	e := setupSharing(t, 0, shareOpt)
 	members := map[string]authz.Role{
 		"reader@x.de": authz.Reader, "author@x.de": authz.Author, "curator@x.de": authz.Curator,
 		"spaceadmin@x.de": authz.Admin, "writer@x.de": authz.Curator, "drafter@x.de": authz.Author,
@@ -331,7 +335,7 @@ func newMatrix(t *testing.T) *matrix {
 	// the outsider and the owner of the personal space exist but belong to no team space
 	m := &matrix{t: t, e: e, sess: map[string]*mcp.ClientSession{}}
 	// All sessions are opened here: a session lives as long as the test that opened it.
-	for _, email := range []string{"outsider@x.de", "owner@x.de", "boss@x.de", "writer@x.de", "drafter@x.de", "reader@x.de", "author@x.de", "curator@x.de", "spaceadmin@x.de"} {
+	for _, email := range []string{"outsider@x.de", "owner@x.de", "recipient@x.de", "boss@x.de", "writer@x.de", "drafter@x.de", "reader@x.de", "author@x.de", "curator@x.de", "spaceadmin@x.de"} {
 		m.as(email)
 	}
 	return m
