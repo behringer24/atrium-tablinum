@@ -9,6 +9,7 @@ You do not operate Atrium through a screen of its own. You talk to your AI assis
 | Guide | For | You will learn |
 |---|---|---|
 | [Why Atrium](00-why-atrium.md) | Everybody, and anyone who still needs convincing | What Atrium brings you, your team and the organisation, a day with it, your first ten minutes, and the honest limits. A good document to share first |
+| [Installing Atrium](00-installation.md) | The person who sets up the server | From an empty host to a first login: requirements, deployment variants, identity provider, configuration, embeddings, checks, backups, updates, troubleshooting |
 | [Getting started](00-getting-started.md) | New users | Connect your assistant, ask a first question, save a first note and find it again in a new chat, in about five minutes. The first guide to read |
 | [1. Everyday use](01-user.md) | Everybody who has an Atrium login | Connect an assistant, find knowledge, use skills, work in your personal space, hand work over to another assistant, stay safe |
 | [2. Authors](02-author.md) | People who may write in team spaces | File and maintain knowledge, work with drafts and approval, write and propose skills |
@@ -17,7 +18,7 @@ You do not operate Atrium through a screen of its own. You talk to your AI assis
 | [5. Instance admins](05-instance-admin.md) | The people who run the Atrium instance | Spaces, users, offboarding, login rules, context, audit, health, security and operations |
 | [Atrium Pro](../pro/pro-edition.md) | Instance admins (and space admins) of an organisation with a Pro licence | Install and renew the licence, updates with a licence, the user limit, guided offboarding, separating content from operations |
 
-Each guide builds on the one before it: a curator is also an author and a reader, a space admin is also a curator, and so on. Read the guides in order if you are new to a role. Every guide ends with a short FAQ.
+The installation guide is for whoever sets the server up; the other guides are for the people who use it. Each role guide builds on the one before it: a curator is also an author and a reader, a space admin is also a curator, and so on. Read the guides in order if you are new to a role. Every guide ends with a short FAQ.
 
 ## Roles at a glance
 

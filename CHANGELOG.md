@@ -4,6 +4,9 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Added
+- **Installation guide:** new `docs/user/00-installation.md` (with PDF), a step-by-step guide from an empty host to the first login: requirements and sizing, the three deployment variants, registering the identity provider, `.env` and `config.yaml`, choosing the embedding backend, starting, checks, first admin login, Pro licence, backups, updates, troubleshooting and a FAQ. Linked from the README, the guide index, the deployment reference and the instance admin guide.
+
 ## [0.6.0] - 2026-11-15
 
 ### Upgrade notes
