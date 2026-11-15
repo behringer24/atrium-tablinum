@@ -121,9 +121,18 @@ Local groups (`admin_groups`: `list`, `create`, `rename`, `delete`, `add_member`
 ### Sessions
 
 - `admin_revoke_sessions` ends all logins of a user at once (account stays active; they log in again). Use it when an access is suspected of misuse.
-- `admin_revoke_all_sessions` ends the logins of **all** users, yours included, and needs `confirm=true`. Accounts stay active; every assistant logs in again. Use it when tokens may have leaked and the scope is unclear; remove the source of the leak first. It does not touch a static token of a `dev_mode` setup.
+- `admin_revoke_all_sessions` ends the logins of **all** users, yours included, and needs `confirm=true`. Accounts stay active; every assistant logs in again and is allowed again by its user (see [Allowing new clients](#allowing-new-clients)). Use it when tokens may have leaked and the scope is unclear; remove the source of the leak first. It does not touch a static token of a `dev_mode` setup.
 - Users end their own with `revoke_my_sessions`. Sessions last at most 90 days (`auth.session_max_age`); access tokens one hour, refresh tokens 30 days.
 - A locked account loses access immediately, even with a valid token: users are checked live on every request.
+
+### Allowing new clients
+
+Anybody can register a client (an assistant's connector) under any name, within the return addresses your instance allows. So that nobody connects one unnoticed, every user is asked once per client: after the login at the identity provider a page shows the name the client gave itself, the address it sends the user back to and the account, with the buttons Allow and Deny. Nothing is issued before the answer, and the answer is remembered for that user and client, so the next login of the same client asks nothing. Users who log in again with an assistant they already use are asked once after an update that brought this page; logins that are already running are not touched.
+
+- **Brief your users:** allow only a connection you started yourself; if the question is unexpected, deny. The name is the client's own choice and no proof of who it is. The address it sends the user back to is the better sign, and it can only be one of the addresses in `auth.allowed_redirect_uris`, so keep that list short.
+- **Cutting a client off makes it ask again:** ending a client's sessions (`revoke_my_sessions`), all sessions of a user (`admin_revoke_sessions`, offboarding) or of everybody (`admin_revoke_all_sessions`), and the detection of a reused refresh token also forget the consent. After `admin_revoke_all_sessions` every user allows their assistants again at the next login.
+- **Look at it in the audit log:** `client_consent` and `client_consent_denied` with the client id, the name it gave and the host it sends the user back to. Many denials, or a client name you do not know, are worth a look (*"Who allowed a client this week?"* with `action: client_consent`).
+- There is no setting to switch the page off.
 
 ### Account linking
 
@@ -242,7 +251,7 @@ Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `
 | Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, `share_send` (a sending to a colleague: kind, recipient id and digest, no title or name), reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `space_add_member`, `space_remove_member` |
-| Users and logins | `login`, `login_denied`, `account_linked`, `admin_offboard_user` (with `admin_right_removed`), `admin_reactivate_user`, `admin_grant_instance_admin`, `admin_revoke_instance_admin`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
+| Users and logins | `login`, `login_denied`, `client_consent` and `client_consent_denied` (client id, the name it gave, the host it sends the user back to), `account_linked`, `admin_offboard_user` (with `admin_right_removed`), `admin_reactivate_user`, `admin_grant_instance_admin`, `admin_revoke_instance_admin`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
 | Refusals | `denied` (tool and reason; role refusals, approval required, rate limits) |
 | Instance | `admin_context_set`, `admin_context_clear`, `admin_instance_set`, `admin_quota_set` (scope, target, old and new values) |
 
@@ -259,6 +268,7 @@ Two settings in `config.yaml` (`audit:`) let you keep the audit log where the se
 - *Who reads which skill and by which route:* `action=skill_get` with `client=chatgpt`; look at `via`.
 - *What was moved or deleted:* `action=skill_move*`, `action=delete`, `action=skill_delete`.
 - *Failed logins:* `action=login_denied`.
+- *Which clients users allowed or denied:* `action=client_consent*`.
 - *Changes to members and spaces:* `action=space_add_member`, `action=admin_*`.
 - *What happened in a space last week:* `space=Support since=2026-11-01` (searches are not tied to a space).
 

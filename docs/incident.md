@@ -11,7 +11,7 @@ Vulnerabilities in Atrium itself are reported as described in [SECURITY.md](../S
 |---|---|
 | `admin_revoke_sessions` | Ends all logins of one user; the account stays active. |
 | `admin_offboard_user` | Locks one account, revokes its tokens and deletes its handoffs. `admin_reactivate_user` lifts it. |
-| `admin_revoke_all_sessions` | Ends the logins of **all** users of the instance at once, yours included. Accounts stay active, every assistant logs in again. Needs `confirm=true`. |
+| `admin_revoke_all_sessions` | Ends the logins of **all** users of the instance at once, yours included. Accounts stay active, every assistant logs in again and is allowed again by its user (the consent for every client is forgotten too). Needs `confirm=true`. |
 | `admin_allowlist` | Closes the login to a domain, address or tenant; existing sessions stay until revoked. |
 | Stopping the server | `docker compose stop server` takes the instance offline; data and tokens stay. |
 

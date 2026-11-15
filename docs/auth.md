@@ -10,7 +10,8 @@ The server is itself the OAuth 2.1 authorization server for the MCP endpoint. Th
 | `/.well-known/oauth-authorization-server` | AS metadata (RFC 8414), including `authorization_response_iss_parameter_supported` |
 | `POST /oauth/register` | Client registration (public clients only, limited to allowed redirect URIs) |
 | `GET /oauth/authorize` | PKCE (S256) required; `resource` must point to this server; selection page when there are several IdPs |
-| `GET /oauth/callback/{provider}` | Return from the IdP |
+| `GET /oauth/callback/{provider}` | Return from the IdP; for a client the user has not allowed yet it shows the consent page instead of redirecting |
+| `POST /oauth/consent` | Answer to the consent page (`decision=allow` or anything else for no), tied to the login by a random single-use request value |
 | `POST /oauth/token` | Exchange code for token, refresh with rotation |
 | `POST /oauth/revoke` | Revoke a token (RFC 7009) |
 
@@ -20,6 +21,7 @@ Properties the server enforces:
 - Tokens are bound to the resource (`<base_url>/mcp`) (RFC 8707); foreign audiences are rejected with 401.
 - Refresh tokens rotate. If a refresh token that has already been used is presented, the server revokes all tokens of that user for that client.
 - Authorization codes are valid for 2 minutes and exactly once.
+- A client that a user has not allowed yet gets no code before the user says yes. Anybody can register a client under any name, and a user who is already logged in at the IdP would otherwise connect it without noticing. After the login at the IdP the user sees a consent page: the name the client gave itself (shown as plain text, with line breaks and invisible or reordering characters removed), the host it sends the user back to, and the account the user is signed in as. Allow and Deny are two buttons of one form; the form carries a random request value (single use, ten minutes) and nothing else, and the page is not cached and cannot be framed. An answer other than "allow" ends with `access_denied` at the client. What the user allowed is remembered per user and client, so the next login of that client asks nothing. Ending a client's sessions, a user's sessions or all sessions, and the detection of a reused refresh token also forget the consent, so a client that was cut off has to ask again. Both answers are in the audit log (`client_consent`, `client_consent_denied`, with client id, name and the redirect host).
 - The user is checked live on every request: deactivated accounts lose access immediately, even with a valid token.
 - The server itself requests PKCE and a nonce from the IdP.
 
