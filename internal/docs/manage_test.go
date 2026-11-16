@@ -93,11 +93,21 @@ func TestMoveRespectsEditRightsAndApproval(t *testing.T) {
 	if _, err := e.docs.Move(e.ctx, author, docs.MoveParams{ID: d.ID, SpaceID: open.ID}); !errors.Is(err, ingest.ErrInvalid) {
 		t.Errorf("draft: %v", err)
 	}
-	// a curator may move into an approval space without draft status
+	// a curator's entry moved into an approval space is a draft as well; the curator releases it
+	// themselves afterwards
 	d2 := mustStore(t, e, curator, open.ID, "Zweiter", "Inhalt beta")
 	moved, err = e.docs.Move(e.ctx, curator, docs.MoveParams{ID: d2.ID, SpaceID: review.ID})
-	if err != nil || moved.Status != "approved" {
+	if err != nil || moved.Status != "draft" {
 		t.Fatalf("%+v %v", moved, err)
+	}
+	if d, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: d2.ID, Approve: true}); err != nil || d.Status != "approved" {
+		t.Fatalf("curator releases moved entry: %+v %v", d, err)
+	}
+	// only an admin moves into an approval space without draft status
+	boss := e.actor(t, "boss@x.de") // instance admin, admin in every team space
+	d4 := mustStore(t, e, boss, open.ID, "Vierter", "Inhalt gamma")
+	if m, err := e.docs.Move(e.ctx, boss, docs.MoveParams{ID: d4.ID, SpaceID: review.ID}); err != nil || m.Status != "approved" {
+		t.Fatalf("admin move: %+v %v", m, err)
 	}
 	// an author cannot take approved entries out of an approval space
 	d3 := mustStore(t, e, author, review.ID, "Dritter", "Inhalt alpha beta")

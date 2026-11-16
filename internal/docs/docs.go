@@ -32,8 +32,9 @@ var (
 	// ErrNeedsApproval: authors cannot yet change approved entries of approval spaces
 	// (a draft next to the approved version is not implemented).
 	ErrNeedsApproval = errors.New("approved entries in spaces that require approval can currently only be changed by curators")
-	// ErrOwnDraft: curators cannot release their own draft, admins can.
-	ErrOwnDraft = errors.New("only a space admin can approve their own draft, otherwise another curator has to do it")
+	// ErrOwnDraft: in a space without mandatory approval curators cannot release their own
+	// draft, admins can.
+	ErrOwnDraft = errors.New("only a space admin can approve their own draft in this space, otherwise another curator has to do it")
 	// ErrRule: binding rules are set, changed and moved by curators and admins of the space only.
 	ErrRule = errors.New("binding rules (type rule) are set and changed only by curators and admins of the space: ask one of them (space_contacts)")
 )
