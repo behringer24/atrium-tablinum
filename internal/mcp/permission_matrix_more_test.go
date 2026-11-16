@@ -30,8 +30,8 @@ func shareOps(space string) []mxOp {
 		{name: "send foreign entry", tool: "share_knowledge", min: rkCurator, prep: foreign(space), args: idArgs(to), hidden: rkReader},
 		{name: "send own entry", tool: "share_knowledge", min: rkAuthor, args: idArgs(to),
 			prep: func(m *matrix, r mxRole) (string, bool) {
-				if space == "gated" && r.rank < rkCurator {
-					return "", false // below curator an own entry is a draft there, and drafts are not sent
+				if space == "gated" && r.rank < rkAdmin {
+					return "", false // below admin an own entry is a draft there, and drafts are not sent
 				}
 				return own(space, nil)(m, r)
 			}},

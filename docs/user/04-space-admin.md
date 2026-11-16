@@ -67,7 +67,7 @@ Give people the lowest role that lets them do their job:
 |---|---|---|
 | **Reader** | People who consume knowledge | Often covered by the default role |
 | **Author** | People who document and maintain | Their entries are drafts when the space requires approval |
-| **Curator** | Subject experts who review | Needed at least **twice**: curators cannot approve their own drafts or skill versions |
+| **Curator** | Subject experts who review | Needed at least **twice**: curators cannot approve their own skill versions, and a second pair of eyes is the point of a review. Their own entries start as drafts in a space with approval |
 | **Admin** | The one or two people who manage membership | They also review as curators |
 
 Rules of thumb:
@@ -75,7 +75,7 @@ Rules of thumb:
 - **Two curators per space** with approval, so that review continues when one is away.
 - **Do not make everybody a curator.** Review is a control; fewer, careful reviewers beat many hurried ones.
 - **Prefer groups** over long lists of people, if your identity provider or the instance admins provide matching groups. Access then follows the group.
-- **Authors review nothing, curators are not admins.** An admin should not routinely approve their own work; Atrium lets admins do it to avoid deadlocks, and marks it in the audit log.
+- **Authors review nothing, curators are not admins.** In a space with approval only admins save approved entries directly; the entries of curators start as drafts, which they release on purpose. An admin should not routinely approve their own work; Atrium lets admins do it to avoid deadlocks, and marks it in the audit log.
 - Skills are a higher-trust content type: be more careful with who may publish them (curators) and who may unblock (you).
 
 ## Lifting blocks and deleting
@@ -162,7 +162,7 @@ Ask an instance admin when you need to:
 | The person still has access after removal | They have it through a group or the default role. Check `space_members` and the groups |
 | "Not found" for a space you manage | Check the spelling or slug. You see only spaces you administer |
 | You cannot change the approval setting | Only an instance admin can (`admin_update_space`) |
-| A curator cannot approve their own draft | By design. Another curator, or you as admin, approves |
+| A curator cannot approve their own draft | Only in a space without approval, where a draft is a request for a second look. Another curator, or you as admin, approves. In a space with approval a curator may release their own draft |
 | Unblocking did not make the skill available | The version is *approved*, not published. A curator must publish it again |
 | Role changes seem not to apply | They apply to the next request. Check `space_members`, and look for roles the person has through a group or the default role |
 

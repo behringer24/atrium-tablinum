@@ -64,7 +64,7 @@ A checklist for the first days. The installation itself, step by step, is in [In
 |---|---|
 | `slug` | Short identifier: lower case letters, digits, hyphens (2 to 63 characters) |
 | `name`, `description` | Shown to users; the description appears in assistants' instructions |
-| `require_approval` | Entries from authors are drafts until a curator approves. Curators' and admins' own entries are approved at once |
+| `require_approval` | Entries from authors and curators are drafts until a curator approves; a curator may release their own. Only admins' entries (and yours) are approved at once |
 | `default_role` | `reader` or `author` gives that role to **every logged-in user**; empty means members only |
 | `members` | Initial users or groups with roles |
 
@@ -253,7 +253,7 @@ Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `
 
 | Area | Actions |
 |---|---|
-| Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
+| Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` when somebody releases their own draft), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, `share_send` (a sending to a colleague: kind, recipient id and digest, no title or name), reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `admin_delete_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `client_consent` and `client_consent_denied` (client id, the name it gave, the host it sends the user back to), `account_linked`, `admin_offboard_user` (with `admin_right_removed`), `admin_reactivate_user`, `admin_grant_instance_admin`, `admin_revoke_instance_admin`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |

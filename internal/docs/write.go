@@ -79,12 +79,20 @@ func (s *Store) writableSpace(ctx context.Context, a Actor, id uuid.UUID) (space
 }
 
 // statusFor applies the approval rules of concept 7.5 to a new entry; draft is the explicit
-// request of the author.
+// request of the author. In a space with mandatory approval only admins create approved entries
+// directly; everybody else, curators included, starts with a draft. A curator releases their own
+// draft afterwards with review_knowledge, which is a deliberate step (see Review).
 func statusFor(sp spaces.Space, role authz.Role, draft bool) string {
-	if sp.Type == "team" && (draft || sp.RequireApproval && role < authz.Curator) {
+	if sp.Type == "team" && (draft || needsReview(sp, role)) {
 		return "draft"
 	}
 	return "approved"
+}
+
+// needsReview: entries that someone below admin brings into a team space with mandatory approval
+// (new or moved in) are drafts first.
+func needsReview(sp spaces.Space, role authz.Role) bool {
+	return sp.Type == "team" && sp.RequireApproval && role < authz.Admin
 }
 
 func source(a Actor) string {
@@ -418,6 +426,8 @@ func (s *Store) Unarchive(ctx context.Context, a Actor, id uuid.UUID) (Document,
 		WHERE document_id = $1 AND status <> 'archived' ORDER BY version DESC LIMIT 1`, id).Scan(&status); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Document{}, err
 	}
+	// Restoring brings back a state that was approved before, so curators keep it; authors go
+	// back to review.
 	if status == "approved" && sp.Type == "team" && sp.RequireApproval && role < authz.Curator {
 		status = "draft"
 	}
