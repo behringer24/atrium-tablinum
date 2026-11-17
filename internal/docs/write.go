@@ -35,6 +35,8 @@ type StoreParams struct {
 	// active and can read the space. ReviewDue is the review date.
 	OwnerID   *uuid.UUID
 	ReviewDue *time.Time
+	// Origins are references to the originals the knowledge was taken from (see NormalizeOrigins).
+	Origins []Origin
 }
 
 // checkMeta applies the rules for type, responsible person and review date of an entry in sp,
@@ -125,6 +127,10 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 	if err != nil {
 		return StoreResult{}, err
 	}
+	origins, err := NormalizeOrigins(p.Origins)
+	if err != nil {
+		return StoreResult{}, err
+	}
 	if err := s.checkQuota(ctx, sp, 1, int64(len(n.Content))); err != nil {
 		return StoreResult{}, err
 	}
@@ -151,9 +157,9 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 
 	var id uuid.UUID
 	err = tx.QueryRow(ctx, `
-INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type, owner_id, review_due_at)
-VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10) RETURNING id`,
-		sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID, source(a), p.Type, p.OwnerID, p.ReviewDue).Scan(&id)
+INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type, owner_id, review_due_at, origins)
+VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10, $11) RETURNING id`,
+		sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID, source(a), p.Type, p.OwnerID, p.ReviewDue, origins).Scan(&id)
 	if err != nil {
 		return StoreResult{}, err
 	}
@@ -189,6 +195,8 @@ type UpdateParams struct {
 	ClearOwner     bool
 	ReviewDue      *time.Time
 	ClearReviewDue bool
+	// Origins replaces the references to the originals; nil leaves them, an empty list removes them.
+	Origins *[]Origin
 }
 
 // VersionConflict is the error of an update that started from an outdated version. It matches
@@ -203,8 +211,8 @@ func (e *VersionConflict) Error() string {
 
 func (e *VersionConflict) Is(target error) bool { return target == ErrConflict }
 
-// metaOnly reports whether p changes only the responsible person or the review date: neither
-// says anything new about the content, so no version is written and the entry is not re-indexed.
+// metaOnly reports whether p changes only the responsible person, the review date or the origins:
+// none of them says anything new about the content, so no version is written and the entry is not re-indexed.
 func (p UpdateParams) metaOnly() bool {
 	return p.Title == nil && p.Content == nil && p.Tags == nil && p.Type == nil
 }
@@ -267,6 +275,12 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	if p.ReviewDue != nil || p.ClearReviewDue {
 		reviewDue = p.ReviewDue
 	}
+	origins := cur.Origins
+	if p.Origins != nil {
+		if origins, err = NormalizeOrigins(*p.Origins); err != nil {
+			return Document{}, err
+		}
+	}
 	if err := checkMeta(sp, role, typ, p.OwnerID); err != nil {
 		return Document{}, err
 	}
@@ -286,7 +300,7 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 		status = "draft" // an author revising their own draft or rejected entry
 	}
 	if p.metaOnly() {
-		return s.updateMeta(ctx, a, sp, cur, owner, reviewDue)
+		return s.updateMeta(ctx, a, sp, cur, owner, reviewDue, origins)
 	}
 	if delta := int64(len(n.Content) - len(cur.Content)); delta > 0 {
 		if err := s.checkQuota(ctx, sp, 0, delta); err != nil {
@@ -317,8 +331,8 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	version := locked.Version + 1
 	if _, err := tx.Exec(ctx, `UPDATE documents SET title = $2, content = $3, tags = $4, status = $5,
 		review_note = CASE WHEN $5 = 'draft' THEN NULL ELSE review_note END,
-		version = $6, updated_at = now(), updated_by = $7, knowledge_type = $8, owner_id = $9, review_due_at = $10 WHERE id = $1`,
-		p.ID, n.Title, n.Content, n.Tags, status, version, a.User.ID, typ, owner, reviewDue); err != nil {
+		version = $6, updated_at = now(), updated_by = $7, knowledge_type = $8, owner_id = $9, review_due_at = $10, origins = $11 WHERE id = $1`,
+		p.ID, n.Title, n.Content, n.Tags, status, version, a.User.ID, typ, owner, reviewDue, origins); err != nil {
 		return Document{}, err
 	}
 	if err := writeVersion(ctx, tx, p.ID, version, sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID); err != nil {

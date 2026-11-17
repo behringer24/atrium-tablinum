@@ -25,6 +25,7 @@ For each check: what to look for, how to find it, and the usual action.
 - **Look for:** "See also" lines and entry IDs mentioned in the content.
 - **Find:** load each with `get_knowledge`. "Not found" means archived, deleted or not visible to the user: report it, do not guess which.
 - **External links:** check them only if you can with your own tools; otherwise list them as not checked.
+- **Origins:** an entry shows its `origins` with `get_knowledge`. Open each with your own tools if you can, and compare the text with the entry (a `sha256` tells you whether the text taken over has changed). An original that is gone is a finding of medium priority (the entry stays valid, the reference is dead); one that has changed is a finding that the entry may be outdated. Never fetch an address you cannot open with the user's own access, and list it as not checked.
 
 ## 5. Form
 

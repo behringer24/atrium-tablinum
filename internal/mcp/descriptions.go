@@ -45,7 +45,10 @@ var defaultDescriptions = map[string]string{
 		`If the tool returns similar entries or a list of possible spaces, nothing has been saved yet: ` +
 		`ask the user whether the existing entry should be updated, or which space is meant. ` +
 		`type says what the entry is: rule (binding; only when the user says it is binding, and only curators and admins of the space may set it), ` +
-		`documentation (default), recommendation or experience. owner (e-mail of the responsible person) and review_due (review date) only when the user names them.`,
+		`documentation (default), recommendation or experience. owner (e-mail of the responsible person) and review_due (review date) only when the user names them. ` +
+		`origins lists the originals the knowledge comes from (ref of the form scheme://..., optional title, read_at, sha256 of the text taken over): ` +
+		`pass them when you took the content from a file or page, so that readers can find and check the source. Atrium stores only the references, never the files; ` +
+		`the entry itself is the lasting copy of the knowledge.`,
 
 	"search_knowledge": `Searches the "{{.ProductName}}" knowledge store (all spaces the user can access, including their personal space). ` +
 		`Call it when a question might concern company-specific knowledge or knowledge the user filed earlier, ` +
@@ -69,7 +72,8 @@ var defaultDescriptions = map[string]string{
 		`nothing is saved and the answer names the current version, so load the entry again, merge and retry. ` +
 		`Fields not passed stay unchanged. A returned draft (status rejected, note in review_note) ` +
 		`goes back into review after it has been revised. type, owner (e-mail; empty removes) and review_due (YYYY-MM-DD; empty removes) ` +
-		`change the knowledge type, the responsible person and the review date; owner and review_due alone create no new version. ` +
+		`change the knowledge type, the responsible person and the review date; origins replaces the complete list of references to the originals (empty list removes them); ` +
+		`owner, review_due and origins alone create no new version. ` +
 		`Entries of type rule are changed only by curators and admins of the space.`,
 
 	"review_knowledge": `Reviews a draft in the "{{.ProductName}}" knowledge store: decision=approve approves it, ` +
