@@ -21,7 +21,7 @@ Use this structure for new entries. Leave out a section that would stay empty.
 
 ## Sources
 
-- <Name of the document, author or origin, date; link if there is one>. Filed on <date>.
+- <Name of the document, author or origin, date; link if there is one>. Filed on <date>. (A source with an address also goes into `origins` of the entry, so the link is checkable without reading the text.)
 ```
 
 ## Guidance

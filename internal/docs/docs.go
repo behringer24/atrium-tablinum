@@ -77,6 +77,8 @@ type Document struct {
 	OwnerActive bool
 	// ReviewDue is the day by which the entry should be checked, if set.
 	ReviewDue *time.Time
+	// Origins are the references to the originals the knowledge comes from (knowledge entries only).
+	Origins []Origin
 	// IndexPending is set by Store and Update only: how many sections of the entry were saved without
 	// a vector and wait for the background task. Until then they are found by full text only.
 	IndexPending int
@@ -132,12 +134,12 @@ type querier interface {
 
 const docColumns = `d.id, d.space_id, d.kind, d.title, d.content, d.tags, d.status, COALESCE(d.review_note, ''),
 	d.author_id, au.email::text, d.source, d.version, d.expires_at, d.created_at, d.updated_at,
-	d.knowledge_type, d.owner_id, COALESCE(ou.email::text, ''), COALESCE(ou.status = 'active', false), d.review_due_at`
+	d.knowledge_type, d.owner_id, COALESCE(ou.email::text, ''), COALESCE(ou.status = 'active', false), d.review_due_at, d.origins`
 
 // docListColumns are docColumns without the content, for lists.
 const docListColumns = `d.id, d.space_id, d.kind, d.title, '', d.tags, d.status, COALESCE(d.review_note, ''),
 	d.author_id, au.email::text, d.source, d.version, d.expires_at, d.created_at, d.updated_at,
-	d.knowledge_type, d.owner_id, COALESCE(ou.email::text, ''), COALESCE(ou.status = 'active', false), d.review_due_at`
+	d.knowledge_type, d.owner_id, COALESCE(ou.email::text, ''), COALESCE(ou.status = 'active', false), d.review_due_at, d.origins`
 
 // docFrom joins the author and the responsible person to the documents aliased d.
 const docFrom = `FROM documents d JOIN users au ON au.id = d.author_id LEFT JOIN users ou ON ou.id = d.owner_id`
@@ -146,7 +148,7 @@ const docFrom = `FROM documents d JOIN users au ON au.id = d.author_id LEFT JOIN
 func docTargets(d *Document) []any {
 	return []any{&d.ID, &d.SpaceID, &d.Kind, &d.Title, &d.Content, &d.Tags, &d.Status, &d.ReviewNote,
 		&d.AuthorID, &d.AuthorEmail, &d.Source, &d.Version, &d.ExpiresAt, &d.CreatedAt, &d.UpdatedAt,
-		&d.Type, &d.OwnerID, &d.OwnerEmail, &d.OwnerActive, &d.ReviewDue}
+		&d.Type, &d.OwnerID, &d.OwnerEmail, &d.OwnerActive, &d.ReviewDue, &d.Origins}
 }
 
 func scanDoc(row pgx.Row) (Document, error) {

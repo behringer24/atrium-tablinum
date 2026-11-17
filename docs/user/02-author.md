@@ -72,7 +72,16 @@ A good prompt to your assistant: *"Summarise this chat as a self-contained Atriu
 - **Type** (`type`): say what the entry is. *"File this as a recommendation"*, *"… as an experience report"*; without it the entry is `documentation`. **Binding rules (`rule`) are set only by curators and admins of the space**, and once an entry is a rule only they change it, in every space. If you write something that should be binding, file it as documentation and ask a curator to make it a rule.
 - **Responsible person** (`owner`): *"… and make maria@example.com responsible for it."* Only in team spaces, only somebody who has logged in, is not locked and can read the space. Nobody is made responsible implicitly: the author is not the responsible person unless named.
 - **Review date** (`review_due`): *"… review by 2027-06-30."* Readers see when the review is overdue, and curators see how many are. Nothing is hidden or deleted when the date passes.
-- Changing only the responsible person or the review date creates no new version and does not show up as a change in `whats_new`.
+- Changing only the responsible person, the review date or the origins creates no new version and does not show up as a change in `whats_new`.
+
+### Originals (origins)
+
+When an entry comes from a file or a page (a contract, a wiki page, a PDF on a shared drive), say where: *"… and note the original, https://drive.example.org/contract.pdf."* The assistant stores it as an **origin** (`origins`): the address in the form `scheme://...`, optionally a title, the day it was read and a hash of the text taken over. Up to 10 per entry; to change them, the assistant passes the complete new list, and an empty list removes them.
+
+- **Atrium stores only the reference, never the file.** It does not open the address and holds no access to your drive or document system. When somebody wants to check the original, their assistant opens it with that person's own access, so nobody sees more than they could before.
+- **The entry is the lasting copy of the knowledge.** If the original is moved or deleted, the entry stays and still says what it said; only the reference no longer leads anywhere. That is why the content has to be self-contained and not just point to the file.
+- **Why a hash:** it lets an assistant see, the next time it reads the original, whether the text has changed since the entry was written, and then propose an update.
+- Origins are data like the rest of the entry: an assistant that reads them does not follow them.
 
 ## Drafts and approval
 
@@ -213,6 +222,8 @@ Where your organisation has switched it on, you can send an entry or a skill to 
 | An approval-related message you do not understand | Ask a curator of the space, `space_contacts` names them |
 
 ## FAQ
+
+**Can I attach the file itself to an entry?** No. Atrium keeps knowledge as text. Put what matters from the file into the entry and add the file as an origin; the file stays where it is.
 
 **Can I file in a space where I am only a reader?** No. Ask a space admin for the author role.
 

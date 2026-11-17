@@ -370,6 +370,7 @@ const TABLES = [
   {n:"source", t:"text", nn:1},
   {n:"version", t:"int", nn:1, d:"1"},
   {n:"review_due_at", t:"timestamptz"},
+  {n:"origins", t:"jsonb", nn:1, d:"'[]'", chk:"jsonb_typeof(origins) = 'array'"},
   {n:"expires_at", t:"timestamptz"},
   {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
   {n:"updated_at", t:"timestamptz", nn:1, d:"now()"},
@@ -390,7 +391,8 @@ const TABLES = [
   "<code>source</code> is the name of the writing client, <code>'api'</code> without one.",
   "<code>author_id</code> and <code>updated_by</code> have no ON DELETE; an account with entries cannot be hard-deleted, which the code never does anyway.",
   "Every change also writes a row to <code>document_versions</code>; the search index is in <code>chunks</code>.",
-  "Migration 11: <code>knowledge_type</code> says whether an entry is binding (<code>rule</code>, set and changed by curators only), describes (<code>documentation</code>), advises (<code>recommendation</code>) or reports (<code>experience</code>). <code>owner_id</code> names the responsible person (team spaces, explicit, never derived; a locked owner stays named as former until <code>reassign_owner</code> moves the entries). <code>review_due_at</code> is the review date set with <code>review_due</code>. See <code>docs/design/knowledge-metadata.md</code>."]},
+  "Migration 11: <code>knowledge_type</code> says whether an entry is binding (<code>rule</code>, set and changed by curators only), describes (<code>documentation</code>), advises (<code>recommendation</code>) or reports (<code>experience</code>). <code>owner_id</code> names the responsible person (team spaces, explicit, never derived; a locked owner stays named as former until <code>reassign_owner</code> moves the entries). <code>review_due_at</code> is the review date set with <code>review_due</code>. See <code>docs/design/knowledge-metadata.md</code>.",
+  "Migration 16: <code>origins</code> is a JSON list of references to the originals the content was taken from (<code>ref</code>, <code>title</code>, <code>read_at</code>, <code>sha256</code>); Atrium stores the reference only, never the file. Changing it writes no version."]},
 
 {name:"document_versions", area:"knowledge", mig:[1,11],
  purpose:"Immutable copy of every state of an entry, written on create, update, review, archive and move.",

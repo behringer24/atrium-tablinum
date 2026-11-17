@@ -51,3 +51,28 @@ func (s *Server) readerUser(ctx context.Context, email string, spaceID uuid.UUID
 	}
 	return u.ID, nil
 }
+
+// originIO is a reference to the original a piece of knowledge was taken from. Atrium keeps the
+// reference only; the assistant reads the original itself with the access of the user.
+type originIO struct {
+	Ref    string `json:"ref" jsonschema:"Address of the original, of the form scheme://... (for example https://... or sharepoint://...)"`
+	Title  string `json:"title,omitempty" jsonschema:"Name of the original (file name, page title)"`
+	ReadAt string `json:"read_at,omitempty" jsonschema:"Day (YYYY-MM-DD) the original was read"`
+	SHA256 string `json:"sha256,omitempty" jsonschema:"Hash (hex) of the text taken over, to see later whether the original has changed"`
+}
+
+func originsIn(in []originIO) []docs.Origin {
+	out := make([]docs.Origin, 0, len(in))
+	for _, o := range in {
+		out = append(out, docs.Origin{Ref: o.Ref, Title: o.Title, ReadAt: o.ReadAt, SHA256: o.SHA256})
+	}
+	return out
+}
+
+func originsOut(in []docs.Origin) []originIO {
+	var out []originIO
+	for _, o := range in {
+		out = append(out, originIO{Ref: o.Ref, Title: o.Title, ReadAt: o.ReadAt, SHA256: o.SHA256})
+	}
+	return out
+}

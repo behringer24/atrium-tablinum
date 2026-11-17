@@ -31,6 +31,12 @@
 - **A date, set on purpose.** `review_due` is the day by which the entry should be checked. Nothing sets it automatically, and nothing hides or deletes an overdue entry: an overdue entry is still the best that is known, and only a person can judge it.
 - **Visible where it matters.** Entries carry `review_due` and `review_overdue`; `list_knowledge review=due` lists the overdue entries of a space, and `whats_new` tells curators how many are overdue in their spaces. The skill `knowledge-lint` can use the date instead of guessing from the last change.
 
+## Origins
+
+- **A reference, not a file.** `origins` lists up to 10 references to the originals an entry was taken from: `ref` (form `scheme://...`, no white space or control characters, at most 500 characters), optional `title`, `read_at` (a day) and `sha256` (hash of the text taken over). Atrium never opens or fetches a reference and holds no access to other systems; the assistant reads the original with the access of the user. The entry stays the lasting copy of the knowledge, so a deleted original costs nothing but the link.
+- **Metadata like the owner.** It is stored as a JSON list on the entry, changed by author or curator, written to no version and recorded in the audit log (`update_meta`, `origins_changed`). A move keeps it; sharing an entry to a personal space copies it; the Markdown export lists it.
+- **Data, not instructions.** Titles are made safe to show; the tool results carry the same notice as the content.
+
 ## Former curators and contacts
 
 Locking an account (offboarding) removes all rights at once but deletes nothing: the account stays, entries keep their author, versions keep who changed them, and memberships stay so that a reactivation restores them. Before this change `space_contacts` still named a locked curator like an active one. Now `space_contacts` and `space_members` mark locked people as `former`, list them after the active ones, and readers are pointed to the active curators.

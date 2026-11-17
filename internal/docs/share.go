@@ -86,9 +86,9 @@ func (s *Store) Share(ctx context.Context, a Actor, p ShareParams) error {
 	}
 	var id uuid.UUID
 	err = tx.QueryRow(ctx, `
-INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type)
-VALUES ($1, 'knowledge', $2, $3, $4, 'draft', $5, $6, $5, $7) RETURNING id`,
-		to.SpaceID, n.Title, n.Content, n.Tags, a.User.ID, source(a), typ).Scan(&id)
+INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type, origins)
+VALUES ($1, 'knowledge', $2, $3, $4, 'draft', $5, $6, $5, $7, $8) RETURNING id`,
+		to.SpaceID, n.Title, n.Content, n.Tags, a.User.ID, source(a), typ, cur.Origins).Scan(&id)
 	if err != nil {
 		return err
 	}

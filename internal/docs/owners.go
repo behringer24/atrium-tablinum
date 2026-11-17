@@ -2,6 +2,7 @@ package docs
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,10 +11,10 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
 )
 
-// updateMeta sets the responsible person and the review date of an entry. Neither changes what the
+// updateMeta sets the responsible person, the review date and the origins of an entry. Neither changes what the
 // entry says, so no version is written, the entry is not re-indexed and it does not count as changed
 // for whats_new; the audit log records the change.
-func (s *Store) updateMeta(ctx context.Context, a Actor, sp spaces.Space, cur Document, owner *uuid.UUID, reviewDue *time.Time) (Document, error) {
+func (s *Store) updateMeta(ctx context.Context, a Actor, sp spaces.Space, cur Document, owner *uuid.UUID, reviewDue *time.Time, origins []Origin) (Document, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Document{}, err
@@ -26,10 +27,11 @@ func (s *Store) updateMeta(ctx context.Context, a Actor, sp spaces.Space, cur Do
 	if locked.Version != cur.Version {
 		return Document{}, ErrConflict
 	}
-	if _, err := tx.Exec(ctx, `UPDATE documents SET owner_id = $2, review_due_at = $3 WHERE id = $1`, cur.ID, owner, reviewDue); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE documents SET owner_id = $2, review_due_at = $3, origins = $4 WHERE id = $1`, cur.ID, owner, reviewDue, origins); err != nil {
 		return Document{}, err
 	}
-	details := map[string]any{"owner_changed": !sameID(owner, cur.OwnerID), "review_due_changed": !sameTime(reviewDue, cur.ReviewDue)}
+	details := map[string]any{"owner_changed": !sameID(owner, cur.OwnerID), "review_due_changed": !sameTime(reviewDue, cur.ReviewDue),
+		"origins_changed": !reflect.DeepEqual(origins, cur.Origins)}
 	if err := record(ctx, tx, a, "update_meta", sp, cur.ID, details); err != nil {
 		return Document{}, err
 	}
