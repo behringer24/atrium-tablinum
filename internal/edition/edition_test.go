@@ -1,7 +1,9 @@
 package edition
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -16,10 +18,20 @@ func TestCommunityDefault(t *testing.T) {
 	}
 }
 
-func TestCommunityRefusesLicenseSection(t *testing.T) {
-	_, err := Start(context.Background(), Env{HasSection: true})
-	if err == nil || !strings.Contains(err.Error(), "license") || !strings.Contains(err.Error(), "not supported") {
-		t.Errorf("a license section must be refused with an explanation, got %v", err)
+// A "license" section does not stop the start: it is ignored, and the log says so.
+func TestCommunityIgnoresLicenseSection(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+	r, err := Start(context.Background(), Env{HasSection: true, Log: log})
+	if err != nil || r.Name() != Community || r.MaxUsers() != CommunityMaxUsers {
+		t.Fatalf("a license section must be ignored: %v %v", r, err)
+	}
+	if out := buf.String(); !strings.Contains(out, "level=WARN") || !strings.Contains(out, "license") || !strings.Contains(out, "ignored") {
+		t.Errorf("the log must say that the section is ignored, got %q", out)
+	}
+	buf.Reset()
+	if _, err := Start(context.Background(), Env{Log: log}); err != nil || buf.Len() != 0 {
+		t.Errorf("without a section nothing is logged: %v %q", err, buf.String())
 	}
 }
 
