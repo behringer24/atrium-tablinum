@@ -1,6 +1,6 @@
-# Atrium Pro: licence, guided offboarding and content separation
+# Atrium Pro: licence, guided offboarding, content separation and spaces in a hierarchy
 
-This guide is for the **instance admins** (and, for one section, the space admins) of an organisation that runs the **Pro** edition. It covers what the Community edition does not have: installing and renewing a licence, the guided offboarding and the separation of content from operations. Everything else works as described in the [instance admin guide](../user/05-instance-admin.md) and the other guides. Which edition has what is listed in [Editions](../licensing.md).
+This guide is for the **instance admins** (and, for two sections, the space admins) of an organisation that runs the **Pro** edition. It covers what the Community edition does not have: installing and renewing a licence, the guided offboarding, the separation of content from operations and spaces below other spaces. Everything else works as described in the [instance admin guide](../user/05-instance-admin.md) and the other guides. Which edition has what is listed in [Editions](../licensing.md).
 
 The Pro edition is the official image. Until a licence is installed it behaves exactly like Community (up to 8 active accounts), so you can install the image first and add the licence when you have it.
 
@@ -13,6 +13,7 @@ The Pro edition is the official image. Until a licence is installed it behaves e
 - [The user limit](#the-user-limit)
 - [Guided offboarding](#guided-offboarding)
 - [Separating content from operations](#separating-content-from-operations)
+- [Spaces below other spaces](#spaces-below-other-spaces)
 - [FAQ](#faq)
 
 ## The licence
@@ -21,14 +22,14 @@ A licence is one line of text that starts with `atrium-license-v1.`. You receive
 
 - **It is checked on your server, offline.** Atrium never calls anybody to check it, and nothing about your instance is sent anywhere.
 - **It belongs to your instance.** It is issued for the host of your `instance.base_url`, so tell us the address you run under. A licence installed on an instance with another address is refused.
-- **It lists what it switches on:** the number of users (`users`; 0 means unlimited) and features such as `offboarding` and `content_separation`.
+- **It lists what it switches on:** the number of users (`users`; 0 means unlimited) and features such as `offboarding`, `content_separation` and `space_hierarchy`.
 - **It is for one major version and runs for a term.** It names the major version it covers (`major`) and, for a subscription or a trial, the day it ends (`expires`). Licences issued earlier carry a maintenance date (`maintenance_until`) instead of a major version; they keep working as described at the end of this section.
 
 **One major version, one term.** Atrium versions are numbered `major.minor.patch` (1.4.2); `server_info` and `admin_license` name the version and release line of the running build. A licence for major version 1 covers every build of 1.x, so each minor release and patch of that version is included while the licence runs. A build of a *newer* major version (2.0 and later) needs a licence for that major version; a licence for a newer major version also covers the earlier ones, so you can go back. When the term ends, the instance runs as Community until a new licence is installed. Renewing brings the licence for the major version that is current then.
 
 *Licences with a maintenance date.* An older licence covers every build of a release line released on or before its `maintenance_until`, for ever; a newer line needs a licence with a later date.
 
-**Nothing is ever blocked.** In every state other than `valid` the instance runs as Community. Content stays readable and exportable, and no account is locked.
+**Nothing is ever blocked.** In every state other than `valid` the instance runs as Community. Content stays readable and exportable, and no account is locked. One thing differs: spaces that were arranged below each other keep their arrangement and their rights, see [Spaces below other spaces](#spaces-below-other-spaces).
 
 ## Looking at the licence
 
@@ -114,6 +115,48 @@ In every edition an instance admin is admin in every team space: they run the sy
 
 Without the feature in the licence, or when the licence lapses, instance admins read all team spaces again whatever was set; the tool tells so.
 
+## Spaces below other spaces
+
+In every edition spaces stand next to each other and every space has its own members. With the feature `space_hierarchy` a team space can sit below another one, for example company, department and team, and **memberships flow down**, so that people do not have to be added to every space again. Personal spaces never take part.
+
+**The rule: the nearest entry wins.** For a person, Atrium looks at the space itself first and then upwards. The first space where the person has an entry, directly or through a group, decides their role. A person who is author in *Marketing* is author in *Marketing / Campaigns* as well, unless somebody gives them another role there:
+
+| Entries of Anna | Role in Marketing | in Campaigns (below Marketing) | in Trade fair 2027 (below Campaigns) |
+|---|---|---|---|
+| author in Marketing only | author | author | author |
+| author in Marketing, reader in Campaigns | author | reader | reader |
+| reader in Marketing, curator in Campaigns | reader | curator | curator |
+| nothing in Marketing and Campaigns, author in Trade fair 2027 | none | none | author |
+
+So an entry in a lower space **overrides** what the space above would give, upwards as well as downwards, and somebody who is entered only in the lowest space neither sees nor reads the spaces above it. There are no entries that deny access. To close a space for the members of the space above, switch the inheritance off for it (below): then only its own entries count.
+
+What else to know:
+
+- **The default role of a space is not inherited.** If everybody logged in may read *Marketing*, that does not open *Campaigns*; the default role is set per space. It still counts on top of an inherited role.
+- **An admin of a space is admin of the spaces below** that inherit, and so reads their content. Plan the top of a tree accordingly, or switch the inheritance off for a sensitive space.
+- **Instance admins** keep what they have in every edition: admin in every team space, unless the content separation is on.
+- **Archiving** a space hides it for everybody but instance admins and does not cut the access to the spaces below it: they keep inheriting from it. A space with sub-spaces cannot be deleted; move or delete them first.
+- A tree has **at most five levels**, a space cannot sit below itself or below one of its own sub-spaces, and neither an archived space nor a personal space can be arranged.
+
+### Arranging spaces
+
+*"Put the space Campaigns below Marketing."* (`admin_space_parent`, action `set`, after confirmation) puts a space below another one. *"Make Campaigns a top-level space again."* (`parent` = `none`) takes it out. *"Campaigns should no longer inherit members from Marketing."* (`inherit_members=false`) closes the space and everything below it for the members of the space above; `true` opens it again.
+
+- The tool is for **space admins and instance admins**. Putting a space below another one, and switching the inheritance on, need the admin right in **both** spaces (or the instance admin right), because the members of the space above gain access to the one below. Taking a space out and switching the inheritance off need only the space itself.
+- Before you confirm, check who is affected: the members and groups of every space above gain, or with a change lose, access. The rights report ([instance admin guide](../user/05-instance-admin.md#rights-report)) shows it.
+- Every change is recorded in the audit log (`admin_space_parent_set`) with the old and the new space above and the setting of the inheritance, and applies at once.
+
+### Seeing the arrangement
+
+- *"Show how my spaces are arranged."* (`admin_space_parent`, action `get`) shows for the spaces you administer their level, the space above, whether they inherit and the spaces below. A space above or below that you cannot see is left out.
+- The **rights report** (instance admins) lists for a space below another one its parent, the inheritance setting and the **inherited** holders with the space each comes from. An admin who is only inherited counts: the report no longer says that the space has no admin, but points out where the admin comes from.
+- `list_spaces` shows the role a person actually has in each space.
+- Limit to know: `space_members` and `space_contacts` list the memberships of the space itself and not the inherited ones. Use the rights report to see who has access through the spaces above.
+
+### When the licence ends
+
+An arrangement that exists keeps working, and nobody loses access on the day the licence ends: the spaces stay below each other and the rights stay as they are. Without the feature in the licence only changes that **narrow** rights are possible: taking a space out of the tree and switching the inheritance off. Putting a space below another one, moving it, and switching the inheritance on need the feature again. `admin_space_parent` tells whether your licence includes it, and a new licence lifts the restriction at once. Nothing is deleted.
+
 ## FAQ
 
 **Do I need a licence to try the official image?** No. It runs as Community until you install one.
@@ -130,6 +173,12 @@ Without the feature in the licence, or when the licence lapses, instance admins 
 
 **Can management read everything without running the system, or IT run it without reading everything?** Yes, with the feature `content_separation`: see [Separating content from operations](#separating-content-from-operations).
 
+**Can I give somebody access to one sub-space only?** Yes. Enter them in that space and nowhere above it: they see it and not the spaces above.
+
+**Can I keep one member of the space above out of a space below?** Not by name: there are no deny entries. Switch the inheritance off for that space and enter the people who belong there, or give the person a lower role there with an entry of their own.
+
+**Does a flat instance change with this feature?** No. Without a space below another one everything works as before, and nothing in the answers of the tools changes.
+
 **Who sees the licence?** Only instance admins, through `admin_license`. Other users see the edition and the release line in `server_info`.
 
-**The tools `admin_license`, `admin_transfer_personal_space` and `reassign_owner` do not appear.** They exist only in the Pro edition. `admin_license` and `admin_transfer_personal_space` are for instance admins, `reassign_owner` for space admins and instance admins. Without the feature `offboarding` the two offboarding tools refuse with a message.
+**The tools `admin_license`, `admin_transfer_personal_space`, `reassign_owner` and `admin_space_parent` do not appear.** They exist only in the Pro edition. `admin_license` and `admin_transfer_personal_space` are for instance admins, `reassign_owner` and `admin_space_parent` for space admins and instance admins. Without the feature `offboarding` the two offboarding tools refuse with a message.

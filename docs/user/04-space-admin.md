@@ -9,6 +9,7 @@ Do not confuse the two admin roles. A **space admin** manages **one** space. An 
 - [What space admins can and cannot do](#what-space-admins-can-and-cannot-do)
 - [Members, roles and groups](#members-roles-and-groups)
 - [Choosing roles](#choosing-roles)
+- [Spaces below other spaces (Pro)](#spaces-below-other-spaces-pro)
 - [Lifting blocks and deleting](#lifting-blocks-and-deleting)
 - [Taking a space's knowledge out](#taking-a-spaces-knowledge-out)
 - [Settings only instance admins change](#settings-only-instance-admins-change)
@@ -24,6 +25,7 @@ Do not confuse the two admin roles. A **space admin** manages **one** space. An 
 | See who belongs to the space (`space_members`) | yes | yes |
 | Add or change members, users and groups (`space_add_member`) | yes | yes |
 | Remove members (`space_remove_member`) | yes | yes |
+| Arrange spaces below each other (`admin_space_parent`, Pro) | yes, in spaces you administer | yes |
 | Lift a skill block (`unblock_skill`) | yes | yes |
 | Delete entries for good (`delete_knowledge`) | yes | yes |
 | Delete skills (`delete_skill`) | no | yes |
@@ -77,6 +79,18 @@ Rules of thumb:
 - **Prefer groups** over long lists of people, if your identity provider or the instance admins provide matching groups. Access then follows the group.
 - **Authors review nothing, curators are not admins.** In a space with approval only admins save approved entries directly; the entries of curators start as drafts, which they release on purpose. An admin should not routinely approve their own work; Atrium lets admins do it to avoid deadlocks, and marks it in the audit log.
 - Skills are a higher-trust content type: be more careful with who may publish them (curators) and who may unblock (you).
+
+## Spaces below other spaces (Pro)
+
+In the Pro edition an organisation can arrange its team spaces in a tree (company, department, team). Memberships then flow down: the **nearest entry wins**. A person's role in a space is the one from the space itself if they have an entry there, otherwise from the space above, and so on upwards. An entry of your own in a space overrides what the space above would give, so you can give somebody a lower role, or a higher one, in your space only. How it works, the rules and the limits are in [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces).
+
+What it means for you as a space admin:
+
+- **The member list of your space shows only its own entries.** Somebody can have access through a space above without being listed in `space_members`. If access surprises you, ask an instance admin for the rights report, which lists the inherited holders with the space each comes from.
+- **An admin of a space above is admin in yours** as long as your space inherits, and reads its content. For a sensitive space ask for the inheritance to be switched off; then only the entries of your space count.
+- **You can arrange your own space** (`admin_space_parent`, with your confirmation): switch the inheritance off, or take the space out of the tree. Switching it on again, and putting a space below another one, need the admin right in both spaces, because the members of the space above gain access. Think about who is affected before you confirm.
+- **Entering a person only in your space** gives them access to it and nothing above. Removing an entry in your space does not necessarily end their access: they may inherit one from above.
+- The default role of a space is not inherited; each space has its own.
 
 ## Lifting blocks and deleting
 
@@ -165,6 +179,7 @@ Ask an instance admin when you need to:
 | A curator cannot approve their own draft | Only in a space without approval, where a draft is a request for a second look. Another curator, or you as admin, approves. In a space with approval a curator may release their own draft |
 | Unblocking did not make the skill available | The version is *approved*, not published. A curator must publish it again |
 | Role changes seem not to apply | They apply to the next request. Check `space_members`, and look for roles the person has through a group or the default role |
+| A person has access but is not in `space_members` (Pro) | The space sits below another one and inherits the entry from there. Ask an instance admin for the rights report |
 
 ## FAQ
 
@@ -187,5 +202,9 @@ Ask an instance admin when you need to:
 **Can I lock a user out of Atrium?** Only for your space (remove them). Locking an account entirely is for instance admins.
 
 **Who can see who is in my space?** Space admins and instance admins see the member list; members see the curators and admins through `space_contacts`.
+
+**Can I give somebody access to my space without giving them the spaces above?** Yes: add them in your space only. They see it, and nothing above it. (Spaces in a tree are a Pro feature; without it every space has its own members anyway.)
+
+**Can I keep one person of the space above out of my space?** Not by name. Switch the inheritance off for your space and add the people who belong there. See [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces).
 
 **Can a group be admin?** Yes, but prefer named people for admin and curator so that responsibility is clear.
