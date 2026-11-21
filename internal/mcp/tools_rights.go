@@ -193,28 +193,21 @@ func (s *Server) spaceLinks(ctx context.Context) (map[uuid.UUID]spaceLinkRow, er
 // membership of their own in the space itself is not listed again.
 func inheritedHolders(id uuid.UUID, direct []spaces.Member, links map[uuid.UUID]spaceLinkRow, bySpace map[uuid.UUID]spaces.Space,
 	members map[uuid.UUID][]spaces.Member, groupSize map[string]int) []rightsHolder {
-	key := func(m spaces.Member) string { return m.PrincipalType + ":" + m.PrincipalID.String() }
 	seen := map[string]bool{}
 	for _, m := range direct {
-		seen[key(m)] = true
+		seen[principalKey(m)] = true
 	}
 	var out []rightsHolder
-	cur := id
-	for range len(links) + 1 { // a loop in the data ends the walk
-		l := links[cur]
-		if l.parent == nil || !l.inherit {
-			break
-		}
-		cur = *l.parent
-		up, ok := bySpace[cur]
+	for _, from := range inheritedFrom(id, links) {
+		up, ok := bySpace[from]
 		if !ok {
 			break
 		}
-		for _, m := range members[cur] {
-			if seen[key(m)] {
+		for _, m := range members[from] {
+			if seen[principalKey(m)] {
 				continue
 			}
-			seen[key(m)] = true
+			seen[principalKey(m)] = true
 			h := rightsHolder{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former, From: up.Slug}
 			if m.PrincipalType == spaces.PrincipalGroup {
 				h.Members = groupSize[m.Name]

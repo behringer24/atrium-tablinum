@@ -86,7 +86,7 @@ In the Pro edition an organisation can arrange its team spaces in a tree (compan
 
 What it means for you as a space admin:
 
-- **The member list of your space shows only its own entries.** Somebody can have access through a space above without being listed in `space_members`. If access surprises you, ask an instance admin for the rights report, which lists the inherited holders with the space each comes from.
+- **`space_members` shows the entries of your space and, separately, what it takes over** (`inherited_members`, with `inherit_members` telling whether the inheritance is on). Somebody who has an entry of their own in your space is listed once, with that entry. The space an inherited role comes from is named only if you can see that space; otherwise it says "a space above". Instance admins also see where each comes from in the rights report.
 - **An admin of a space above is admin in yours** as long as your space inherits, and reads its content. For a sensitive space ask for the inheritance to be switched off; then only the entries of your space count.
 - **You can arrange your own space** (`admin_space_parent`, with your confirmation): switch the inheritance off, or take the space out of the tree. Switching it on again, and putting a space below another one, need the admin right in both spaces, because the members of the space above gain access. Think about who is affected before you confirm.
 - **Entering a person only in your space** gives them access to it and nothing above. Removing an entry in your space does not necessarily end their access: they may inherit one from above.
@@ -179,7 +179,7 @@ Ask an instance admin when you need to:
 | A curator cannot approve their own draft | Only in a space without approval, where a draft is a request for a second look. Another curator, or you as admin, approves. In a space with approval a curator may release their own draft |
 | Unblocking did not make the skill available | The version is *approved*, not published. A curator must publish it again |
 | Role changes seem not to apply | They apply to the next request. Check `space_members`, and look for roles the person has through a group or the default role |
-| A person has access but is not in `space_members` (Pro) | The space sits below another one and inherits the entry from there. Ask an instance admin for the rights report |
+| A person has access but is not among the `members` (Pro) | The space sits below another one and inherits the entry from there: look under `inherited_members` in `space_members` |
 
 ## FAQ
 

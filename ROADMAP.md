@@ -70,7 +70,6 @@ Atrium becomes the controlled registry and distribution service for company-wide
 ## Later
 
 - **Hierarchical spaces, remainder:** team spaces can sit below each other with inherited rights, the nearest entry winning (a Pro feature, see [Atrium Pro](docs/pro/pro-edition.md#spaces-below-other-spaces)); the rights model, the tool `admin_space_parent` and the rights report are built. Still open:
-  - **Inherited holders in the member lists:** `space_members` (space admins) and `space_contacts` (everybody) list only the memberships of the space itself, so a space whose admin or curator is inherited looks as if it had none. They should show the inherited ones with the space they come from, as the rights report does.
   - **A preview before a change:** before a space is put below another one, or the inheritance is switched on, show who would gain access; and what a lapsed licence would take away, so that an admin can see it before it happens.
   - **Position in the lists:** `list_spaces` and the instructions of the assistant do not show where a space sits in the tree.
   - **Searching including sub-spaces** as a separate step: knowledge and skills stay in their space.

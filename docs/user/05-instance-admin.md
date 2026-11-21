@@ -86,7 +86,7 @@ With the Pro feature `space_hierarchy`, team spaces can be arranged in a tree, f
 - **The top of a tree is powerful.** An admin of a space is admin of every space below that inherits, and reads its content. Put sensitive spaces (management, HR) either at the top of their own tree or switch the inheritance off for them.
 - **Keep the tree shallow.** At most five levels are possible; two or three are usually enough.
 - **Archive and delete:** archiving a space does not cut the access to the spaces below; a space with sub-spaces cannot be deleted.
-- **Check the result with the [rights report](#rights-report)**, which shows the inherited holders with their origin. `space_members` and `space_contacts` list only the entries of the space itself.
+- **Check the result with the [rights report](#rights-report)**, which shows the inherited holders with their origin. `space_members` and `space_contacts` show them as well, the space admins of a space seeing the name of a space above only if they can see that space.
 - **When the licence ends,** the arrangement keeps working and only changes that narrow rights remain possible.
 
 ### Changing, archiving and restoring

@@ -151,7 +151,7 @@ What else to know:
 - *"Show how my spaces are arranged."* (`admin_space_parent`, action `get`) shows for the spaces you administer their level, the space above, whether they inherit and the spaces below. A space above or below that you cannot see is left out.
 - The **rights report** (instance admins) lists for a space below another one its parent, the inheritance setting and the **inherited** holders with the space each comes from. An admin who is only inherited counts: the report no longer says that the space has no admin, but points out where the admin comes from.
 - `list_spaces` shows the role a person actually has in each space.
-- Limit to know: `space_members` and `space_contacts` list the memberships of the space itself and not the inherited ones. Use the rights report to see who has access through the spaces above.
+- `space_members` (space admins) lists the memberships of the space as `members` and, for a space below another one, what it takes over as `inherited_members`, with `inherit_members` telling whether the inheritance is on. Somebody with an entry of their own in the space is listed once, with that entry. The space a role comes from is named only if the caller can see it, otherwise the list says "a space above". `space_contacts` (everybody) adds the curators and admins taken over from above to the people to ask, without naming the space they come from.
 
 ### When the licence ends
 
