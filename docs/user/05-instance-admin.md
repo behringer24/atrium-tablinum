@@ -79,11 +79,21 @@ A checklist for the first days. The installation itself, step by step, is in [In
 - The instruction text lists at most 20 team spaces and 25 released skills per user, so keep the number of spaces and skills in check.
 - `spaces.default_space_by_group` in `config.yaml` can map an identity-provider group name to a default space for saving; it only selects among spaces the user may write to.
 
+### Spaces below other spaces (Pro)
+
+With the Pro feature `space_hierarchy`, team spaces can be arranged in a tree, for example company, department and team, with `admin_space_parent` (also for the space admins of the spaces concerned). Memberships flow down and the nearest entry wins: an entry in a space overrides what the space above gives, and `inherit_members=false` closes a space for the members of the space above. Details, rules and limits are in [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces). Things to decide before you build a tree:
+
+- **The top of a tree is powerful.** An admin of a space is admin of every space below that inherits, and reads its content. Put sensitive spaces (management, HR) either at the top of their own tree or switch the inheritance off for them.
+- **Keep the tree shallow.** At most five levels are possible; two or three are usually enough.
+- **Archive and delete:** archiving a space does not cut the access to the spaces below; a space with sub-spaces cannot be deleted.
+- **Check the result with the [rights report](#rights-report)**, which shows the inherited holders with their origin. `space_members` and `space_contacts` show them as well, the space admins of a space seeing the name of a space above only if they can see that space.
+- **When the licence ends,** the arrangement keeps working and only changes that narrow rights remain possible.
+
 ### Changing, archiving and restoring
 
 - `admin_update_space` changes name, description, approval and default role. Changing the description needs your confirmation after the new text was shown, because it reaches every user's assistant. Existing entries keep their status when you switch approval on or off.
 - `admin_archive_space` hides a whole space from everybody but instance admins; the content is kept. `admin_restore_space` brings it back.
-- `admin_delete_space` removes an **empty** team space for good, with its members, default role and quota settings. A space that still holds an entry of any state (archived ones included) or a skill is refused: move or delete the content first, or archive the space instead. It needs `confirm=true` and cannot be undone; the audit log keeps slug and name (`admin_delete_space`).
+- `admin_delete_space` removes an **empty** team space for good, with its members, default role and quota settings. A space that still holds an entry of any state (archived ones included), a skill or a space below it is refused: move or delete the content first, or archive the space instead. It needs `confirm=true` and cannot be undone; the audit log keeps slug and name (`admin_delete_space`).
 - Personal spaces are not listed here and cannot be archived through these tools.
 
 ## Users, groups and logins
@@ -121,7 +131,7 @@ Local groups (`admin_groups`: `list`, `create`, `rename`, `delete`, `add_member`
 
 ### Rights report
 
-*"Show me the rights report."* (`admin_rights_report`, read-only) lists on one page who holds which role where: the instance admins and whether they read the content of all team spaces, and for every team space its default role (reader or author for everybody logged in, none for members only), the approval setting, and every user and group with its role, highest first. Locked accounts are marked as former. Below it come hints, for example a space without a space admin, a group that holds the admin role, or a space open to everybody. The hints are things to look at, not errors. Personal spaces are not part of it. Use it for the access review and after bigger changes; it shows the configuration of your instance, which the checks in the code cannot.
+*"Show me the rights report."* (`admin_rights_report`, read-only) lists on one page who holds which role where: the instance admins and whether they read the content of all team spaces, and for every team space its default role (reader or author for everybody logged in, none for members only), the approval setting, and every user and group with its role, highest first. Locked accounts are marked as former. A space that sits below another one (Pro) also shows its parent, whether it inherits, and the **inherited** holders with the space each comes from; an admin who is only inherited counts, so the space is not reported as having none. Below it come hints, for example a space without a space admin, a group that holds the admin role, an admin that is inherited from the space above, or a space open to everybody. The hints are things to look at, not errors. Personal spaces are not part of it. Use it for the access review and after bigger changes; it shows the configuration of your instance, which the checks in the code cannot.
 
 ### Sessions
 
@@ -427,9 +437,13 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 
 **Can management read everything without running the system, or IT run it without reading everything?** Not with the instance admin right alone: it makes a person admin in all team spaces and gives all admin tools; only personal spaces stay closed to everybody. The Pro edition can take the automatic content access away from instance admins, so that they manage all spaces but read only those they are members of ([Atrium Pro](../pro/pro-edition.md#separating-content-from-operations)).
 
+**Can I give somebody access to one sub-space without the spaces above?** Yes, with the Pro feature `space_hierarchy`: enter them in that space only. Memberships flow down the tree and never up. See [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces).
+
+**What happens to a tree when the Pro licence ends?** It keeps working and nobody loses access. Only changes that narrow rights stay possible (taking a space out, switching the inheritance off) until a licence with the feature is installed again.
+
 **Can I turn approval on for an existing space?** Yes (`admin_update_space`). Existing entries keep their status.
 
-**What happens to a space I archive?** It disappears for everybody except instance admins; content is kept and can be restored. An empty space can also be deleted for good (`admin_delete_space`); one with content cannot.
+**What happens to a space I archive?** It disappears for everybody except instance admins; content is kept and can be restored. An empty space can also be deleted for good (`admin_delete_space`); one with content or with spaces below it cannot.
 
 **Can I change someone's role in a space?** Yes, as admin of every team space (`space_add_member`). Prefer asking the space admin.
 

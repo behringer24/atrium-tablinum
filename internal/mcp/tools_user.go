@@ -221,17 +221,36 @@ func (s *Server) spaceContacts(ctx context.Context, c *call, in contactsIn) (con
 		}
 	}
 	out := contactsOut{Spaces: make([]spaceContacts, 0, len(visible)), InstanceAdmins: []string{}}
+	links, err := s.spaceLinks(ctx)
+	if err != nil {
+		return contactsOut{}, err
+	}
+	cache := map[uuid.UUID][]spaces.Member{}
 	for _, sp := range visible {
 		ms, err := s.Spaces.Members(ctx, sp.ID)
 		if err != nil {
 			return contactsOut{}, err
 		}
+		cache[sp.ID] = ms
 		sc := spaceContacts{Space: sp.Name, Slug: sp.Slug, Contacts: []contactInfo{}}
 		// Only curators and admins: whoever reads here may ask whom to turn to, the list of
 		// all members stays with the space admins (space_members).
 		for _, m := range ms {
 			if m.Role >= authz.Curator {
 				sc.Contacts = append(sc.Contacts, contactInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former})
+			}
+		}
+		// A space below another one also has the curators and admins it takes over from above. They
+		// are named without the space they come from: a reader here need not see that space.
+		if links[sp.ID].parent != nil {
+			inherited, err := s.inheritedMembers(ctx, sp.ID, ms, links, cache)
+			if err != nil {
+				return contactsOut{}, err
+			}
+			for _, m := range inherited {
+				if m.Role >= authz.Curator {
+					sc.Contacts = append(sc.Contacts, contactInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former})
+				}
 			}
 		}
 		out.Spaces = append(out.Spaces, sc)

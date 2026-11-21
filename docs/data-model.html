@@ -233,7 +233,7 @@ code{font-family:var(--f-mono); font-size:11.5px; background:var(--surface-2); b
 /*DATA-START*/
 // Highest migration version this page describes. tools/docs/check-data-model.mjs compares it,
 // and the tables, columns, types, foreign keys and indexes below, with the migrations.
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 17;
 
 const AREAS = [
   {id:"users", name:"Users & groups", h:214},
@@ -313,7 +313,7 @@ const TABLES = [
  pk:"PRIMARY KEY (group_id, user_id)",
  idx:[{impl:1, d:"PRIMARY KEY (group_id, user_id)"}]},
 
-{name:"spaces", area:"spaces", mig:[1],
+{name:"spaces", area:"spaces", mig:[1,17],
  purpose:"Spaces that hold knowledge and skills: exactly one personal space per user and any number of team spaces with their own rules for approval and base role.",
  code:["internal/spaces/spaces.go","internal/authz/authz.go","internal/docs/offboard.go","internal/quota/quota.go"],
  cols:[
@@ -326,16 +326,20 @@ const TABLES = [
   {n:"require_approval", t:"boolean", nn:1, d:"false"},
   {n:"default_role", t:"text", chk:"default_role IN ('reader', 'author')"},
   {n:"status", t:"text", nn:1, d:"'active'", chk:"status IN ('active', 'archived')"},
-  {n:"created_at", t:"timestamptz", nn:1, d:"now()"}],
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"parent_id", t:"uuid", m:17, fk:{t:"spaces", c:"id", del:"RESTRICT"}},
+  {n:"inherit_members", t:"boolean", nn:1, d:"true", m:17}],
  pk:"PRIMARY KEY (id)", uq:["UNIQUE (slug)","UNIQUE INDEX one_personal_space_per_user (owner_user_id) WHERE type = 'personal'"],
- chk:["CHECK ((type = 'personal') = (owner_user_id IS NOT NULL))","CHECK (type = 'team' OR (require_approval = false AND default_role IS NULL))"],
+ chk:["CHECK ((type = 'personal') = (owner_user_id IS NOT NULL))","CHECK (type = 'team' OR (require_approval = false AND default_role IS NULL))","CHECK (parent_id IS NULL OR parent_id <> id)","CHECK (parent_id IS NULL OR type = 'team')"],
  idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (slug)"},
-      {n:"one_personal_space_per_user", m:"btree", u:1, d:"(owner_user_id) WHERE type = 'personal'", partial:1, mig:1}],
+      {n:"one_personal_space_per_user", m:"btree", u:1, d:"(owner_user_id) WHERE type = 'personal'", partial:1, mig:1},
+      {n:"spaces_parent_idx", m:"btree", d:"(parent_id) WHERE parent_id IS NOT NULL", partial:1, mig:17}],
  notes:[
   "A personal space always has an owner, a team space never; the partial unique index allows at most one personal space per user.",
   "<code>require_approval</code> (team only): entries from roles below <code>curator</code> go to review as drafts (<code>internal/docs/write.go</code>).",
   "<code>default_role</code> (team only): base role for all users without a membership; the effective role is the higher of membership and base role (<code>internal/authz</code>).",
-  "<code>status = 'archived'</code> is set by <code>admin_archive_space</code> and reset by <code>admin_restore_space</code>; <code>admin_delete_space</code> removes an empty team space (members and quota overrides go with it, nothing else references it)."]},
+  "<code>status = 'archived'</code> is set by <code>admin_archive_space</code> and reset by <code>admin_restore_space</code>; <code>admin_delete_space</code> removes an empty team space (members and quota overrides go with it); a space with sub-spaces cannot be removed (<code>ON DELETE RESTRICT</code> on <code>parent_id</code>).",
+  "Migration 17: <code>parent_id</code> puts a team space below another one (never itself, never a personal space; depth and cycles are checked where it is set), <code>inherit_members = false</code> stops the lookup of memberships at this space. <code>internal/authz</code> takes the role from the nearest space on the way up that has an entry for the user. Without any parent the roles are those of a flat instance."]},
 
 {name:"space_members", area:"spaces", mig:[1],
  purpose:"Roles in a space (reader, author, curator, admin), granted to a single user or to a whole group.",
@@ -354,7 +358,7 @@ const TABLES = [
   "<code>internal/authz</code> takes the highest role from direct membership, group memberships and the space's <code>default_role</code>. The owner of a personal space is its admin.",
   "<code>principal_id</code> points to <code>users</code> or <code>groups</code> depending on <code>principal_type</code> and therefore has no foreign key; the triggers on both tables clean up on delete."]},
 
-{name:"documents", area:"knowledge", mig:[1,11],
+{name:"documents", area:"knowledge", mig:[1,11,16],
  purpose:"Knowledge entries (kind = knowledge) and personal handoffs (kind = handoff) with content, tags, approval status and a running version number.",
  code:["internal/docs/write.go","internal/docs/review.go","internal/docs/manage.go","internal/docs/handoff.go","internal/search/search.go","internal/ingest/ingest.go","internal/quota/quota.go"],
  cols:[
@@ -370,13 +374,13 @@ const TABLES = [
   {n:"source", t:"text", nn:1},
   {n:"version", t:"int", nn:1, d:"1"},
   {n:"review_due_at", t:"timestamptz"},
-  {n:"origins", t:"jsonb", nn:1, d:"'[]'", chk:"jsonb_typeof(origins) = 'array'"},
   {n:"expires_at", t:"timestamptz"},
   {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
   {n:"updated_at", t:"timestamptz", nn:1, d:"now()"},
   {n:"updated_by", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"NO ACTION", actor:1}},
   {n:"knowledge_type", t:"text", nn:1, d:"'documentation'", m:11, chk:"knowledge_type IN ('rule', 'documentation', 'recommendation', 'experience')"},
-  {n:"owner_id", t:"uuid", m:11, fk:{t:"users", c:"id", del:"NO ACTION"}}],
+  {n:"owner_id", t:"uuid", m:11, fk:{t:"users", c:"id", del:"NO ACTION"}},
+  {n:"origins", t:"jsonb", nn:1, d:"'[]'", m:16, chk:"jsonb_typeof(origins) = 'array'"}],
  pk:"PRIMARY KEY (id)",
  chk:["CHECK (kind = 'knowledge' OR expires_at IS NOT NULL)"],
  idx:[{impl:1, d:"PRIMARY KEY (id)"},

@@ -48,7 +48,7 @@ function parens(s) {
 
 function column(def) {
   const m = def.match(/^(\w+)\s+(\w+(?:\(\w+\))?(?:\[\])?)/);
-  const ref = def.match(/REFERENCES\s+(\w+)\((\w+)\)(?:\s+ON DELETE\s+(SET NULL|CASCADE))?/i);
+  const ref = def.match(/REFERENCES\s+(\w+)\((\w+)\)(?:\s+ON DELETE\s+(SET NULL|CASCADE|RESTRICT))?/i);
   return { n: m[1], t: m[2].toLowerCase(), fk: ref ? { t: ref[1], c: ref[2], del: ref[3] ? ref[3].toUpperCase() : "NO ACTION" } : null };
 }
 
@@ -71,7 +71,7 @@ for (const [, up] of ups) {
         let a;
         if ((a = part.match(/^ADD COLUMN\s+([\s\S]*)$/i))) { const c = column(a[1]); schema[m[1]][c.n] = c; }
         else if ((a = part.match(/^DROP COLUMN\s+(\w+)/i))) delete schema[m[1]][a[1]];
-        else if ((a = part.match(/^ADD CONSTRAINT \w+\s+FOREIGN KEY \((\w+)\) REFERENCES (\w+)\((\w+)\)(?:\s+ON DELETE\s+(SET NULL|CASCADE))?/i)))
+        else if ((a = part.match(/^ADD CONSTRAINT \w+\s+FOREIGN KEY \((\w+)\) REFERENCES (\w+)\((\w+)\)(?:\s+ON DELETE\s+(SET NULL|CASCADE|RESTRICT))?/i)))
           schema[m[1]][a[1]].fk = { t: a[2], c: a[3], del: a[4] ? a[4].toUpperCase() : "NO ACTION" };
       }
     }

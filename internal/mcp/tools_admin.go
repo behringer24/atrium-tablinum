@@ -128,6 +128,9 @@ type memberInfo struct {
 	Role string `json:"role"`
 	// Former marks a locked account: it keeps its membership but has no rights.
 	Former bool `json:"former,omitempty"`
+	// From names the space above that the role is inherited from ("a space above" if the caller cannot
+	// see it); empty for a membership of the space itself.
+	From string `json:"from,omitempty"`
 }
 
 type spaceMembersOut struct {
@@ -140,6 +143,11 @@ type spaceMembersOut struct {
 	// an instance admin changes them (admin_quotas).
 	Quota   map[string]quotaLimit `json:"quota,omitempty"`
 	Members []memberInfo          `json:"members"`
+	// InheritMembers and InheritedMembers appear only for a space below another one: whether it takes over
+	// the memberships of the spaces above, and the ones it takes over (a person entered here too is not
+	// listed again, the entry of this space counts).
+	InheritMembers   *bool        `json:"inherit_members,omitempty"`
+	InheritedMembers []memberInfo `json:"inherited_members,omitempty"`
 }
 
 func (s *Server) spaceMembers(ctx context.Context, c *call, in spaceRef) (spaceMembersOut, error) {
@@ -155,6 +163,31 @@ func (s *Server) spaceMembers(ctx context.Context, c *call, in spaceRef) (spaceM
 		DefaultRole: sp.DefaultRole.String(), Archived: sp.Archived, Members: make([]memberInfo, 0, len(ms))}
 	for _, m := range ms {
 		out.Members = append(out.Members, memberInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former})
+	}
+	links, err := s.spaceLinks(ctx)
+	if err != nil {
+		return spaceMembersOut{}, err
+	}
+	if l := links[sp.ID]; l.parent != nil {
+		inherit := l.inherit
+		out.InheritMembers = &inherit
+		inherited, err := s.inheritedMembers(ctx, sp.ID, ms, links, map[uuid.UUID][]spaces.Member{})
+		if err != nil {
+			return spaceMembersOut{}, err
+		}
+		see, err := s.canSee(ctx, c)
+		if err != nil {
+			return spaceMembersOut{}, err
+		}
+		for _, m := range inherited {
+			from := "a space above"
+			if see(m.From) {
+				if up, err := s.Spaces.GetByID(ctx, m.From); err == nil {
+					from = up.Slug
+				}
+			}
+			out.InheritedMembers = append(out.InheritedMembers, memberInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former, From: from})
+		}
 	}
 	if s.Quota != nil {
 		if qt, err := s.quotaTargetFor(ctx, quota.Space, sp.Name, sp, quota.Overrides{}); err == nil {
