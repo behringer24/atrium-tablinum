@@ -390,7 +390,7 @@ func (s *Server) adminDeleteSpace(ctx context.Context, c *call, in archiveSpaceI
 	}
 	if err := s.Spaces.Delete(ctx, sp.ID); err != nil {
 		if errors.Is(err, spaces.ErrNotEmpty) {
-			return messageOut{}, userErr(fmt.Sprintf("The space \"%s\" still holds entries or skills. Only an empty space can be deleted: move or delete the content first, or archive the space instead.", sp.Name))
+			return messageOut{}, userErr(fmt.Sprintf("The space \"%s\" still holds entries, skills or sub-spaces. Only an empty space can be deleted: move or delete the content first, or archive the space instead.", sp.Name))
 		}
 		return messageOut{}, err
 	}
