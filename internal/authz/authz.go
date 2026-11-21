@@ -109,6 +109,7 @@ func compute(u users.User, rows []spaceRow) Roles {
 
 const rolesQuery = `
 SELECT s.id, s.type = 'personal', s.owner_user_id, COALESCE(s.default_role, ''), s.status = 'archived',
+  s.parent_id, NOT s.inherit_members,
   COALESCE((
     SELECT max(CASE m.role WHEN 'reader' THEN 1 WHEN 'author' THEN 2 WHEN 'curator' THEN 3 WHEN 'admin' THEN 4 ELSE 0 END)
       FROM space_members m
@@ -191,7 +192,7 @@ func (c *Checker) load(ctx context.Context, userID uuid.UUID) ([]spaceRow, error
 			def      string
 			memberAs int
 		)
-		if err := pgRows.Scan(&r.ID, &r.Personal, &r.Owner, &def, &r.Archived, &memberAs); err != nil {
+		if err := pgRows.Scan(&r.ID, &r.Personal, &r.Owner, &def, &r.Archived, &r.Parent, &r.NoInherit, &memberAs); err != nil {
 			return nil, err
 		}
 		r.DefaultRole, _ = ParseRole(def)

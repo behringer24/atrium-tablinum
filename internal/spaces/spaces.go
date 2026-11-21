@@ -21,7 +21,7 @@ var (
 	ErrSlugTaken = errors.New("slug is already taken")
 	ErrInvalid   = errors.New("invalid input")
 	ErrNotTeam   = errors.New("team spaces only")
-	ErrNotEmpty  = errors.New("space still holds entries or skills")
+	ErrNotEmpty  = errors.New("space still holds entries, skills or sub-spaces")
 )
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,62}$`)
@@ -217,7 +217,7 @@ func (s *Store) SetArchived(ctx context.Context, id uuid.UUID, archived bool) er
 }
 
 // Delete removes an empty team space for good: members, default role and quota overrides go with
-// it. A space that still holds an entry of any status or a skill is refused with ErrNotEmpty;
+// it. A space that still holds an entry of any status, a skill or a sub-space is refused with ErrNotEmpty;
 // handoffs do not count, they expire anyway. The space row is locked first, so nothing can be
 // stored into it between the check and the deletion.
 func (s *Store) Delete(ctx context.Context, id uuid.UUID) error {
@@ -239,7 +239,8 @@ func (s *Store) Delete(ctx context.Context, id uuid.UUID) error {
 	var used bool
 	if err := tx.QueryRow(ctx, `
 SELECT EXISTS (SELECT 1 FROM documents WHERE space_id = $1 AND kind = 'knowledge')
-    OR EXISTS (SELECT 1 FROM skills WHERE space_id = $1)`, id).Scan(&used); err != nil {
+    OR EXISTS (SELECT 1 FROM skills WHERE space_id = $1)
+    OR EXISTS (SELECT 1 FROM spaces WHERE parent_id = $1)`, id).Scan(&used); err != nil {
 		return err
 	}
 	if used {
