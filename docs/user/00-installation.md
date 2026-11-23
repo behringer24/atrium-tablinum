@@ -64,14 +64,14 @@ The compose file, the configuration examples and the scripts live in the reposit
 ```bash
 git clone https://github.com/behringer24/atrium-tablinum.git
 cd atrium-tablinum
-git checkout v0.6.0
+git checkout v0.7.0
 ```
 
-(Replace `v0.6.0` with the newest release on the [releases page](https://github.com/behringer24/atrium-tablinum/releases).)
+(Replace `v0.7.0` with the newest release on the [releases page](https://github.com/behringer24/atrium-tablinum/releases).)
 
 **Which image runs?** You have two choices:
 
-- **Official image (recommended).** It is built and published for every release. In `docker-compose.yml`, in the service `server`, delete the line `build: .` and set `image:` to a fixed version, for example `image: ghcr.io/behringer24/atrium-tablinum:0.6.0`. A fixed version is better than `latest`, because an update then happens on purpose. The official image runs as Community until you install a Pro licence, so it is also the right choice if you plan to upgrade later.
+- **Official image (recommended).** It is built and published for every release. In `docker-compose.yml`, in the service `server`, delete the line `build: .` and set `image:` to a fixed version, for example `image: ghcr.io/behringer24/atrium-tablinum:0.7.0`. A fixed version is better than `latest`, because an update then happens on purpose. The official image runs as Community until you install a Pro licence, so it is also the right choice if you plan to upgrade later.
 - **Build it yourself (Community).** Leave the file as it is; `docker compose up -d` builds the image from the checkout. See [Releases](../release.md#build-from-source-community).
 
 ## Step 2: choose how the server is reached
