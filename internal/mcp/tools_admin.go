@@ -461,6 +461,8 @@ type userInfo struct {
 	LastLogin     string        `json:"last_login,omitempty"`
 	Created       string        `json:"created"`
 	Personal      *personalMeta `json:"personal_space,omitempty"`
+	// Kind is "service" for an account that is not a person; empty for a person.
+	Kind string `json:"kind,omitempty"`
 }
 
 type listUsersIn struct{}
@@ -485,6 +487,9 @@ func (s *Server) adminListUsers(ctx context.Context, _ *call, _ listUsersIn) (li
 	for _, u := range all {
 		ui := userInfo{Email: u.Email, Name: u.DisplayName, Status: "active", InstanceAdmin: u.InstanceAdmin,
 			Created: u.CreatedAt.Format(time.RFC3339)}
+		if u.IsService() {
+			ui.Kind = users.KindService
+		}
 		if !u.Active {
 			ui.Status = "disabled"
 			if u.DisabledAt != nil {
@@ -665,6 +670,9 @@ func (s *Server) adminInstanceAdmins(ctx context.Context, c *call, in instanceAd
 		msg = fmt.Sprintf("%s is already an instance admin.", u.Email)
 	case grant:
 		if err := s.Users.SetInstanceAdmin(ctx, u.ID, true); err != nil {
+			if errors.Is(err, users.ErrServiceAccount) {
+				return instanceAdminsOut{}, userErr(fmt.Sprintf("%s is a service account and cannot be an instance admin.", u.Email))
+			}
 			return instanceAdminsOut{}, err
 		}
 		s.record(ctx, c.Actor, "admin_grant_instance_admin", nil, map[string]any{"user": u.Email})

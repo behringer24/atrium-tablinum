@@ -96,9 +96,17 @@ func compute(u users.User, rows []spaceRow) Roles {
 		if byID != nil {
 			member = inheritedRole(s, byID)
 		}
-		role := max(member, s.DefaultRole)
+		def := s.DefaultRole
+		if u.IsService() {
+			// A service account holds a role only where somebody gave it one.
+			def = None
+		}
+		role := max(member, def)
 		if u.InstanceAdmin {
 			role = Admin
+		}
+		if u.IsService() && role > ServiceMaxRole {
+			role = ServiceMaxRole
 		}
 		if role > None {
 			roles[s.ID] = role

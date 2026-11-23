@@ -18,6 +18,10 @@ const (
 	Admin
 )
 
+// ServiceMaxRole is the highest role a service account can hold in a space, whatever membership it was
+// given: it can never manage the members of a space.
+const ServiceMaxRole = Curator
+
 var roleNames = [...]string{"", "reader", "author", "curator", "admin"}
 
 func (r Role) String() string {
