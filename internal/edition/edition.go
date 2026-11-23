@@ -10,6 +10,7 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/modelcontextprotocol/go-sdk/auth"
 )
 
 const (
@@ -38,6 +39,13 @@ type Running interface {
 	// MaxUsers is the number of active user accounts the instance may have; 0 = unlimited. It is
 	// asked whenever a new account would be created, so a change applies at once.
 	MaxUsers() int
+}
+
+// TokenVerifier is optionally implemented by an edition that accepts bearer tokens of its own on /mcp, next
+// to the OAuth tokens of the logins. The check it returns is asked first; for a token that is none of its own it
+// answers auth.ErrInvalidToken, and the OAuth check follows. The community edition has none.
+type TokenVerifier interface {
+	Verifier() auth.TokenVerifier
 }
 
 // Prober is optionally implemented by an edition to say more in admin_health than its name.

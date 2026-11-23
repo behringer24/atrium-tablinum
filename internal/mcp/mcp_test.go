@@ -147,6 +147,8 @@ type env struct {
 	http   *httptest.Server
 	export *httptest.Server  // the skill export route
 	tokens map[string]string // token -> email
+	// svcTokens are the tokens of service accounts, which a test adds directly (token -> account and name).
+	svcTokens map[string]svcToken
 }
 
 func setup(t *testing.T, writesPerMinute int) *env {
@@ -158,7 +160,7 @@ func setup(t *testing.T, writesPerMinute int) *env {
 func setupSharing(t *testing.T, writesPerMinute int, shareOpt share.Options) *env {
 	t.Helper()
 	pool := dbtest.NewPool(t)
-	e := &env{ctx: context.Background(), tokens: map[string]string{}}
+	e := &env{ctx: context.Background(), tokens: map[string]string{}, svcTokens: map[string]svcToken{}}
 	e.users = users.New(pool, users.Options{BootstrapAdmins: []string{"boss@x.de"}, PersonalEnabled: true})
 	e.spaces = spaces.New(pool)
 	checker := authz.NewChecker(pool, time.Minute)
@@ -180,6 +182,11 @@ func setupSharing(t *testing.T, writesPerMinute int, shareOpt share.Options) *en
 		Settings{ProductName: "Atrium Tablinum", ShortName: "Atrium", OrganizationName: "Test", HandoffTTLDays: 14, WritesPerMinute: writesPerMinute, SharingEnabled: shareOpt.Enabled})
 
 	verifier := func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
+		if st, ok := e.svcTokens[token]; ok {
+			// A service account's token names its own client, as the edition's verifier does.
+			return &auth.TokenInfo{UserID: st.id.String(), Expiration: time.Now().Add(time.Hour),
+				Extra: map[string]any{TokenClientKey: "token:" + st.name}}, nil
+		}
 		email, ok := e.tokens[token]
 		if !ok {
 			return nil, auth.ErrInvalidToken
@@ -200,6 +207,44 @@ func setupSharing(t *testing.T, writesPerMinute int, shareOpt share.Options) *en
 	e.export = httptest.NewServer(exportMux)
 	t.Cleanup(e.export.Close)
 	return e
+}
+
+type svcToken struct {
+	id   uuid.UUID
+	name string
+}
+
+// serviceAccount adds a service account directly (nothing in this edition creates one) with the given roles
+// in team spaces, and returns its id.
+func (e *env) serviceAccount(t *testing.T, name string, roles map[uuid.UUID]authz.Role) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := e.srv.Pool.QueryRow(e.ctx, `INSERT INTO users (email, idp, idp_subject, kind) VALUES ($1, 'service', $2, 'service') RETURNING id`,
+		name+"@service.invalid", name).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	for space, role := range roles {
+		if err := e.spaces.SetMember(e.ctx, space, spaces.PrincipalUser, id, role, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return id
+}
+
+// serviceSession connects as a service account with a token of its own.
+func (e *env) serviceSession(t *testing.T, id uuid.UUID, name string) *mcp.ClientSession {
+	t.Helper()
+	token := "svc-" + name
+	e.svcTokens[token] = svcToken{id: id, name: name}
+	client := mcp.NewClient(&mcp.Implementation{Name: "some-sync-tool", Version: "1"}, nil)
+	cs, err := client.Connect(e.ctx, &mcp.StreamableClientTransport{
+		Endpoint: e.http.URL, HTTPClient: &http.Client{Transport: bearer{token}}, DisableStandaloneSSE: true,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cs.Close() })
+	return cs
 }
 
 type bearer struct{ token string }

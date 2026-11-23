@@ -53,6 +53,8 @@ type Settings struct {
 	// DefaultSpaceByGroup maps a group name to the slug of its default target space.
 	DefaultSpaceByGroup map[string]string
 	WritesPerMinute     int
+	// ServiceWritesPerMinute is the same limit for service accounts; 0 = unlimited.
+	ServiceWritesPerMinute int
 	// ReadsPerMinute limits search, read and list calls per user; 0 = unlimited.
 	ReadsPerMinute int
 	// DisableHostProtection turns off the SDK's DNS-rebinding guard, which rejects a
@@ -117,6 +119,7 @@ const (
 	tierCurator         // curator of at least one team space (or instance admin)
 	tierSpaceAdmin      // admin of at least one team space (or instance admin)
 	tierInstanceAdmin
+	tierService // tools for service accounts only, which no person sees
 )
 
 type Server struct {
@@ -124,6 +127,9 @@ type Server struct {
 	set     Settings
 	limiter *limiter
 	reads   *limiter
+	// svcLimiter limits the writes of service accounts, which write in bursts (a sync of many files); it is
+	// separate from the one of people so that neither takes the other's room.
+	svcLimiter *limiter
 
 	// exports signs the download links of export_knowledge; exportSlots bounds the exports
 	// running at once.
@@ -143,7 +149,8 @@ type Server struct {
 
 func New(d Deps, set Settings) *Server {
 	s := &Server{Deps: d, set: set, limiter: newLimiter(set.WritesPerMinute, time.Minute), reads: newLimiter(set.ReadsPerMinute, time.Minute),
-		exports: newExportLinks(), exportSlots: make(chan struct{}, maxParallelExports)}
+		svcLimiter: newLimiter(set.ServiceWritesPerMinute, time.Minute),
+		exports:    newExportLinks(), exportSlots: make(chan struct{}, maxParallelExports)}
 	short, org := s.set.ShortName, s.set.OrganizationName
 	if short == "" {
 		short = s.set.ProductName
@@ -238,6 +245,9 @@ func (s *Server) serverFor(r *http.Request) *mcp.Server {
 	if u.InstanceAdmin {
 		s.registerInstanceAdminTools(ms)
 	}
+	if u.IsService() {
+		s.registerEditionTools(ms, tierService, true)
+	}
 	return ms
 }
 
@@ -300,7 +310,11 @@ func addTool[In, Out any](s *Server, ms *mcp.Server, name, title string, min tie
 				s.denied(ctx, u, client, name, "no permission for this tool")
 				return nil, zero, errNoPermission
 			}
-			if write && !s.limiter.allow(u.ID) {
+			writes := s.limiter
+			if u.IsService() {
+				writes = s.svcLimiter
+			}
+			if write && !writes.allow(u.ID) {
 				s.denied(ctx, u, client, name, "write rate limit")
 				return nil, zero, errors.New("too many write operations in a short time, please try again in a minute")
 			}
@@ -326,6 +340,8 @@ func (s *Server) allowed(ctx context.Context, min tier, a docs.Actor) bool {
 	switch min {
 	case tierInstanceAdmin:
 		return a.User.InstanceAdmin
+	case tierService:
+		return a.User.IsService()
 	case tierCurator:
 		cur, err := s.teamSpacesAtLeast(ctx, a, authz.Curator)
 		return err == nil && len(cur) > 0
@@ -372,7 +388,7 @@ func translate(tool string, err error) error {
 	case errors.Is(err, docs.ErrNotFound), errors.Is(err, spaces.ErrNotFound), errors.Is(err, users.ErrNotFound), errors.Is(err, skills.ErrNotFound):
 		return errors.New("not found")
 	case errors.Is(err, docs.ErrForbidden), errors.Is(err, docs.ErrQuota), errors.Is(err, docs.ErrConflict),
-		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, docs.ErrOwnDraft), errors.Is(err, docs.ErrRule), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
+		errors.Is(err, docs.ErrNeedsApproval), errors.Is(err, docs.ErrOwnDraft), errors.Is(err, docs.ErrRule), errors.Is(err, docs.ErrManaged), errors.Is(err, ingest.ErrInvalid), errors.Is(err, ingest.ErrTooLarge),
 		errors.Is(err, search.ErrInvalid), errors.Is(err, errUser), errors.Is(err, errNoPermission),
 		errors.Is(err, spaces.ErrInvalid), errors.Is(err, spaces.ErrSlugTaken), errors.Is(err, spaces.ErrNotTeam),
 		errors.Is(err, users.ErrGroupExists), errors.Is(err, users.ErrGroupReadOnly), errors.Is(err, users.ErrBootstrap),
@@ -398,8 +414,18 @@ func clientName(req *mcp.CallToolRequest) string {
 	if req == nil {
 		return "api"
 	}
+	// A token that names its own client (a service account's token, "token:<name>") decides the label:
+	// the caller's own claim of who it is does not count for it.
+	if req.Extra != nil && req.Extra.TokenInfo != nil {
+		if c, _ := req.Extra.TokenInfo.Extra[TokenClientKey].(string); c != "" {
+			return c
+		}
+	}
 	return clientLabel(req.Session)
 }
+
+// TokenClientKey is the key in auth.TokenInfo.Extra under which a verifier names the client of its tokens.
+const TokenClientKey = "client"
 
 func clientLabel(ss *mcp.ServerSession) string {
 	if ss == nil {
@@ -505,6 +531,8 @@ func denialReason(err error) string {
 		return "approval required"
 	case errors.Is(err, docs.ErrRule):
 		return "binding rules are for curators"
+	case errors.Is(err, docs.ErrManaged):
+		return "entry is kept up to date from an outside source"
 	case errors.Is(err, docs.ErrOwnDraft), errors.Is(err, skills.ErrOwnVersion):
 		return "own version cannot be approved"
 	case errors.Is(err, errNoPermission):

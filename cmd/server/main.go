@@ -50,10 +50,51 @@ func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 	slog.SetDefault(log)
 
+	// A word after the flags is a command of the edition (atrium-tablinum -config config.yaml token ...).
+	if args := flag.Args(); len(args) > 0 {
+		os.Exit(runCommand(*cfgPath, args, log))
+	}
 	if err := run(*cfgPath, log, level); err != nil {
 		log.Error("Startup failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+// runCommand runs a command of the edition with the database and the edition started as the server does,
+// and returns the exit status. It does not migrate and starts no endpoint: it needs a server that has run.
+func runCommand(cfgPath string, args []string, log *slog.Logger) int {
+	cmd := edition.LookupCommand(args[0])
+	if cmd == nil {
+		if names := edition.CommandNames(); len(names) > 0 {
+			fmt.Fprintf(os.Stderr, "unknown command %q; this build has: %s\n", args[0], strings.Join(names, ", "))
+		} else {
+			fmt.Fprintf(os.Stderr, "unknown command %q; this build has no commands (usage: atrium-tablinum [-config path])\n", args[0])
+		}
+		return 2
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if edition.IsStandalone(args[0]) {
+		return cmd(ctx, edition.CommandEnv{Env: edition.Env{Log: log}, Args: args[1:], Stdout: os.Stdout, Stderr: os.Stderr})
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "configuration:", err)
+		return 1
+	}
+	pool, err := db.Open(ctx, cfg.Database.URL)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "database:", err)
+		return 1
+	}
+	defer pool.Close()
+	env := edition.Env{Pool: pool, BaseURL: cfg.Instance.BaseURL, Log: log, HasSection: !cfg.License.IsZero(), Section: cfg.License.Decode}
+	ed, err := edition.Start(ctx, env)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "edition:", err)
+		return 1
+	}
+	return cmd(ctx, edition.CommandEnv{Env: env, Edition: ed, Args: args[1:], Stdout: os.Stdout, Stderr: os.Stderr})
 }
 
 func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
@@ -227,7 +268,7 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 			BaseURL: cfg.Instance.BaseURL,
 			IconURL: strings.TrimRight(cfg.Instance.BaseURL, "/") + "/icon", IconMIME: icon.MIME,
 			HandoffTTLDays: cfg.Spaces.HandoffTTLDays, DescriptionOverrides: cfg.Tools.Descriptions,
-			DefaultSpaceByGroup: cfg.Spaces.DefaultSpaceByGr, WritesPerMinute: cfg.Policy.RateLimitWritesPerMinute, ReadsPerMinute: cfg.Policy.RateLimitReadsPerMinute,
+			DefaultSpaceByGroup: cfg.Spaces.DefaultSpaceByGr, WritesPerMinute: cfg.Policy.RateLimitWritesPerMinute, ServiceWritesPerMinute: cfg.Policy.RateLimitServiceWritesPerMinute, ReadsPerMinute: cfg.Policy.RateLimitReadsPerMinute,
 			PersonalRetentionDays: cfg.Spaces.Personal.RetentionDaysAfterOffboarding,
 			SharingEnabled:        cfg.Sharing.Enabled,
 			// A reverse proxy on the same host reaches us via loopback with the public Host header.
@@ -285,6 +326,11 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		verifier = oauthSrv.Verifier()
 		resourceMetadataURL = oauthSrv.ResourceMetadataURL()
 	}
+	// Tokens of an edition (service accounts) are checked before the OAuth tokens. The edition decides
+	// whether a token is one of its own; anything else falls through.
+	if tv, ok := ed.(edition.TokenVerifier); ok {
+		verifier = devFirst(tv.Verifier(), verifier)
+	}
 	if cfg.Instance.DevMode {
 		log.Warn("dev_mode is active - not suitable for production", "user", cfg.Instance.DevUser)
 		verifier = devFirst(mcpserver.DevVerifier(userStore, cfg.Instance.DevToken, cfg.Instance.DevUser), verifier)
@@ -329,7 +375,8 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	return nil
 }
 
-// devFirst accepts the static dev token and otherwise defers to the OAuth verifier (if any).
+// devFirst asks the first verifier (the static dev token, or the tokens of an edition) and otherwise
+// defers to the next one (the OAuth verifier, if any). Only a token the first does not know falls through.
 func devFirst(dev, next auth.TokenVerifier) auth.TokenVerifier {
 	return func(ctx context.Context, token string, r *http.Request) (*auth.TokenInfo, error) {
 		info, err := dev(ctx, token, r)

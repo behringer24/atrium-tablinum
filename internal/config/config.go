@@ -204,6 +204,9 @@ type Policy struct {
 	DuplicateThreshold       float64 `yaml:"duplicate_threshold"`
 	MaxDocumentBytes         int     `yaml:"max_document_bytes"`
 	RateLimitWritesPerMinute int     `yaml:"rate_limit_writes_per_minute"`
+	// RateLimitServiceWritesPerMinute is the same limit for service accounts, which write in bursts (a
+	// sync of many files); 0 = unlimited.
+	RateLimitServiceWritesPerMinute int `yaml:"rate_limit_service_writes_per_minute"`
 	// RateLimitReadsPerMinute caps search, read and list calls per user (each search costs an
 	// embedding); 0 = unlimited.
 	RateLimitReadsPerMinute int `yaml:"rate_limit_reads_per_minute"`
@@ -284,11 +287,12 @@ func Defaults() Config {
 		Skills:  Skills{PersonalMaxSkills: 50, PersonalMaxBytes: 5 << 20, MaxVersionsPerSkill: 100, TeamMaxSkills: 300, TeamMaxBytes: 50 << 20},
 		Sharing: Sharing{MaxPendingPerRecipient: 20, MaxPendingPerSender: 3},
 		Policy: Policy{
-			DuplicateThreshold:       0.90,
-			MaxDocumentBytes:         200000,
-			RateLimitWritesPerMinute: 20,
-			RateLimitReadsPerMinute:  120,
-			InlineIndexSections:      6,
+			DuplicateThreshold:              0.90,
+			MaxDocumentBytes:                200000,
+			RateLimitWritesPerMinute:        20,
+			RateLimitServiceWritesPerMinute: 600,
+			RateLimitReadsPerMinute:         120,
+			InlineIndexSections:             6,
 		},
 	}
 }
