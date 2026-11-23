@@ -233,7 +233,7 @@ code{font-family:var(--f-mono); font-size:11.5px; background:var(--surface-2); b
 /*DATA-START*/
 // Highest migration version this page describes. tools/docs/check-data-model.mjs compares it,
 // and the tables, columns, types, foreign keys and indexes below, with the migrations.
-const SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = 18;
 
 const AREAS = [
   {id:"users", name:"Users & groups", h:214},
@@ -261,7 +261,7 @@ const TABLES = [
   "<code>embedding_dimensions</code> and <code>embedding_model</code> are written by <code>internal/db</code> at the first start. Every start compares the stored dimension with <code>embedding.dimensions</code>; if they differ, the server does not start.",
   "<code>instance_context</code> is the instance admin's context text for the assistants, at most 2000 characters (<code>admin_context</code>)."]},
 
-{name:"users", area:"users", mig:[1,10],
+{name:"users", area:"users", mig:[1,10,18],
  purpose:"One account per person, created just in time from the identity provider at the first login, with status, instance admin flag and default space.",
  code:["internal/users/users.go","internal/authz/authz.go","internal/docs/offboard.go","internal/audit/audit.go"],
  cols:[
@@ -275,15 +275,39 @@ const TABLES = [
   {n:"default_space_id", t:"uuid", fk:{t:"spaces", c:"id", del:"SET NULL", name:"users_default_space_fk"}},
   {n:"disabled_at", t:"timestamptz"},
   {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
-  {n:"last_login_at", t:"timestamptz"}],
+  {n:"last_login_at", t:"timestamptz"},
+  {n:"kind", t:"text", nn:1, d:"'person'", m:18, chk:"kind IN ('person', 'service')"},
+  {n:"responsible_id", t:"uuid", m:18, fk:{t:"users", c:"id", del:"NO ACTION"}}],
  pk:"PRIMARY KEY (id)", uq:["UNIQUE (email)","UNIQUE (idp, idp_subject)"],
- idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (email)"},{impl:1, d:"UNIQUE (idp, idp_subject)"}],
+ chk:["CHECK (kind = 'person' OR instance_admin = false)","CHECK (kind = 'service' OR responsible_id IS NULL)","CHECK (responsible_id IS NULL OR responsible_id <> id)"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (email)"},{impl:1, d:"UNIQUE (idp, idp_subject)"},
+      {n:"users_responsible_idx", m:"btree", d:"(responsible_id) WHERE responsible_id IS NOT NULL", partial:1, mig:18}],
  trg:[{n:"users_remove_memberships", w:"AFTER DELETE, for each row", f:"remove_principal_memberships('user')", d:"deletes the user's rows in <code>space_members</code>, because <code>principal_id</code> cannot have a foreign key."}],
  notes:[
-  "The user limit (<code>edition.CommunityMaxUsers</code> in the Community build) counts the rows with <code>status = 'active'</code> (<code>internal/users/users.go</code>).",
+  "The user limit (<code>edition.CommunityMaxUsers</code> in the Community build) counts the rows with <code>status = 'active'</code> and <code>kind = 'person'</code> (<code>internal/users/users.go</code>).",
+  "Migration 18: <code>kind = 'service'</code> marks an account that is a tool and not a person. It never is an instance admin (CHECK), it does not count against the user limit, the default role of a space does not apply to it and its role in a space is capped (<code>authz.ServiceMaxRole</code>). <code>responsible_id</code> names the person who answers for a service account; a person has none. Nothing in this edition creates a service account.",
   "<code>instance_admin = true</code> makes the instance admin. The space admin is something else: <code>role = 'admin'</code> in <code>space_members</code> (<code>internal/authz</code>).",
   "The code never deletes accounts. Offboarding sets <code>status = 'disabled'</code> and <code>disabled_at</code>; the hourly task <code>purge_offboarded</code> deletes the personal space after the retention period (<code>retention_days_after_offboarding</code>, default 30 days).",
   "Migration 10 moved the columns <code>quota_documents</code> and <code>quota_bytes</code> to <code>quotas</code>."]},
+
+{name:"service_tokens", area:"users", mig:[18],
+ purpose:"The tokens of service accounts, stored only as a SHA-256 hash, always with an expiry, and revocable. Empty in this edition.",
+ code:["internal/db/migrations/00018_service_accounts.sql"],
+ cols:[
+  {n:"id", t:"uuid", nn:1, pk:1, d:"gen_random_uuid()"},
+  {n:"user_id", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"CASCADE"}},
+  {n:"name", t:"text", nn:1},
+  {n:"token_hash", t:"bytea", nn:1, uq:1, chk:"octet_length(token_hash) = 32"},
+  {n:"created_at", t:"timestamptz", nn:1, d:"now()"},
+  {n:"expires_at", t:"timestamptz", nn:1},
+  {n:"last_used_at", t:"timestamptz"},
+  {n:"revoked_at", t:"timestamptz"}],
+ pk:"PRIMARY KEY (id)", uq:["UNIQUE (token_hash)","UNIQUE (user_id, name)"],
+ chk:["CHECK (expires_at > created_at)"],
+ idx:[{impl:1, d:"PRIMARY KEY (id)"},{impl:1, d:"UNIQUE (token_hash)"},{impl:1, d:"UNIQUE (user_id, name)"}],
+ notes:[
+  "Only the SHA-256 of a token is stored (32 bytes); the token itself is shown once, when it is created. A token has a name that is unique for its account, so two live tokens of one account can overlap for a rotation.",
+  "A token always expires (<code>expires_at</code> is required) and can be revoked (<code>revoked_at</code>). Removing the account removes its tokens."]},
 
 {name:"groups", area:"users", mig:[1,4],
  purpose:"Named groups of users, used to grant space roles to many users at once; the code creates local groups only so far.",
@@ -358,7 +382,7 @@ const TABLES = [
   "<code>internal/authz</code> takes the highest role from direct membership, group memberships and the space's <code>default_role</code>. The owner of a personal space is its admin.",
   "<code>principal_id</code> points to <code>users</code> or <code>groups</code> depending on <code>principal_type</code> and therefore has no foreign key; the triggers on both tables clean up on delete."]},
 
-{name:"documents", area:"knowledge", mig:[1,11,16],
+{name:"documents", area:"knowledge", mig:[1,11,16,18],
  purpose:"Knowledge entries (kind = knowledge) and personal handoffs (kind = handoff) with content, tags, approval status and a running version number.",
  code:["internal/docs/write.go","internal/docs/review.go","internal/docs/manage.go","internal/docs/handoff.go","internal/search/search.go","internal/ingest/ingest.go","internal/quota/quota.go"],
  cols:[
@@ -380,15 +404,18 @@ const TABLES = [
   {n:"updated_by", t:"uuid", nn:1, fk:{t:"users", c:"id", del:"NO ACTION", actor:1}},
   {n:"knowledge_type", t:"text", nn:1, d:"'documentation'", m:11, chk:"knowledge_type IN ('rule', 'documentation', 'recommendation', 'experience')"},
   {n:"owner_id", t:"uuid", m:11, fk:{t:"users", c:"id", del:"NO ACTION"}},
-  {n:"origins", t:"jsonb", nn:1, d:"'[]'", m:16, chk:"jsonb_typeof(origins) = 'array'"}],
+  {n:"origins", t:"jsonb", nn:1, d:"'[]'", m:16, chk:"jsonb_typeof(origins) = 'array'"},
+  {n:"sync_key", t:"text", m:18},
+  {n:"managed_by", t:"uuid", m:18, fk:{t:"users", c:"id", del:"NO ACTION"}}],
  pk:"PRIMARY KEY (id)",
- chk:["CHECK (kind = 'knowledge' OR expires_at IS NOT NULL)"],
+ chk:["CHECK (kind = 'knowledge' OR expires_at IS NOT NULL)","CHECK (sync_key IS NULL OR kind = 'knowledge')","CHECK (managed_by IS NULL OR sync_key IS NOT NULL)"],
  idx:[{impl:1, d:"PRIMARY KEY (id)"},
       {n:"documents_space_status_idx", m:"btree", d:"(space_id, status)", mig:1},
       {n:"documents_author_idx", m:"btree", d:"(author_id)", mig:1},
       {n:"documents_tags_idx", m:"GIN", d:"(tags)", mig:1},
       {n:"documents_expires_idx", m:"btree", d:"(expires_at) WHERE expires_at IS NOT NULL", partial:1, mig:1},
-      {n:"documents_owner_idx", m:"btree", d:"(owner_id) WHERE owner_id IS NOT NULL", partial:1, mig:11}],
+      {n:"documents_owner_idx", m:"btree", d:"(owner_id) WHERE owner_id IS NOT NULL", partial:1, mig:11},
+      {n:"documents_sync_key_idx", m:"btree", u:1, d:"(space_id, sync_key) WHERE sync_key IS NOT NULL", partial:1, mig:18}],
  notes:[
   "<code>status</code> carries the approval workflow: <code>draft</code> → <code>approved</code> or <code>rejected</code>, plus <code>archived</code>. Curators review with <code>review_knowledge</code>.",
   "Handoffs need an <code>expires_at</code> (CHECK); the hourly task <code>expire_handoffs</code> deletes expired ones (<code>internal/docs/handoff.go</code>).",
@@ -396,7 +423,8 @@ const TABLES = [
   "<code>author_id</code> and <code>updated_by</code> have no ON DELETE; an account with entries cannot be hard-deleted, which the code never does anyway.",
   "Every change also writes a row to <code>document_versions</code>; the search index is in <code>chunks</code>.",
   "Migration 11: <code>knowledge_type</code> says whether an entry is binding (<code>rule</code>, set and changed by curators only), describes (<code>documentation</code>), advises (<code>recommendation</code>) or reports (<code>experience</code>). <code>owner_id</code> names the responsible person (team spaces, explicit, never derived; a locked owner stays named as former until <code>reassign_owner</code> moves the entries). <code>review_due_at</code> is the review date set with <code>review_due</code>. See <code>docs/design/knowledge-metadata.md</code>.",
-  "Migration 16: <code>origins</code> is a JSON list of references to the originals the content was taken from (<code>ref</code>, <code>title</code>, <code>read_at</code>, <code>sha256</code>); Atrium stores the reference only, never the file. Changing it writes no version."]},
+  "Migration 16: <code>origins</code> is a JSON list of references to the originals the content was taken from (<code>ref</code>, <code>title</code>, <code>read_at</code>, <code>sha256</code>); Atrium stores the reference only, never the file. Changing it writes no version.",
+  "Migration 18: <code>sync_key</code> is the stable key of an entry that a tool keeps up to date from an outside source (unique per space, knowledge entries only), <code>managed_by</code> the service account of that tool. Only that account changes or moves such an entry (<code>internal/docs/sync.go</code>); archiving stays possible for the usual roles. Both are empty for every entry written by a person."]},
 
 {name:"document_versions", area:"knowledge", mig:[1,11],
  purpose:"Immutable copy of every state of an entry, written on create, update, review, archive and move.",
@@ -694,7 +722,7 @@ const FUNCS = [
 
 const LAYOUT = [
   [{a:"oauth", sub:[["oauth_tokens","oauth_clients","oauth_codes","oauth_login_states"],["oauth_consents","oauth_consent_requests"]]}, {a:"meta", sub:[["meta"]]}],
-  [{a:"allowlist", sub:[["login_allowlist"]]}, {a:"users", sub:[["users","group_members","groups"]]}, {a:"quotas", sub:[["quotas"]]}],
+  [{a:"allowlist", sub:[["login_allowlist"]]}, {a:"users", sub:[["users","group_members","groups"],["service_tokens"]]}, {a:"quotas", sub:[["quotas"]]}],
   [{a:"spaces", sub:[["spaces","space_members"]]}, {a:"audit", sub:[["audit_log"]]}, {a:"jobs", sub:[["jobs"]]}],
   [{a:"knowledge", sub:[["documents"],["document_versions","chunks"]]}, {a:"skills", sub:[["skills","skill_resources"],["skill_versions"]]}]
 ];

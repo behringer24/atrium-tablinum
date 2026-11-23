@@ -22,6 +22,15 @@ var (
 	ErrNotFound  = errors.New("not found")
 	ErrDisabled  = errors.New("user is disabled")
 	ErrBootstrap = errors.New("bootstrap admins are defined in the configuration and cannot be changed")
+	// ErrServiceAccount is returned for something a service account cannot hold, such as the instance admin right.
+	ErrServiceAccount = errors.New("a service account cannot be an instance admin")
+)
+
+// The kinds of account. A person logs in through an identity provider; a service account is a tool
+// that acts on its own with a token. The zero value counts as a person.
+const (
+	KindPerson  = "person"
+	KindService = "service"
 )
 
 type User struct {
@@ -30,8 +39,13 @@ type User struct {
 	DisplayName string
 	IDP         string
 	Subject     string
-	Active      bool
-	// InstanceAdmin is the effective flag: stored flag OR listed in bootstrap_admins.
+	// Kind is KindPerson or KindService.
+	Kind string
+	// ResponsibleID is the person who answers for a service account; nil for a person.
+	ResponsibleID *uuid.UUID
+	Active        bool
+	// InstanceAdmin is the effective flag: stored flag OR listed in bootstrap_admins. A service account is
+	// never an instance admin.
 	InstanceAdmin bool
 	// ConfigAdmin says the account is listed in bootstrap_admins: such an admin right comes from the
 	// configuration and cannot be removed through a tool.
@@ -94,15 +108,18 @@ func (s *Store) changed() {
 	}
 }
 
+// IsService says whether the account is a service account.
+func (u User) IsService() bool { return u.Kind == KindService }
+
 const userSelect = `
-SELECT u.id, u.email, u.display_name, u.idp, u.idp_subject, u.status = 'active', u.instance_admin,
+SELECT u.id, u.email, u.display_name, u.idp, u.idp_subject, u.kind, u.responsible_id, u.status = 'active', u.instance_admin,
        u.default_space_id, u.last_login_at, u.disabled_at, u.created_at,
        (SELECT sp.id FROM spaces sp WHERE sp.owner_user_id = u.id AND sp.type = 'personal')
 FROM users u `
 
 func (s *Store) scan(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.DisplayName, &u.IDP, &u.Subject, &u.Active, &u.InstanceAdmin,
+	err := row.Scan(&u.ID, &u.Email, &u.DisplayName, &u.IDP, &u.Subject, &u.Kind, &u.ResponsibleID, &u.Active, &u.InstanceAdmin,
 		&u.DefaultSpaceID, &u.LastLoginAt, &u.DisabledAt, &u.CreatedAt, &u.PersonalSpaceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
@@ -110,8 +127,8 @@ func (s *Store) scan(row pgx.Row) (User, error) {
 	if err != nil {
 		return User{}, err
 	}
-	u.ConfigAdmin = s.bootstrap[strings.ToLower(u.Email)]
-	u.InstanceAdmin = u.InstanceAdmin || u.ConfigAdmin
+	u.ConfigAdmin = !u.IsService() && s.bootstrap[strings.ToLower(u.Email)]
+	u.InstanceAdmin = !u.IsService() && (u.InstanceAdmin || u.ConfigAdmin)
 	return u, nil
 }
 
@@ -217,7 +234,7 @@ func (s *Store) provision(ctx context.Context, id Identity) (uuid.UUID, error) {
 	if errors.Is(err, pgx.ErrNoRows) && s.maxUsers != nil && !s.bootstrap[strings.ToLower(id.Email)] {
 		if max := s.maxUsers(); max > 0 {
 			var n int
-			if qerr := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n); qerr != nil {
+			if qerr := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active' AND kind = 'person'`).Scan(&n); qerr != nil {
 				return uuid.Nil, qerr
 			}
 			if n >= max {
@@ -270,15 +287,16 @@ func (s *Store) checkRoom(ctx context.Context, id uuid.UUID) error {
 	if max <= 0 {
 		return nil
 	}
-	var email string
+	var email, kind string
 	var wasActive bool
-	if err := s.pool.QueryRow(ctx, `SELECT email, status = 'active' FROM users WHERE id = $1`, id).Scan(&email, &wasActive); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT email, status = 'active', kind FROM users WHERE id = $1`, id).Scan(&email, &wasActive, &kind); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}
 		return err
 	}
-	if wasActive || s.bootstrap[strings.ToLower(email)] {
+	// A service account does not count against the limit, so it never needs room.
+	if wasActive || kind == KindService || s.bootstrap[strings.ToLower(email)] {
 		return nil
 	}
 	n, err := s.CountActive(ctx)
@@ -291,10 +309,11 @@ func (s *Store) checkRoom(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// CountActive returns the number of active accounts, the number the user limit is compared with.
+// CountActive returns the number of active accounts of people, the number the user limit is compared
+// with. Service accounts do not count.
 func (s *Store) CountActive(ctx context.Context) (int, error) {
 	var n int
-	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active'`).Scan(&n)
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE status = 'active' AND kind = 'person'`).Scan(&n)
 	return n, err
 }
 
@@ -334,6 +353,9 @@ func (s *Store) SetInstanceAdmin(ctx context.Context, id uuid.UUID, admin bool) 
 	}
 	if s.bootstrap[strings.ToLower(u.Email)] {
 		return ErrBootstrap
+	}
+	if admin && u.IsService() {
+		return ErrServiceAccount
 	}
 	if _, err := s.pool.Exec(ctx, `UPDATE users SET instance_admin = $2 WHERE id = $1`, id, admin); err != nil {
 		return err

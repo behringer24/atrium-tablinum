@@ -1,6 +1,6 @@
-# Atrium Pro: licence, guided offboarding, content separation and spaces in a hierarchy
+# Atrium Pro: licence, guided offboarding, content separation, spaces in a hierarchy and connecting other systems
 
-This guide is for the **instance admins** (and, for two sections, the space admins) of an organisation that runs the **Pro** edition. It covers what the Community edition does not have: installing and renewing a licence, the guided offboarding, the separation of content from operations and spaces below other spaces. Everything else works as described in the [instance admin guide](../user/05-instance-admin.md) and the other guides. Which edition has what is listed in [Editions](../licensing.md).
+This guide is for the **instance admins** (and, for two sections, the space admins) of an organisation that runs the **Pro** edition. It covers what the Community edition does not have: installing and renewing a licence, the guided offboarding, the separation of content from operations, spaces below other spaces and connecting other systems (service accounts, tokens and the Git sync, in [their own guide](service-accounts.md)). Everything else works as described in the [instance admin guide](../user/05-instance-admin.md) and the other guides. Which edition has what is listed in [Editions](../licensing.md).
 
 The Pro edition is the official image. Until a licence is installed it behaves exactly like Community (up to 8 active accounts), so you can install the image first and add the licence when you have it.
 
@@ -22,14 +22,14 @@ A licence is one line of text that starts with `atrium-license-v1.`. You receive
 
 - **It is checked on your server, offline.** Atrium never calls anybody to check it, and nothing about your instance is sent anywhere.
 - **It belongs to your instance.** It is issued for the host of your `instance.base_url`, so tell us the address you run under. A licence installed on an instance with another address is refused.
-- **It lists what it switches on:** the number of users (`users`; 0 means unlimited) and features such as `offboarding`, `content_separation` and `space_hierarchy`.
+- **It lists what it switches on:** the number of users (`users`; 0 means unlimited) and features such as `offboarding`, `content_separation`, `space_hierarchy` and `service_accounts`.
 - **It is for one major version and runs for a term.** It names the major version it covers (`major`) and, for a subscription or a trial, the day it ends (`expires`). Licences issued earlier carry a maintenance date (`maintenance_until`) instead of a major version; they keep working as described at the end of this section.
 
 **One major version, one term.** Atrium versions are numbered `major.minor.patch` (1.4.2); `server_info` and `admin_license` name the version and release line of the running build. A licence for major version 1 covers every build of 1.x, so each minor release and patch of that version is included while the licence runs. A build of a *newer* major version (2.0 and later) needs a licence for that major version; a licence for a newer major version also covers the earlier ones, so you can go back. When the term ends, the instance runs as Community until a new licence is installed. Renewing brings the licence for the major version that is current then.
 
 *Licences with a maintenance date.* An older licence covers every build of a release line released on or before its `maintenance_until`, for ever; a newer line needs a licence with a later date.
 
-**Nothing is ever blocked.** In every state other than `valid` the instance runs as Community. Content stays readable and exportable, and no account is locked. One thing differs: spaces that were arranged below each other keep their arrangement and their rights, see [Spaces below other spaces](#spaces-below-other-spaces).
+**Nothing is ever blocked.** In every state other than `valid` the instance runs as Community. Content stays readable and exportable, and no account is locked. Two things differ: spaces that were arranged below each other keep their arrangement and their rights, see [Spaces below other spaces](#spaces-below-other-spaces), and service accounts keep their tokens until each expires, see [Connecting other systems](service-accounts.md#when-the-licence-ends).
 
 ## Looking at the licence
 
@@ -181,4 +181,4 @@ An arrangement that exists keeps working, and nobody loses access on the day the
 
 **Who sees the licence?** Only instance admins, through `admin_license`. Other users see the edition and the release line in `server_info`.
 
-**The tools `admin_license`, `admin_transfer_personal_space`, `reassign_owner` and `admin_space_parent` do not appear.** They exist only in the Pro edition. `admin_license` and `admin_transfer_personal_space` are for instance admins, `reassign_owner` and `admin_space_parent` for space admins and instance admins. Without the feature `offboarding` the two offboarding tools refuse with a message.
+**The tools `admin_license`, `admin_transfer_personal_space`, `reassign_owner`, `admin_space_parent`, `admin_service_accounts` and `sync_knowledge` do not appear.** They exist only in the Pro edition. `admin_license`, `admin_transfer_personal_space` and `admin_service_accounts` are for instance admins, `reassign_owner` and `admin_space_parent` for space admins and instance admins, `sync_knowledge` for service accounts only ([Connecting other systems](service-accounts.md)). Without the feature `offboarding` the two offboarding tools refuse with a message.

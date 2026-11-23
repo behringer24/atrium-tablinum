@@ -37,6 +37,11 @@ type StoreParams struct {
 	ReviewDue *time.Time
 	// Origins are references to the originals the knowledge was taken from (see NormalizeOrigins).
 	Origins []Origin
+
+	// syncKey and managedBy are set by Sync only: the stable key of an entry that a tool keeps up to
+	// date, and the account of that tool.
+	syncKey   string
+	managedBy *uuid.UUID
 }
 
 // checkMeta applies the rules for type, responsible person and review date of an entry in sp,
@@ -157,9 +162,9 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 
 	var id uuid.UUID
 	err = tx.QueryRow(ctx, `
-INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type, owner_id, review_due_at, origins)
-VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10, $11) RETURNING id`,
-		sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID, source(a), p.Type, p.OwnerID, p.ReviewDue, origins).Scan(&id)
+INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type, owner_id, review_due_at, origins, sync_key, managed_by)
+VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10, $11, NULLIF($12, ''), $13) RETURNING id`,
+		sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID, source(a), p.Type, p.OwnerID, p.ReviewDue, origins, p.syncKey, p.managedBy).Scan(&id)
 	if err != nil {
 		return StoreResult{}, err
 	}
@@ -229,6 +234,14 @@ func canEdit(a Actor, d Document) error {
 	return ErrForbidden
 }
 
+// checkManaged refuses a change by anybody but the account that keeps the entry up to date.
+func checkManaged(a Actor, d Document) error {
+	if d.ManagedBy != nil && *d.ManagedBy != a.User.ID {
+		return ErrManaged
+	}
+	return nil
+}
+
 // Update replaces title, content, tags and/or type, re-indexes the entry if its text changed, and
 // sets or clears the responsible person and the review date. A change of only the latter two
 // writes no version.
@@ -241,6 +254,9 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("handoffs are not changed through update_knowledge"))
 	}
 	if err := canEdit(a, cur); err != nil {
+		return Document{}, err
+	}
+	if err := checkManaged(a, cur); err != nil {
 		return Document{}, err
 	}
 	sp, role, err := s.writableSpace(ctx, a, cur.SpaceID)

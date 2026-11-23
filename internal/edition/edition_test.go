@@ -49,3 +49,22 @@ type fake struct{}
 
 func (fake) Name() string  { return "pro" }
 func (fake) MaxUsers() int { return 50 }
+
+func TestNoCommandsByDefault(t *testing.T) {
+	if len(CommandNames()) != 0 || LookupCommand("token") != nil {
+		t.Errorf("the community edition has commands: %v", CommandNames())
+	}
+	RegisterCommand("probe", func(context.Context, CommandEnv) int { return 7 })
+	t.Cleanup(func() { delete(commands, "probe") })
+	RegisterStandaloneCommand("client", func(context.Context, CommandEnv) int { return 3 })
+	t.Cleanup(func() { delete(commands, "client"); delete(standalone, "client") })
+	if !IsStandalone("client") || IsStandalone("probe") {
+		t.Error("standalone flag wrong")
+	}
+	if c := LookupCommand("probe"); c == nil || c(context.Background(), CommandEnv{}) != 7 {
+		t.Error("a registered command is not found")
+	}
+	if names := CommandNames(); len(names) != 2 || names[0] != "client" || names[1] != "probe" {
+		t.Errorf("names: %v", names)
+	}
+}

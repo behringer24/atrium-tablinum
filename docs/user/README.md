@@ -58,7 +58,7 @@ The role you have can differ from space to space. Your assistant can show your r
 
 - Markdown (`.md`) is the source. A PDF with the same name sits next to every guide for printing and offline reading.
 - The guides describe the behaviour of the current development version. Features that are planned but not built are marked as such, and the [roadmap](../../ROADMAP.md) lists what is coming.
-- Organisations with a Pro licence also read [Atrium Pro](../pro/pro-edition.md) (licence, guided offboarding, content separation and spaces in a hierarchy, in `docs/pro/`).
+- Organisations with a Pro licence also read [Atrium Pro](../pro/pro-edition.md) (licence, guided offboarding, content separation and spaces in a hierarchy, in `docs/pro/`) and, to connect tools and keep a repository's Markdown files in Atrium, [Connecting other systems](../pro/service-accounts.md).
 - Technical reference for operators lives in the other documents of this repository: [skills](../skills.md), [approval](../approval.md), [archive and context](../archive-and-context.md), [offboarding](../offboarding.md), [login and OAuth](../auth.md), [deployment](../deployment.md), [embedding](../embedding.md), [releases](../release.md).
 
 Every PDF carries the same branding: the Atrium icon and the behringer24 logo in a header block on the first page, a running header on every other page, and a footer with the names and the page number. To rebuild the PDFs after editing a guide, run `scripts/build-docs.sh` (needs Node.js and Chrome, Chromium or Edge); pass the changed file to rebuild only that one.

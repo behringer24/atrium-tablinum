@@ -131,6 +131,7 @@ policy:
   duplicate_threshold: 0.90
   max_document_bytes: 200000
   rate_limit_writes_per_minute: 20
+  rate_limit_service_writes_per_minute: 600   # writes per service account (a tool that syncs many entries at once); 0 = unlimited
   rate_limit_reads_per_minute: 120   # search, read, list per user; every search costs one embedding; 0 = unlimited
   # How many sections of an entry are embedded while it is saved. A long entry has many sections and the
   # embedding service needs seconds for each, so the rest is embedded in the background: the entry is

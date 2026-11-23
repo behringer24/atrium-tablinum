@@ -37,6 +37,8 @@ var (
 	ErrOwnDraft = errors.New("only a space admin can approve their own draft in this space, otherwise another curator has to do it")
 	// ErrRule: binding rules are set, changed and moved by curators and admins of the space only.
 	ErrRule = errors.New("binding rules (type rule) are set and changed only by curators and admins of the space: ask one of them (space_contacts)")
+	// ErrManaged: an entry that a tool keeps up to date from an outside source is changed by that tool only.
+	ErrManaged = errors.New("this entry is kept up to date from an outside source and cannot be changed or moved here: change the source and let the sync run again (archiving it stays possible)")
 )
 
 type Options struct {
@@ -79,6 +81,12 @@ type Document struct {
 	ReviewDue *time.Time
 	// Origins are the references to the originals the knowledge comes from (knowledge entries only).
 	Origins []Origin
+	// SyncKey is the stable key of an entry that a tool keeps up to date from an outside source, and
+	// ManagedBy the account of that tool (ManagedByEmail its address). Only that account changes or moves
+	// such an entry.
+	SyncKey        string
+	ManagedBy      *uuid.UUID
+	ManagedByEmail string
 	// IndexPending is set by Store and Update only: how many sections of the entry were saved without
 	// a vector and wait for the background task. Until then they are found by full text only.
 	IndexPending int
@@ -134,21 +142,26 @@ type querier interface {
 
 const docColumns = `d.id, d.space_id, d.kind, d.title, d.content, d.tags, d.status, COALESCE(d.review_note, ''),
 	d.author_id, au.email::text, d.source, d.version, d.expires_at, d.created_at, d.updated_at,
-	d.knowledge_type, d.owner_id, COALESCE(ou.email::text, ''), COALESCE(ou.status = 'active', false), d.review_due_at, d.origins`
+	d.knowledge_type, d.owner_id, COALESCE(ou.email::text, ''), COALESCE(ou.status = 'active', false), d.review_due_at, d.origins,
+	COALESCE(d.sync_key, ''), d.managed_by, COALESCE(mu.email::text, '')`
 
 // docListColumns are docColumns without the content, for lists.
 const docListColumns = `d.id, d.space_id, d.kind, d.title, '', d.tags, d.status, COALESCE(d.review_note, ''),
 	d.author_id, au.email::text, d.source, d.version, d.expires_at, d.created_at, d.updated_at,
-	d.knowledge_type, d.owner_id, COALESCE(ou.email::text, ''), COALESCE(ou.status = 'active', false), d.review_due_at, d.origins`
+	d.knowledge_type, d.owner_id, COALESCE(ou.email::text, ''), COALESCE(ou.status = 'active', false), d.review_due_at, d.origins,
+	COALESCE(d.sync_key, ''), d.managed_by, COALESCE(mu.email::text, '')`
 
-// docFrom joins the author and the responsible person to the documents aliased d.
-const docFrom = `FROM documents d JOIN users au ON au.id = d.author_id LEFT JOIN users ou ON ou.id = d.owner_id`
+// docFrom joins the author, the responsible person and the account that keeps the entry up to date to the
+// documents aliased d.
+const docFrom = `FROM documents d JOIN users au ON au.id = d.author_id LEFT JOIN users ou ON ou.id = d.owner_id
+	LEFT JOIN users mu ON mu.id = d.managed_by`
 
 // docTargets are the scan targets of docColumns and docListColumns.
 func docTargets(d *Document) []any {
 	return []any{&d.ID, &d.SpaceID, &d.Kind, &d.Title, &d.Content, &d.Tags, &d.Status, &d.ReviewNote,
 		&d.AuthorID, &d.AuthorEmail, &d.Source, &d.Version, &d.ExpiresAt, &d.CreatedAt, &d.UpdatedAt,
-		&d.Type, &d.OwnerID, &d.OwnerEmail, &d.OwnerActive, &d.ReviewDue, &d.Origins}
+		&d.Type, &d.OwnerID, &d.OwnerEmail, &d.OwnerActive, &d.ReviewDue, &d.Origins,
+		&d.SyncKey, &d.ManagedBy, &d.ManagedByEmail}
 }
 
 func scanDoc(row pgx.Row) (Document, error) {

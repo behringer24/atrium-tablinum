@@ -30,6 +30,9 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 	if err := canEdit(a, cur); err != nil {
 		return Document{}, err
 	}
+	if err := checkManaged(a, cur); err != nil {
+		return Document{}, err
+	}
 	src, srcRole, err := s.writableSpace(ctx, a, cur.SpaceID)
 	if err != nil {
 		return Document{}, err
