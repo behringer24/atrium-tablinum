@@ -81,6 +81,10 @@ type docInfo struct {
 	ReviewOverdue bool   `json:"review_overdue,omitempty"`
 	// Origins are the references to the originals the knowledge was taken from (get_knowledge only).
 	Origins []originIO `json:"origins,omitempty"`
+	// ManagedBy names the account that keeps the entry up to date from an outside source, SyncKey its key
+	// there. Such an entry is changed at the source, not here.
+	ManagedBy string `json:"managed_by,omitempty"`
+	SyncKey   string `json:"sync_key,omitempty"`
 	// Indexing is set after saving or changing a long entry: part of it is still being embedded.
 	Indexing string `json:"indexing,omitempty"`
 }
@@ -137,6 +141,9 @@ func (s *Server) docInfo(ctx context.Context, d docs.Document, withContent bool)
 	}
 	if d.OwnerID != nil {
 		di.Owner, di.OwnerFormer = d.OwnerEmail, !d.OwnerActive
+	}
+	if d.ManagedBy != nil {
+		di.ManagedBy, di.SyncKey = d.ManagedByEmail, d.SyncKey
 	}
 	if d.ReviewDue != nil {
 		now := time.Now().UTC()
