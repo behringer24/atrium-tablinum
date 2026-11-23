@@ -1,8 +1,8 @@
 module github.com/behringer24/atrium-tablinum
 
-go 1.26.0
+go 1.27.0
 
-toolchain go1.26.11
+toolchain go1.27.4
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.48.0
