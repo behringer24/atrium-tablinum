@@ -21,9 +21,10 @@ Atrium Tablinum comes in two editions.
 | Guided offboarding (handing a personal space on, reassigning responsibilities) | | yes |
 | Separating content from operations (instance admins without automatic access to all team spaces) | | yes |
 | Spaces below other spaces with inherited rights | | yes |
+| Service accounts and tokens, the Git sync (connecting other systems) | | yes |
 | Further features for scale, integration and governance | | planned, see the [roadmap](../ROADMAP.md) |
 
-Each feature of the guides says which edition has it. How a Pro licence is installed and what the guided offboarding, the separation of content from operations and spaces below other spaces do: [Atrium Pro](pro/pro-edition.md).
+Each feature of the guides says which edition has it. How a Pro licence is installed and what the guided offboarding, the separation of content from operations and spaces below other spaces do: [Atrium Pro](pro/pro-edition.md). Service accounts and the sync of a Git repository: [Connecting other systems](pro/service-accounts.md).
 
 ## FAQ
 

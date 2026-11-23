@@ -53,6 +53,7 @@ A space admin only sees their own space(s) in the member tools. Spaces they do n
 
 - The person must have **logged in at least once** before you can add them. If Atrium says it does not know the user, ask them to connect an assistant first.
 - The same command **changes a role**: add the person again with the new role.
+- A tool that works on its own (a **service account**, Pro edition) is added by its address, `name@service.invalid`. It holds at most the curator role whatever you give it, is never an instance admin, and does not get the default role of your space: it reads and writes only where you gave it a role. Tokens are managed by instance admins ([Connecting other systems](../pro/service-accounts.md)). Entries that such a tool keeps up to date show `managed_by` and cannot be changed by people; archiving them stays possible.
 - You can add a **group** instead of a person: *"Add the group 'support-team' as curator in Support."* A person gets the best of their own role, their groups' roles and the default role. Local groups are managed by instance admins; groups from your identity provider are not imported yet.
 - A change takes effect immediately for new requests (the role cache is cleared on every membership change).
 - Every change is recorded in the audit log with the person, the role and who made it.

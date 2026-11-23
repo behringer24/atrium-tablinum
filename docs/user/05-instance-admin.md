@@ -125,6 +125,10 @@ What to know:
 - **Offboarding removes a granted right** (`admin_offboard_user`), so reactivating an account does not bring it back. A locked account cannot be granted the right.
 - This right always carries both: the content of all team spaces and the operation of the system. The Pro edition can separate them ([Atrium Pro](../pro/pro-edition.md#separating-content-from-operations)).
 
+### Service accounts (Pro)
+
+Tools that work on their own (a script, a CI job that keeps a repository's Markdown files up to date in Atrium) use a **service account** with a token, not a person's login. You create the account and its token on the server with a command (never through an assistant, so that the secret does not end up in a chat), give it a role in a space with `space_add_member` (its address is `name@service.invalid`, and its role is capped at curator), and manage it afterwards with `admin_service_accounts`: list the accounts and tokens, lock and unlock an account, revoke a token, name another responsible person. Service accounts do not count against the user limit and are never instance admins. The whole procedure, the sync of a Git repository and what happens when the licence ends are in [Connecting other systems](../pro/service-accounts.md).
+
 ### Groups
 
 Local groups (`admin_groups`: `list`, `create`, `rename`, `delete`, `add_member`, `remove_member`) let you give a role to a set of people at once, for example "support-team". Groups from the identity provider are visible but read-only, and are not yet synchronised from the login token. Deleting a group needs your confirmation.
@@ -440,6 +444,8 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 **Can I give somebody access to one sub-space without the spaces above?** Yes, with the Pro feature `space_hierarchy`: enter them in that space only. Memberships flow down the tree and never up. See [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces).
 
 **What happens to a tree when the Pro licence ends?** It keeps working and nobody loses access. Only changes that narrow rights stay possible (taking a space out, switching the inheritance off) until a licence with the feature is installed again.
+
+**How do I connect a script or a CI job to Atrium?** With a service account and a token, in the Pro edition: [Connecting other systems](../pro/service-accounts.md). A token is created on the server, never through an assistant.
 
 **Can I turn approval on for an existing space?** Yes (`admin_update_space`). Existing entries keep their status.
 
