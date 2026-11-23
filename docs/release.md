@@ -89,8 +89,8 @@ echo "$TOKEN" | docker login ghcr.io -u <user> --password-stdin
 
 What the build depends on is pinned and checked:
 
-- **Go toolchain:** `go.mod` names the patch release (`toolchain go1.26.11`), so a local `go` and the CI use the same one, and the Dockerfile builds with `golang:1.26.11-alpine`. The standard library is part of what you ship: update the patch release when `govulncheck` reports a fix.
-- **Base images** are pinned by tag and digest (`golang:1.26.11-alpine@sha256:...`, `alpine:3.22@sha256:...`). To update one, take the new digest with `docker buildx imagetools inspect <image>`.
+- **Go toolchain:** `go.mod` names the patch release (`toolchain go1.26.11`), which a local `go` and the CI use (`setup-go` reads it from `go.mod`, and `govulncheck` runs with it). The image is built with the Go of its own base image (`golang:1.27.4-alpine`, see below), which Dependabot keeps current. The standard library is part of what you ship: update the patch release when `govulncheck` reports a fix, and keep the toolchain of `go.mod` and the Go of the base image in step, so that what the CI tests and checks is what the image contains.
+- **Base images** are pinned by tag and digest (`golang:1.27.4-alpine@sha256:...`, `alpine:3.24@sha256:...`). To update one, take the new digest with `docker buildx imagetools inspect <image>`.
 - **GitHub Actions** are pinned to commit SHAs, with the tag in a comment. A moved tag in an action repository cannot run other code in the build. Get a SHA with `git ls-remote --tags https://github.com/<owner>/<repo> refs/tags/<tag>`.
 - **`govulncheck`** runs in the test job of `test.yml` and fails the build when a known vulnerability is reachable from the code. Run it locally with `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`.
 - **Dependabot** (`.github/dependabot.yml`) opens weekly pull requests for Actions, Go modules and base images against `dev`, so that an update is tried as a canary build before it reaches `main`. Review them like any change; the tests and `govulncheck` run on them. Security updates that GitHub opens for a known vulnerability always target `main`.
