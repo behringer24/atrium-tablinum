@@ -9,6 +9,7 @@ Do not confuse the two admin roles. A **space admin** manages **one** space. An 
 - [What space admins can and cannot do](#what-space-admins-can-and-cannot-do)
 - [Members, roles and groups](#members-roles-and-groups)
 - [Choosing roles](#choosing-roles)
+- [Spaces below other spaces (Pro)](#spaces-below-other-spaces-pro)
 - [Lifting blocks and deleting](#lifting-blocks-and-deleting)
 - [Taking a space's knowledge out](#taking-a-spaces-knowledge-out)
 - [Settings only instance admins change](#settings-only-instance-admins-change)
@@ -24,6 +25,7 @@ Do not confuse the two admin roles. A **space admin** manages **one** space. An 
 | See who belongs to the space (`space_members`) | yes | yes |
 | Add or change members, users and groups (`space_add_member`) | yes | yes |
 | Remove members (`space_remove_member`) | yes | yes |
+| Arrange spaces below each other (`admin_space_parent`, Pro) | yes, in spaces you administer | yes |
 | Lift a skill block (`unblock_skill`) | yes | yes |
 | Delete entries for good (`delete_knowledge`) | yes | yes |
 | Delete skills (`delete_skill`) | no | yes |
@@ -51,6 +53,7 @@ A space admin only sees their own space(s) in the member tools. Spaces they do n
 
 - The person must have **logged in at least once** before you can add them. If Atrium says it does not know the user, ask them to connect an assistant first.
 - The same command **changes a role**: add the person again with the new role.
+- A tool that works on its own (a **service account**, Pro edition) is added by its address, `name@service.invalid`. It holds at most the curator role whatever you give it, is never an instance admin, and does not get the default role of your space: it reads and writes only where you gave it a role. Tokens are managed by instance admins ([Connecting other systems](../pro/service-accounts.md)). Entries that such a tool keeps up to date show `managed_by` and cannot be changed by people; archiving them stays possible.
 - You can add a **group** instead of a person: *"Add the group 'support-team' as curator in Support."* A person gets the best of their own role, their groups' roles and the default role. Local groups are managed by instance admins; groups from your identity provider are not imported yet.
 - A change takes effect immediately for new requests (the role cache is cleared on every membership change).
 - Every change is recorded in the audit log with the person, the role and who made it.
@@ -67,7 +70,7 @@ Give people the lowest role that lets them do their job:
 |---|---|---|
 | **Reader** | People who consume knowledge | Often covered by the default role |
 | **Author** | People who document and maintain | Their entries are drafts when the space requires approval |
-| **Curator** | Subject experts who review | Needed at least **twice**: curators cannot approve their own drafts or skill versions |
+| **Curator** | Subject experts who review | Needed at least **twice**: curators cannot approve their own skill versions, and a second pair of eyes is the point of a review. Their own entries start as drafts in a space with approval |
 | **Admin** | The one or two people who manage membership | They also review as curators |
 
 Rules of thumb:
@@ -75,8 +78,20 @@ Rules of thumb:
 - **Two curators per space** with approval, so that review continues when one is away.
 - **Do not make everybody a curator.** Review is a control; fewer, careful reviewers beat many hurried ones.
 - **Prefer groups** over long lists of people, if your identity provider or the instance admins provide matching groups. Access then follows the group.
-- **Authors review nothing, curators are not admins.** An admin should not routinely approve their own work; Atrium lets admins do it to avoid deadlocks, and marks it in the audit log.
+- **Authors review nothing, curators are not admins.** In a space with approval only admins save approved entries directly; the entries of curators start as drafts, which they release on purpose. An admin should not routinely approve their own work; Atrium lets admins do it to avoid deadlocks, and marks it in the audit log.
 - Skills are a higher-trust content type: be more careful with who may publish them (curators) and who may unblock (you).
+
+## Spaces below other spaces (Pro)
+
+In the Pro edition an organisation can arrange its team spaces in a tree (company, department, team). Memberships then flow down: the **nearest entry wins**. A person's role in a space is the one from the space itself if they have an entry there, otherwise from the space above, and so on upwards. An entry of your own in a space overrides what the space above would give, so you can give somebody a lower role, or a higher one, in your space only. How it works, the rules and the limits are in [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces).
+
+What it means for you as a space admin:
+
+- **`space_members` shows the entries of your space and, separately, what it takes over** (`inherited_members`, with `inherit_members` telling whether the inheritance is on). Somebody who has an entry of their own in your space is listed once, with that entry. The space an inherited role comes from is named only if you can see that space; otherwise it says "a space above". Instance admins also see where each comes from in the rights report.
+- **An admin of a space above is admin in yours** as long as your space inherits, and reads its content. For a sensitive space ask for the inheritance to be switched off; then only the entries of your space count.
+- **You can arrange your own space** (`admin_space_parent`, with your confirmation): switch the inheritance off, or take the space out of the tree. Switching it on again, and putting a space below another one, need the admin right in both spaces, because the members of the space above gain access. Think about who is affected before you confirm.
+- **Entering a person only in your space** gives them access to it and nothing above. Removing an entry in your space does not necessarily end their access: they may inherit one from above.
+- The default role of a space is not inherited; each space has its own.
 
 ## Lifting blocks and deleting
 
@@ -100,7 +115,7 @@ Deleting skills for good is for instance admins, because skills are instructions
 
 As admin of a space you can export everything in it as Markdown files, for a copy of your own, a migration or an archive. Ask: *"Export the Support space."* (`export_knowledge`). Without a space name, all team spaces you administer are exported together.
 
-The assistant answers with a link that works for **ten minutes and only once**. You open it in your browser; there is nothing to install. The ZIP file holds a folder per space, one Markdown file per entry and an `index.md` that lists them. It follows the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format) (OKF, version 0.2), so tools that read that format can use it; what only Atrium knows is under the key `atrium` in each header.
+The assistant answers with a link that works for **ten minutes and only once**. You open it in your browser; there is nothing to install. The ZIP file holds a folder per space, one Markdown file per entry and an `index.md` that lists them. It follows the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format) (OKF, version 0.2), so tools that read that format can use it; what only Atrium knows is under the key `atrium` in each header, including the references to the originals (`origins`) of an entry.
 
 - **What is in it:** every entry of the space in every state: approved, draft, returned and archived, each with its title, type, tags, state, author, responsible person, review date and version in a header. The `status` field says whether the entry was approved (`stable`), still a draft (`draft`) or archived (`deprecated`); the exact state is under `atrium`.
 - **What is not:** the history of earlier versions, handoffs and skills (export a skill with its own ZIP, see [Skills](../skills.md)), and personal spaces. Nobody can export someone else's personal space.
@@ -162,9 +177,10 @@ Ask an instance admin when you need to:
 | The person still has access after removal | They have it through a group or the default role. Check `space_members` and the groups |
 | "Not found" for a space you manage | Check the spelling or slug. You see only spaces you administer |
 | You cannot change the approval setting | Only an instance admin can (`admin_update_space`) |
-| A curator cannot approve their own draft | By design. Another curator, or you as admin, approves |
+| A curator cannot approve their own draft | Only in a space without approval, where a draft is a request for a second look. Another curator, or you as admin, approves. In a space with approval a curator may release their own draft |
 | Unblocking did not make the skill available | The version is *approved*, not published. A curator must publish it again |
 | Role changes seem not to apply | They apply to the next request. Check `space_members`, and look for roles the person has through a group or the default role |
+| A person has access but is not among the `members` (Pro) | The space sits below another one and inherits the entry from there: look under `inherited_members` in `space_members` |
 
 ## FAQ
 
@@ -187,5 +203,9 @@ Ask an instance admin when you need to:
 **Can I lock a user out of Atrium?** Only for your space (remove them). Locking an account entirely is for instance admins.
 
 **Who can see who is in my space?** Space admins and instance admins see the member list; members see the curators and admins through `space_contacts`.
+
+**Can I give somebody access to my space without giving them the spaces above?** Yes: add them in your space only. They see it, and nothing above it. (Spaces in a tree are a Pro feature; without it every space has its own members anyway.)
+
+**Can I keep one person of the space above out of my space?** Not by name. Switch the inheritance off for your space and add the people who belong there. See [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces).
 
 **Can a group be admin?** Yes, but prefer named people for admin and curator so that responsibility is clear.

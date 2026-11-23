@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/dbtest"
@@ -14,6 +15,7 @@ import (
 )
 
 type env struct {
+	pool    *pgxpool.Pool
 	ctx     context.Context
 	users   *users.Store
 	spaces  *spaces.Store
@@ -24,6 +26,7 @@ func setup(t *testing.T, ttl time.Duration) env {
 	t.Helper()
 	pool := dbtest.NewPool(t)
 	e := env{
+		pool:    pool,
 		ctx:     context.Background(),
 		users:   users.New(pool, users.Options{BootstrapAdmins: []string{"Boss@x.de"}, PersonalEnabled: true}),
 		spaces:  spaces.New(pool),

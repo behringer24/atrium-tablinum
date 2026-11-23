@@ -240,8 +240,14 @@ func TestDraftsArchivedAndHandoffs(t *testing.T) {
 	sp := e.team(t, "wiki", true, authz.None, map[*docs.Actor]authz.Role{&author: authz.Author, &cur: authz.Curator, &reader: authz.Reader})
 
 	e.put(t, author, sp.ID, "Entwurf", "alpha entwurf")
+	// a curator's entries start as drafts in a space with approval and are released on purpose
 	approved := e.put(t, cur, sp.ID, "Freigegeben", "alpha frei")
 	gone := e.put(t, cur, sp.ID, "Archiviert", "alpha weg")
+	for _, d := range []docs.Document{approved, gone} {
+		if _, err := e.docs.Review(e.ctx, cur, docs.ReviewParams{ID: d.ID, Approve: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := e.docs.Archive(e.ctx, cur, gone.ID); err != nil {
 		t.Fatal(err)
 	}

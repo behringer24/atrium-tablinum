@@ -23,9 +23,12 @@ type ReviewParams struct {
 }
 
 // Review releases a draft or sends it back. Only curators of the entry's space may do this.
-// A draft is a request for a second look, so curators cannot release their own; admins can,
-// to untie the knot when nobody else is left to review (the audit log marks it as self).
-// Rejected entries go back to draft once the author revises them (Update).
+// In a space with mandatory approval a curator's own entries start as drafts and the curator may
+// release them afterwards: the draft makes the release a deliberate step. In a space without
+// mandatory approval a draft is an explicit request for a second look, so curators cannot release
+// their own there. Admins always can, to untie the knot when nobody else is left to review. The
+// audit log marks a release of one's own draft as self. Rejected entries go back to draft once
+// the author revises them (Update).
 func (s *Store) Review(ctx context.Context, a Actor, p ReviewParams) (Document, error) {
 	note := strings.TrimSpace(p.Note)
 	if utf8.RuneCountInString(note) > maxReviewNoteLen {
@@ -49,7 +52,7 @@ func (s *Store) Review(ctx context.Context, a Actor, p ReviewParams) (Document, 
 		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("only drafts can be reviewed"))
 	}
 	own := cur.AuthorID == a.User.ID
-	if own && role < authz.Admin {
+	if own && role < authz.Admin && !sp.RequireApproval {
 		return Document{}, ErrOwnDraft
 	}
 

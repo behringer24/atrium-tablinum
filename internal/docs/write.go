@@ -35,6 +35,13 @@ type StoreParams struct {
 	// active and can read the space. ReviewDue is the review date.
 	OwnerID   *uuid.UUID
 	ReviewDue *time.Time
+	// Origins are references to the originals the knowledge was taken from (see NormalizeOrigins).
+	Origins []Origin
+
+	// syncKey and managedBy are set by Sync only: the stable key of an entry that a tool keeps up to
+	// date, and the account of that tool.
+	syncKey   string
+	managedBy *uuid.UUID
 }
 
 // checkMeta applies the rules for type, responsible person and review date of an entry in sp,
@@ -79,12 +86,20 @@ func (s *Store) writableSpace(ctx context.Context, a Actor, id uuid.UUID) (space
 }
 
 // statusFor applies the approval rules of concept 7.5 to a new entry; draft is the explicit
-// request of the author.
+// request of the author. In a space with mandatory approval only admins create approved entries
+// directly; everybody else, curators included, starts with a draft. A curator releases their own
+// draft afterwards with review_knowledge, which is a deliberate step (see Review).
 func statusFor(sp spaces.Space, role authz.Role, draft bool) string {
-	if sp.Type == "team" && (draft || sp.RequireApproval && role < authz.Curator) {
+	if sp.Type == "team" && (draft || needsReview(sp, role)) {
 		return "draft"
 	}
 	return "approved"
+}
+
+// needsReview: entries that someone below admin brings into a team space with mandatory approval
+// (new or moved in) are drafts first.
+func needsReview(sp spaces.Space, role authz.Role) bool {
+	return sp.Type == "team" && sp.RequireApproval && role < authz.Admin
 }
 
 func source(a Actor) string {
@@ -117,6 +132,10 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 	if err != nil {
 		return StoreResult{}, err
 	}
+	origins, err := NormalizeOrigins(p.Origins)
+	if err != nil {
+		return StoreResult{}, err
+	}
 	if err := s.checkQuota(ctx, sp, 1, int64(len(n.Content))); err != nil {
 		return StoreResult{}, err
 	}
@@ -143,9 +162,9 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 
 	var id uuid.UUID
 	err = tx.QueryRow(ctx, `
-INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type, owner_id, review_due_at)
-VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10) RETURNING id`,
-		sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID, source(a), p.Type, p.OwnerID, p.ReviewDue).Scan(&id)
+INSERT INTO documents (space_id, kind, title, content, tags, status, author_id, source, updated_by, knowledge_type, owner_id, review_due_at, origins, sync_key, managed_by)
+VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10, $11, NULLIF($12, ''), $13) RETURNING id`,
+		sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID, source(a), p.Type, p.OwnerID, p.ReviewDue, origins, p.syncKey, p.managedBy).Scan(&id)
 	if err != nil {
 		return StoreResult{}, err
 	}
@@ -181,6 +200,8 @@ type UpdateParams struct {
 	ClearOwner     bool
 	ReviewDue      *time.Time
 	ClearReviewDue bool
+	// Origins replaces the references to the originals; nil leaves them, an empty list removes them.
+	Origins *[]Origin
 }
 
 // VersionConflict is the error of an update that started from an outdated version. It matches
@@ -195,8 +216,8 @@ func (e *VersionConflict) Error() string {
 
 func (e *VersionConflict) Is(target error) bool { return target == ErrConflict }
 
-// metaOnly reports whether p changes only the responsible person or the review date: neither
-// says anything new about the content, so no version is written and the entry is not re-indexed.
+// metaOnly reports whether p changes only the responsible person, the review date or the origins:
+// none of them says anything new about the content, so no version is written and the entry is not re-indexed.
 func (p UpdateParams) metaOnly() bool {
 	return p.Title == nil && p.Content == nil && p.Tags == nil && p.Type == nil
 }
@@ -213,6 +234,14 @@ func canEdit(a Actor, d Document) error {
 	return ErrForbidden
 }
 
+// checkManaged refuses a change by anybody but the account that keeps the entry up to date.
+func checkManaged(a Actor, d Document) error {
+	if d.ManagedBy != nil && *d.ManagedBy != a.User.ID {
+		return ErrManaged
+	}
+	return nil
+}
+
 // Update replaces title, content, tags and/or type, re-indexes the entry if its text changed, and
 // sets or clears the responsible person and the review date. A change of only the latter two
 // writes no version.
@@ -225,6 +254,9 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 		return Document{}, errors.Join(ingest.ErrInvalid, errors.New("handoffs are not changed through update_knowledge"))
 	}
 	if err := canEdit(a, cur); err != nil {
+		return Document{}, err
+	}
+	if err := checkManaged(a, cur); err != nil {
 		return Document{}, err
 	}
 	sp, role, err := s.writableSpace(ctx, a, cur.SpaceID)
@@ -259,6 +291,12 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	if p.ReviewDue != nil || p.ClearReviewDue {
 		reviewDue = p.ReviewDue
 	}
+	origins := cur.Origins
+	if p.Origins != nil {
+		if origins, err = NormalizeOrigins(*p.Origins); err != nil {
+			return Document{}, err
+		}
+	}
 	if err := checkMeta(sp, role, typ, p.OwnerID); err != nil {
 		return Document{}, err
 	}
@@ -278,7 +316,7 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 		status = "draft" // an author revising their own draft or rejected entry
 	}
 	if p.metaOnly() {
-		return s.updateMeta(ctx, a, sp, cur, owner, reviewDue)
+		return s.updateMeta(ctx, a, sp, cur, owner, reviewDue, origins)
 	}
 	if delta := int64(len(n.Content) - len(cur.Content)); delta > 0 {
 		if err := s.checkQuota(ctx, sp, 0, delta); err != nil {
@@ -309,8 +347,8 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	version := locked.Version + 1
 	if _, err := tx.Exec(ctx, `UPDATE documents SET title = $2, content = $3, tags = $4, status = $5,
 		review_note = CASE WHEN $5 = 'draft' THEN NULL ELSE review_note END,
-		version = $6, updated_at = now(), updated_by = $7, knowledge_type = $8, owner_id = $9, review_due_at = $10 WHERE id = $1`,
-		p.ID, n.Title, n.Content, n.Tags, status, version, a.User.ID, typ, owner, reviewDue); err != nil {
+		version = $6, updated_at = now(), updated_by = $7, knowledge_type = $8, owner_id = $9, review_due_at = $10, origins = $11 WHERE id = $1`,
+		p.ID, n.Title, n.Content, n.Tags, status, version, a.User.ID, typ, owner, reviewDue, origins); err != nil {
 		return Document{}, err
 	}
 	if err := writeVersion(ctx, tx, p.ID, version, sp.ID, n.Title, n.Content, n.Tags, status, a.User.ID); err != nil {
@@ -418,6 +456,8 @@ func (s *Store) Unarchive(ctx context.Context, a Actor, id uuid.UUID) (Document,
 		WHERE document_id = $1 AND status <> 'archived' ORDER BY version DESC LIMIT 1`, id).Scan(&status); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Document{}, err
 	}
+	// Restoring brings back a state that was approved before, so curators keep it; authors go
+	// back to review.
 	if status == "approved" && sp.Type == "team" && sp.RequireApproval && role < authz.Curator {
 		status = "draft"
 	}

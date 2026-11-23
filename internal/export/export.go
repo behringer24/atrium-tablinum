@@ -140,6 +140,21 @@ func entryFile(sp spaces.Space, d docs.Document) string {
 	if d.ReviewNote != "" {
 		fmt.Fprintf(&b, "  review_note: %s\n", quote(d.ReviewNote))
 	}
+	if len(d.Origins) > 0 {
+		b.WriteString("  origins:\n")
+		for _, o := range d.Origins {
+			fmt.Fprintf(&b, "    - ref: %s\n", quote(o.Ref))
+			if o.Title != "" {
+				fmt.Fprintf(&b, "      title: %s\n", quote(o.Title))
+			}
+			if o.ReadAt != "" {
+				fmt.Fprintf(&b, "      read_at: %s\n", quote(o.ReadAt))
+			}
+			if o.SHA256 != "" {
+				fmt.Fprintf(&b, "      sha256: %s\n", quote(o.SHA256))
+			}
+		}
+	}
 	b.WriteString("---\n\n")
 	b.WriteString(d.Content)
 	if !strings.HasSuffix(d.Content, "\n") {

@@ -128,6 +128,9 @@ type memberInfo struct {
 	Role string `json:"role"`
 	// Former marks a locked account: it keeps its membership but has no rights.
 	Former bool `json:"former,omitempty"`
+	// From names the space above that the role is inherited from ("a space above" if the caller cannot
+	// see it); empty for a membership of the space itself.
+	From string `json:"from,omitempty"`
 }
 
 type spaceMembersOut struct {
@@ -140,6 +143,11 @@ type spaceMembersOut struct {
 	// an instance admin changes them (admin_quotas).
 	Quota   map[string]quotaLimit `json:"quota,omitempty"`
 	Members []memberInfo          `json:"members"`
+	// InheritMembers and InheritedMembers appear only for a space below another one: whether it takes over
+	// the memberships of the spaces above, and the ones it takes over (a person entered here too is not
+	// listed again, the entry of this space counts).
+	InheritMembers   *bool        `json:"inherit_members,omitempty"`
+	InheritedMembers []memberInfo `json:"inherited_members,omitempty"`
 }
 
 func (s *Server) spaceMembers(ctx context.Context, c *call, in spaceRef) (spaceMembersOut, error) {
@@ -155,6 +163,31 @@ func (s *Server) spaceMembers(ctx context.Context, c *call, in spaceRef) (spaceM
 		DefaultRole: sp.DefaultRole.String(), Archived: sp.Archived, Members: make([]memberInfo, 0, len(ms))}
 	for _, m := range ms {
 		out.Members = append(out.Members, memberInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former})
+	}
+	links, err := s.spaceLinks(ctx)
+	if err != nil {
+		return spaceMembersOut{}, err
+	}
+	if l := links[sp.ID]; l.parent != nil {
+		inherit := l.inherit
+		out.InheritMembers = &inherit
+		inherited, err := s.inheritedMembers(ctx, sp.ID, ms, links, map[uuid.UUID][]spaces.Member{})
+		if err != nil {
+			return spaceMembersOut{}, err
+		}
+		see, err := s.canSee(ctx, c)
+		if err != nil {
+			return spaceMembersOut{}, err
+		}
+		for _, m := range inherited {
+			from := "a space above"
+			if see(m.From) {
+				if up, err := s.Spaces.GetByID(ctx, m.From); err == nil {
+					from = up.Slug
+				}
+			}
+			out.InheritedMembers = append(out.InheritedMembers, memberInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former, From: from})
+		}
 	}
 	if s.Quota != nil {
 		if qt, err := s.quotaTargetFor(ctx, quota.Space, sp.Name, sp, quota.Overrides{}); err == nil {
@@ -390,7 +423,7 @@ func (s *Server) adminDeleteSpace(ctx context.Context, c *call, in archiveSpaceI
 	}
 	if err := s.Spaces.Delete(ctx, sp.ID); err != nil {
 		if errors.Is(err, spaces.ErrNotEmpty) {
-			return messageOut{}, userErr(fmt.Sprintf("The space \"%s\" still holds entries or skills. Only an empty space can be deleted: move or delete the content first, or archive the space instead.", sp.Name))
+			return messageOut{}, userErr(fmt.Sprintf("The space \"%s\" still holds entries, skills or sub-spaces. Only an empty space can be deleted: move or delete the content first, or archive the space instead.", sp.Name))
 		}
 		return messageOut{}, err
 	}
@@ -428,6 +461,8 @@ type userInfo struct {
 	LastLogin     string        `json:"last_login,omitempty"`
 	Created       string        `json:"created"`
 	Personal      *personalMeta `json:"personal_space,omitempty"`
+	// Kind is "service" for an account that is not a person; empty for a person.
+	Kind string `json:"kind,omitempty"`
 }
 
 type listUsersIn struct{}
@@ -452,6 +487,9 @@ func (s *Server) adminListUsers(ctx context.Context, _ *call, _ listUsersIn) (li
 	for _, u := range all {
 		ui := userInfo{Email: u.Email, Name: u.DisplayName, Status: "active", InstanceAdmin: u.InstanceAdmin,
 			Created: u.CreatedAt.Format(time.RFC3339)}
+		if u.IsService() {
+			ui.Kind = users.KindService
+		}
 		if !u.Active {
 			ui.Status = "disabled"
 			if u.DisabledAt != nil {
@@ -632,6 +670,9 @@ func (s *Server) adminInstanceAdmins(ctx context.Context, c *call, in instanceAd
 		msg = fmt.Sprintf("%s is already an instance admin.", u.Email)
 	case grant:
 		if err := s.Users.SetInstanceAdmin(ctx, u.ID, true); err != nil {
+			if errors.Is(err, users.ErrServiceAccount) {
+				return instanceAdminsOut{}, userErr(fmt.Sprintf("%s is a service account and cannot be an instance admin.", u.Email))
+			}
 			return instanceAdminsOut{}, err
 		}
 		s.record(ctx, c.Actor, "admin_grant_instance_admin", nil, map[string]any{"user": u.Email})

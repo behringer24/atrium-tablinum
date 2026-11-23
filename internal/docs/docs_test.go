@@ -241,15 +241,34 @@ func TestApprovalWorkflowVisibility(t *testing.T) {
 	if l, _ := e.docs.List(e.ctx, curator, docs.ListParams{SpaceID: sp.ID}); len(l) != 1 {
 		t.Errorf("curator list: %d", len(l))
 	}
-	if cd := mustStore(t, e, curator, sp.ID, "Direkt", "inhalt"); cd.Status != "approved" {
+	// a curator's own entry starts as a draft too; only an admin saves approved entries directly
+	cd := mustStore(t, e, curator, sp.ID, "Vom Kurator", "inhalt")
+	if cd.Status != "draft" {
 		t.Errorf("curator entry: %s", cd.Status)
+	}
+	if _, err := e.docs.Get(e.ctx, reader, cd.ID); !errors.Is(err, docs.ErrNotFound) {
+		t.Errorf("reader sees curator draft: %v", err)
+	}
+	// the curator releases their own draft on purpose; the audit log marks it as self
+	if d, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: cd.ID, Approve: true}); err != nil || d.Status != "approved" {
+		t.Errorf("curator releases own draft: %v %+v", err, d)
+	}
+	if n := queryInt(t, e, `SELECT count(*) FROM audit_log WHERE action = 'approve' AND details->>'self' = 'true'`); n != 1 {
+		t.Errorf("audit entries approve with self: %d", n)
+	}
+	if _, err := e.docs.Get(e.ctx, reader, cd.ID); err != nil {
+		t.Errorf("reader does not see the released entry: %v", err)
+	}
+	boss := e.actor(t, "boss@x.de") // instance admin, admin in every team space
+	if ad := mustStore(t, e, boss, sp.ID, "Vom Admin", "inhalt"); ad.Status != "approved" {
+		t.Errorf("admin entry: %s", ad.Status)
 	}
 	// an author may revise their own draft, but not approved entries
 	title := "Entwurf v2"
 	if d, err := e.docs.Update(e.ctx, author, docs.UpdateParams{ID: draft.ID, Title: &title}); err != nil || d.Status != "draft" {
 		t.Errorf("revise draft: %v %+v", err, d)
 	}
-	approved := mustStore(t, e, curator, sp.ID, "Frei", "inhalt")
+	approved := mustStore(t, e, boss, sp.ID, "Frei", "inhalt")
 	if _, err := e.docs.Update(e.ctx, author, docs.UpdateParams{ID: approved.ID, Title: &title}); err == nil {
 		t.Error("author changes approved entry of an approval space")
 	}
@@ -664,7 +683,10 @@ func TestArchiveListAndRestore(t *testing.T) {
 	e.member(t, sp, reader, authz.Reader)
 	author, other, curator, reader = e.refresh(t, author), e.refresh(t, other), e.refresh(t, curator), e.refresh(t, reader)
 
-	byCurator := mustStore(t, e, curator, sp.ID, "Vom Kurator", "inhalt")
+	byCurator := mustStore(t, e, curator, sp.ID, "Vom Kurator", "inhalt") // approval space: draft
+	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: byCurator.ID, Approve: true}); err != nil {
+		t.Fatal(err)
+	}
 	byAuthor := mustStore(t, e, author, sp.ID, "Vom Autor", "inhalt") // approval space: draft
 	if _, err := e.docs.Review(e.ctx, curator, docs.ReviewParams{ID: byAuthor.ID, Approve: true}); err != nil {
 		t.Fatal(err)

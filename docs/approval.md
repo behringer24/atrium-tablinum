@@ -4,9 +4,9 @@ An entry in a team space has one of four states: `draft`, `approved`, `rejected`
 
 ## When an entry becomes a draft
 
-- **Mandatory approval:** If the space has `require_approval`, entries by authors are always drafts. Entries by curators and admins are approved immediately.
+- **Mandatory approval:** If the space has `require_approval`, entries by authors **and curators** are always drafts. Only admins of the space and instance admins save approved entries directly. A curator releases their own draft afterwards with `review_knowledge`, which makes publishing a deliberate step (see Rules below).
 - **On explicit request:** `store_knowledge` with `draft=true` creates the entry as a draft in any team space, even without mandatory approval and even for admins. This is meant for the case where someone writes for a subject area that is not their own and the space's curator should check the content before publication. The assistant sets `draft` only if the user explicitly asks for it.
-- **Moving:** An entry that a non-curator moves into a space with mandatory approval becomes a draft there.
+- **Moving:** An entry that somebody below admin moves into a space with mandatory approval becomes a draft there. Restoring an archived entry (`unarchive_knowledge`) brings back the state it had; only an author's entry goes back to review.
 
 ## Reviewing
 
@@ -18,11 +18,11 @@ Curators and admins of a space (instance admins in any team space) see the tool 
 
 Rules:
 
-- **Self-approval only as admin.** A draft is a request to the space to take a look. Curators therefore cannot approve their own draft themselves, another curator does that. Admins of the space and instance admins can, so that nothing is ever left hanging when colleagues are absent or have left. In the audit log such an approval appears with `self`.
+- **Own drafts.** In a space with mandatory approval a curator may release their own draft (the entries of curators start as drafts there, so the release is a conscious step with `confirm=true`). In a space without mandatory approval a draft exists only because somebody asked for a second look (`draft=true`); there a curator cannot release their own draft, another curator does that. Admins of the space and instance admins may always release their own drafts, so that nothing is ever left hanging when colleagues are absent or have left. In the audit log every release of one's own draft appears with `self`.
 - Only drafts can be reviewed. Approved and returned entries cannot.
 - A returned entry goes back into review as a draft with the author's next change (`update_knowledge`); the note is deleted in the process.
 - Every review increases the entry's version and appears in the audit log with `approve` or `reject` (without the note).
-- A curator who is not an admin depends on another curator for their own draft; if there is none, an admin resolves the deadlock.
+- In a space without mandatory approval a curator who asked for a draft depends on another curator; if there is none, an admin resolves the deadlock.
 
 ## Known limits
 

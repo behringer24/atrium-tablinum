@@ -179,8 +179,8 @@ func knowledgeOps(space string) []mxOp {
 			ghost: map[string]any{"title": "new", "content": "mxstore body", "space": "no-such-space", "force": true},
 			check: func(r mxRole, out map[string]any) string {
 				want := "approved"
-				if space == "gated" && r.rank < rkCurator {
-					want = "draft"
+				if space == "gated" && r.rank < rkAdmin {
+					want = "draft" // in a space with approval only admins save approved entries directly
 				}
 				if out["status"] != want {
 					return fmt.Sprintf("status %v, want %s", out["status"], want)
@@ -225,7 +225,7 @@ func knowledgeOps(space string) []mxOp {
 		}
 		ownDraft := func(m *matrix, r mxRole) (string, bool) {
 			if r.rank < rkCurator {
-				return "", false // below curator an own entry is a draft anyway and nobody else reviews it here
+				return "", false // below curator an author cannot review at all
 			}
 			return m.store(r.email, map[string]any{"space": space, "draft": true}), true
 		}
@@ -235,8 +235,9 @@ func knowledgeOps(space string) []mxOp {
 				args: idArgs(map[string]any{"decision": "approve", "confirm": true})},
 			mxOp{name: "return draft", tool: "review_knowledge", min: rkCurator, prep: draft, hidden: rkReader,
 				args: idArgs(map[string]any{"decision": "reject", "note": "please rework"})},
-			// Nobody approves their own entry, except a space admin (rule: internal/docs/review.go).
-			mxOp{name: "approve own draft", tool: "review_knowledge", min: rkAdmin, prep: ownDraft,
+			// In a space with approval a curator starts with drafts and releases them on purpose; in a space
+			// without approval only a space admin may (rule: internal/docs/review.go, ErrOwnDraft).
+			mxOp{name: "approve own draft", tool: "review_knowledge", min: rkCurator, prep: ownDraft,
 				args: idArgs(map[string]any{"decision": "approve", "confirm": true})},
 		)
 	}
@@ -327,7 +328,7 @@ func newMatrixSharing(t *testing.T, shareOpt share.Options) *matrix {
 	e := setupSharing(t, 0, shareOpt)
 	members := map[string]authz.Role{
 		"reader@x.de": authz.Reader, "author@x.de": authz.Author, "curator@x.de": authz.Curator,
-		"spaceadmin@x.de": authz.Admin, "writer@x.de": authz.Curator, "drafter@x.de": authz.Author,
+		"spaceadmin@x.de": authz.Admin, "writer@x.de": authz.Admin, "drafter@x.de": authz.Author,
 	}
 	e.team(t, "open", "Open", false, members)
 	e.team(t, "gated", "Gated", true, members)

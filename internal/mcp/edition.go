@@ -12,7 +12,8 @@ import (
 // they stay empty and nothing changes.
 var (
 	// editionTools add tools to a server. They are called once for each group of tools that a session's role
-	// opens (tierUser, tierCurator, tierSpaceAdmin, tierInstanceAdmin) and register only the tools of that
+	// opens (tierUser, tierCurator, tierSpaceAdmin, tierInstanceAdmin, and tierService for a service
+	// account) and register only the tools of that
 	// group, so a tool appears exactly for the roles that may call it. Each decides itself whether it
 	// applies (for example by looking at s.Edition).
 	editionTools []func(s *Server, ms *mcp.Server, group tier)

@@ -28,7 +28,37 @@ type spaceRow struct {
 	Owner       *uuid.UUID
 	DefaultRole Role // None = no access for non-members
 	Archived    bool
-	MemberRole  Role // best of direct and group membership, None if none
+	MemberRole  Role // best of direct and group membership in this space itself, None if none
+	// Parent is the space above this one, nil for a root. Without any parent set every space is a
+	// root and the roles are those of a flat instance.
+	Parent *uuid.UUID
+	// NoInherit stops the lookup of memberships at this space: it does not take over what the
+	// spaces above grant. The zero value inherits.
+	NoInherit bool
+}
+
+// inheritedRole returns the membership role the user holds in s through the hierarchy: the role of
+// the nearest space on the way up (s itself first) that has an entry for the user. The first level
+// with an entry decides, even if a space further up grants more, so that an explicit entry in a
+// child can lower what the parent would give. A space with NoInherit, a root, a parent that does
+// not exist and a cycle all end the walk without a role. A parent that is archived still passes its
+// memberships on: archiving it must not silently cut the access to its children.
+func inheritedRole(s spaceRow, byID map[uuid.UUID]spaceRow) Role {
+	cur := s
+	for range len(byID) + 1 { // never longer than the number of spaces, so a cycle ends the walk
+		if cur.MemberRole > None {
+			return cur.MemberRole
+		}
+		if cur.NoInherit || cur.Parent == nil {
+			return None
+		}
+		next, ok := byID[*cur.Parent]
+		if !ok || next.Personal {
+			return None
+		}
+		cur = next
+	}
+	return None
 }
 
 // compute applies the rules of concept section 7.3 for one user.
@@ -36,6 +66,16 @@ func compute(u users.User, rows []spaceRow) Roles {
 	roles := Roles{}
 	if !u.Active {
 		return roles
+	}
+	var byID map[uuid.UUID]spaceRow
+	for _, s := range rows {
+		if s.Parent != nil {
+			byID = make(map[uuid.UUID]spaceRow, len(rows))
+			for _, r := range rows {
+				byID[r.ID] = r
+			}
+			break
+		}
 	}
 	for _, s := range rows {
 		if s.Personal {
@@ -52,9 +92,21 @@ func compute(u users.User, rows []spaceRow) Roles {
 			}
 			continue
 		}
-		role := max(s.MemberRole, s.DefaultRole)
+		member := s.MemberRole
+		if byID != nil {
+			member = inheritedRole(s, byID)
+		}
+		def := s.DefaultRole
+		if u.IsService() {
+			// A service account holds a role only where somebody gave it one.
+			def = None
+		}
+		role := max(member, def)
 		if u.InstanceAdmin {
 			role = Admin
+		}
+		if u.IsService() && role > ServiceMaxRole {
+			role = ServiceMaxRole
 		}
 		if role > None {
 			roles[s.ID] = role
@@ -65,6 +117,7 @@ func compute(u users.User, rows []spaceRow) Roles {
 
 const rolesQuery = `
 SELECT s.id, s.type = 'personal', s.owner_user_id, COALESCE(s.default_role, ''), s.status = 'archived',
+  s.parent_id, NOT s.inherit_members,
   COALESCE((
     SELECT max(CASE m.role WHEN 'reader' THEN 1 WHEN 'author' THEN 2 WHEN 'curator' THEN 3 WHEN 'admin' THEN 4 ELSE 0 END)
       FROM space_members m
@@ -147,7 +200,7 @@ func (c *Checker) load(ctx context.Context, userID uuid.UUID) ([]spaceRow, error
 			def      string
 			memberAs int
 		)
-		if err := pgRows.Scan(&r.ID, &r.Personal, &r.Owner, &def, &r.Archived, &memberAs); err != nil {
+		if err := pgRows.Scan(&r.ID, &r.Personal, &r.Owner, &def, &r.Archived, &r.Parent, &r.NoInherit, &memberAs); err != nil {
 			return nil, err
 		}
 		r.DefaultRole, _ = ParseRole(def)

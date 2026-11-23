@@ -32,7 +32,7 @@ The embedding backend is selectable: your own TEI server, OpenAI and compatible 
 
 **Why Atrium, and user guides** for every group of users (everyday use, authors, curators, space admins, instance admins), with FAQs and as PDF: start with [docs/user/00-why-atrium.md](docs/user/00-why-atrium.md) and, for new users, [docs/user/00-getting-started.md](docs/user/00-getting-started.md), index in [docs/user/README.md](docs/user/README.md).
 
-Drafts, mandatory approval and review by curators: [docs/approval.md](docs/approval.md). Knowledge types (binding rule, documentation, recommendation, experience), responsible people and review dates: [docs/design/knowledge-metadata.md](docs/design/knowledge-metadata.md).
+Drafts, mandatory approval and review by curators: [docs/approval.md](docs/approval.md). Knowledge types (binding rule, documentation, recommendation, experience), responsible people, review dates and references to the originals: [docs/design/knowledge-metadata.md](docs/design/knowledge-metadata.md).
 
 Sending an entry or a skill to a colleague's personal space, where the recipient reviews it (off by default): [docs/sharing.md](docs/sharing.md).
 

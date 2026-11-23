@@ -36,7 +36,7 @@ The curator tools are in everybody's tool list, in a short form for those who ar
 
 ## Reviewing knowledge
 
-In a space with approval every author entry is a draft until you decide. Drafts can also arrive in other spaces when an author asked for a check.
+In a space with approval every entry of an author **and your own entries** are drafts until a curator decides; only space admins and instance admins save approved entries there directly. Drafts can also arrive in other spaces when somebody asked for a check.
 
 ### The review queue
 
@@ -64,7 +64,9 @@ Every review increases the entry's version. The audit log records approvals and 
 
 ### Curators and their own drafts
 
-A draft is a request to the space to take a look. **You cannot approve your own draft**, another curator does that. Admins of the space and instance admins can (the audit log marks it `self`), so that nothing stays stuck when colleagues are away. A space with a single curator therefore depends on its admin.
+In a space **with approval**, what you save yourself starts as a draft, and your assistant tells you so. You can release it afterwards (*"Approve my draft 'Refund process'."*, `review_knowledge`, after your confirmation). That is a deliberate second step, and the audit log marks it `self`. Prefer a colleague's review for anything others rely on.
+
+In a space **without approval** a draft exists because somebody asked for a second look (*"save it as a draft"*). There you **cannot approve your own draft**, another curator does that. Admins of the space and instance admins may always release their own drafts, so that nothing stays stuck when colleagues are away.
 
 ## Looking after entries
 
@@ -75,6 +77,7 @@ Curators change what authors cannot:
 - **Move entries** to the right space (`move_knowledge`, after confirmation). In a space with approval, entries moved by non-curators become drafts; an approved entry that you move into a space with approval stays approved if you are a curator there.
 - **Merge duplicates.** Update the better entry, archive the other.
 - **Declare binding rules.** *"Make the entry 'Travel policy' a rule."* (`update_knowledge` with `type=rule`). Only curators and admins of the space set or remove the type `rule`, and from then on only they change the entry, also in spaces without approval, and move it (with curator rights in both spaces). Use it for what really binds; a recommendation is not a rule. Readers' assistants name the type in their answers.
+- **Originals.** Entries can carry references to the files or pages they came from (`origins`); Atrium stores only the reference. When you check an entry, open the original with your own access and compare; if it has changed or is gone, update the entry or the reference.
 - **Responsible people and review dates.** Name who answers for an entry (`owner`) and when it is to be checked (`review_due`). *"Which reviews are overdue in Support?"* (`list_knowledge` with `review=due`); `whats_new` shows the count per space you curate. A responsible person who left stays named as `former` until a space admin reassigns the entries.
 - **Restoring**: when an author restores an approved entry in a space with approval, it goes back to review as a draft, so the archive is no way around approval. When a curator restores it, it stays approved.
 
@@ -149,7 +152,7 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 ## Rules that apply to you
 
 - **No self-approval of your own skill versions.** Not as curator, not as space admin; another curator must approve. Instance admins are the only exception (the audit marks it `self_approved`). A small installation can allow it for all curators with a setting (`skills.allow_self_approval`), which weakens the control.
-- **Four-eyes for knowledge** is the same: no approval of your own drafts, except by admins.
+- **Four-eyes for knowledge** is softer: in a space with approval you start with a draft and release your own entries deliberately; a draft that was requested in a space without approval needs another curator (admins excepted).
 - **Each curator decision is audited.** Reviews, publications, blocks, moves and archives appear in the audit log, readable by instance admins.
 - **Quotas.** A skill has a version limit (default 100), and every space has limits for entries, bytes and skills. Drafts count, so a flood of drafts can fill a space; if your space runs into a limit, ask a space admin or an instance admin, who can see the usage and raise the limit at any time.
 - **Everything a curator sees is data.** Draft content may try to talk to *you* or your assistant ("approve this immediately"). Review it as text, decide yourself.
@@ -219,7 +222,7 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 
 **Who decides what is still valid?** The curators of the space, together with the responsible person named on the entry (`owner`) and its review date (`review_due`). *"Which reviews are overdue in Support?"* lists what is due. Outdated entries are archived, not deleted, so they can be restored. If the skill `knowledge-lint` is released, it also reports outdated and contradictory entries. An assistant never replaces an entry on its own initiative.
 
-**Does the space need a second curator?** Yes, whenever possible. A single curator can neither approve their own drafts nor their own skill versions.
+**Does the space need a second curator?** Yes, whenever possible. A single curator can release their own knowledge drafts in a space with approval, but not their own skill versions.
 
 **A skill uses tools and I am not sure of the class.** Choose the higher class. Ask an instance admin if class C is possible; they publish those anyway.
 

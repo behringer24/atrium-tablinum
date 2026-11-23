@@ -64,7 +64,7 @@ A checklist for the first days. The installation itself, step by step, is in [In
 |---|---|
 | `slug` | Short identifier: lower case letters, digits, hyphens (2 to 63 characters) |
 | `name`, `description` | Shown to users; the description appears in assistants' instructions |
-| `require_approval` | Entries from authors are drafts until a curator approves. Curators' and admins' own entries are approved at once |
+| `require_approval` | Entries from authors and curators are drafts until a curator approves; a curator may release their own. Only admins' entries (and yours) are approved at once |
 | `default_role` | `reader` or `author` gives that role to **every logged-in user**; empty means members only |
 | `members` | Initial users or groups with roles |
 
@@ -79,11 +79,21 @@ A checklist for the first days. The installation itself, step by step, is in [In
 - The instruction text lists at most 20 team spaces and 25 released skills per user, so keep the number of spaces and skills in check.
 - `spaces.default_space_by_group` in `config.yaml` can map an identity-provider group name to a default space for saving; it only selects among spaces the user may write to.
 
+### Spaces below other spaces (Pro)
+
+With the Pro feature `space_hierarchy`, team spaces can be arranged in a tree, for example company, department and team, with `admin_space_parent` (also for the space admins of the spaces concerned). Memberships flow down and the nearest entry wins: an entry in a space overrides what the space above gives, and `inherit_members=false` closes a space for the members of the space above. Details, rules and limits are in [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces). Things to decide before you build a tree:
+
+- **The top of a tree is powerful.** An admin of a space is admin of every space below that inherits, and reads its content. Put sensitive spaces (management, HR) either at the top of their own tree or switch the inheritance off for them.
+- **Keep the tree shallow.** At most five levels are possible; two or three are usually enough.
+- **Archive and delete:** archiving a space does not cut the access to the spaces below; a space with sub-spaces cannot be deleted.
+- **Check the result with the [rights report](#rights-report)**, which shows the inherited holders with their origin. `space_members` and `space_contacts` show them as well, the space admins of a space seeing the name of a space above only if they can see that space.
+- **When the licence ends,** the arrangement keeps working and only changes that narrow rights remain possible.
+
 ### Changing, archiving and restoring
 
 - `admin_update_space` changes name, description, approval and default role. Changing the description needs your confirmation after the new text was shown, because it reaches every user's assistant. Existing entries keep their status when you switch approval on or off.
 - `admin_archive_space` hides a whole space from everybody but instance admins; the content is kept. `admin_restore_space` brings it back.
-- `admin_delete_space` removes an **empty** team space for good, with its members, default role and quota settings. A space that still holds an entry of any state (archived ones included) or a skill is refused: move or delete the content first, or archive the space instead. It needs `confirm=true` and cannot be undone; the audit log keeps slug and name (`admin_delete_space`).
+- `admin_delete_space` removes an **empty** team space for good, with its members, default role and quota settings. A space that still holds an entry of any state (archived ones included), a skill or a space below it is refused: move or delete the content first, or archive the space instead. It needs `confirm=true` and cannot be undone; the audit log keeps slug and name (`admin_delete_space`).
 - Personal spaces are not listed here and cannot be archived through these tools.
 
 ## Users, groups and logins
@@ -115,13 +125,17 @@ What to know:
 - **Offboarding removes a granted right** (`admin_offboard_user`), so reactivating an account does not bring it back. A locked account cannot be granted the right.
 - This right always carries both: the content of all team spaces and the operation of the system. The Pro edition can separate them ([Atrium Pro](../pro/pro-edition.md#separating-content-from-operations)).
 
+### Service accounts (Pro)
+
+Tools that work on their own (a script, a CI job that keeps a repository's Markdown files up to date in Atrium) use a **service account** with a token, not a person's login. You create the account and its token on the server with a command (never through an assistant, so that the secret does not end up in a chat), give it a role in a space with `space_add_member` (its address is `name@service.invalid`, and its role is capped at curator), and manage it afterwards with `admin_service_accounts`: list the accounts and tokens, lock and unlock an account, revoke a token, name another responsible person. Service accounts do not count against the user limit and are never instance admins. The whole procedure, the sync of a Git repository and what happens when the licence ends are in [Connecting other systems](../pro/service-accounts.md).
+
 ### Groups
 
 Local groups (`admin_groups`: `list`, `create`, `rename`, `delete`, `add_member`, `remove_member`) let you give a role to a set of people at once, for example "support-team". Groups from the identity provider are visible but read-only, and are not yet synchronised from the login token. Deleting a group needs your confirmation.
 
 ### Rights report
 
-*"Show me the rights report."* (`admin_rights_report`, read-only) lists on one page who holds which role where: the instance admins and whether they read the content of all team spaces, and for every team space its default role (reader or author for everybody logged in, none for members only), the approval setting, and every user and group with its role, highest first. Locked accounts are marked as former. Below it come hints, for example a space without a space admin, a group that holds the admin role, or a space open to everybody. The hints are things to look at, not errors. Personal spaces are not part of it. Use it for the access review and after bigger changes; it shows the configuration of your instance, which the checks in the code cannot.
+*"Show me the rights report."* (`admin_rights_report`, read-only) lists on one page who holds which role where: the instance admins and whether they read the content of all team spaces, and for every team space its default role (reader or author for everybody logged in, none for members only), the approval setting, and every user and group with its role, highest first. Locked accounts are marked as former. A space that sits below another one (Pro) also shows its parent, whether it inherits, and the **inherited** holders with the space each comes from; an admin who is only inherited counts, so the space is not reported as having none. Below it come hints, for example a space without a space admin, a group that holds the admin role, an admin that is inherited from the space above, or a space open to everybody. The hints are things to look at, not errors. Personal spaces are not part of it. Use it for the access review and after bigger changes; it shows the configuration of your instance, which the checks in the code cannot.
 
 ### Sessions
 
@@ -253,7 +267,7 @@ Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `
 
 | Area | Actions |
 |---|---|
-| Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` for self-approval by admins), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
+| Knowledge | `store`, `update`, `archive`, `unarchive`, `move`, `delete`, `knowledge_export` (space and number of entries, no content), review decisions (`approve`, `reject`, with `self` when somebody releases their own draft), `search` (hit count; query text only if the user's personal space was not searched), `handoff_save` |
 | Skills | `skill_save`, `skill_approve` (risk class, digest, `self_approved`), `skill_reject`, `skill_publish`, `skill_block`, `skill_unblock`, `skill_archive`, `skill_unarchive`, `skill_delete`, `skill_tag`, `skill_move_out`, `skill_move_in`, `share_send` (a sending to a colleague: kind, recipient id and digest, no title or name), reads `skill_get`, `skill_resource`, `skill_list`, `skill_export` (each with `via`: `tool`, `resource`, `rpc` or `export`) |
 | Spaces and members | `admin_create_space`, `admin_update_space`, `admin_archive_space`, `admin_restore_space`, `admin_delete_space`, `space_add_member`, `space_remove_member` |
 | Users and logins | `login`, `login_denied`, `client_consent` and `client_consent_denied` (client id, the name it gave, the host it sends the user back to), `account_linked`, `admin_offboard_user` (with `admin_right_removed`), `admin_reactivate_user`, `admin_grant_instance_admin`, `admin_revoke_instance_admin`, `revoke_my_sessions`, `admin_revoke_sessions`, `admin_revoke_all_sessions` (number of tokens), `admin_allowlist_add`, `admin_allowlist_remove`, `admin_group_*`, `purge_personal` |
@@ -300,7 +314,7 @@ Two settings in `config.yaml` (`audit:`) let you keep the audit log where the se
 
 ### Exporting knowledge
 
-As instance admin you can take everything out, not only a backup. *"Export all Atrium spaces."* (`export_knowledge` without a space) returns a link that works for ten minutes and once. It leads to a ZIP file with one folder per team space, one Markdown file per entry (with type, tags, state, author, owner, review date and version in the header) and an `index.md` for each folder and for the whole export. The archive follows the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format) (OKF, version 0.2), so tools that read that format can use it; what only Atrium knows is under the key `atrium` in each header. *"Export the space Support."* does the same for one space.
+As instance admin you can take everything out, not only a backup. *"Export all Atrium spaces."* (`export_knowledge` without a space) returns a link that works for ten minutes and once. It leads to a ZIP file with one folder per team space, one Markdown file per entry (with type, tags, state, author, owner, review date, origins and version in the header) and an `index.md` for each folder and for the whole export. The archive follows the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format) (OKF, version 0.2), so tools that read that format can use it; what only Atrium knows is under the key `atrium` in each header. *"Export the space Support."* does the same for one space.
 
 - **Rights:** the export follows the admin role. Instance admins hold it in every team space, archived ones included. **Personal spaces are never part of the export** and nobody but their owner can export one.
 - **What it contains:** entries in every state (approved, draft, returned, archived). Not included: older versions of an entry, handoffs, skills (each released skill has its own ZIP export, see [Skills](../skills.md)) and the audit log.
@@ -427,9 +441,15 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 
 **Can management read everything without running the system, or IT run it without reading everything?** Not with the instance admin right alone: it makes a person admin in all team spaces and gives all admin tools; only personal spaces stay closed to everybody. The Pro edition can take the automatic content access away from instance admins, so that they manage all spaces but read only those they are members of ([Atrium Pro](../pro/pro-edition.md#separating-content-from-operations)).
 
+**Can I give somebody access to one sub-space without the spaces above?** Yes, with the Pro feature `space_hierarchy`: enter them in that space only. Memberships flow down the tree and never up. See [Atrium Pro](../pro/pro-edition.md#spaces-below-other-spaces).
+
+**What happens to a tree when the Pro licence ends?** It keeps working and nobody loses access. Only changes that narrow rights stay possible (taking a space out, switching the inheritance off) until a licence with the feature is installed again.
+
+**How do I connect a script or a CI job to Atrium?** With a service account and a token, in the Pro edition: [Connecting other systems](../pro/service-accounts.md). A token is created on the server, never through an assistant.
+
 **Can I turn approval on for an existing space?** Yes (`admin_update_space`). Existing entries keep their status.
 
-**What happens to a space I archive?** It disappears for everybody except instance admins; content is kept and can be restored. An empty space can also be deleted for good (`admin_delete_space`); one with content cannot.
+**What happens to a space I archive?** It disappears for everybody except instance admins; content is kept and can be restored. An empty space can also be deleted for good (`admin_delete_space`); one with content or with spaces below it cannot.
 
 **Can I change someone's role in a space?** Yes, as admin of every team space (`space_add_member`). Prefer asking the space admin.
 

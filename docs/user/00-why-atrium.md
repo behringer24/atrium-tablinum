@@ -53,7 +53,7 @@ That is the whole product: **write it down once, use it everywhere, in any assis
 
 **You pick up where you left off, in any assistant.** Started a long analysis in one assistant and want a second opinion from another? *"Store the current state for ChatGPT."* In the other assistant: *"Load my last handoff."* Goal, results so far, open points and next steps are all there. Switching tools stops costing you the context.
 
-**You find answers instead of people.** *"What does Atrium say about our travel policy?"* You get the relevant section with title, space, author and date, so you can check the source. Search works on meaning and on exact words, so you do not need to know the author's wording.
+**You find answers instead of people.** *"What does Atrium say about our travel policy?"* You get the relevant section with title, space, author and date, so you can check the source; entries taken from a file or page also carry a reference to the original. Search works on meaning and on exact words, so you do not need to know the author's wording.
 
 **Your best prompts become reusable skills.** The checklist you rebuild every Monday can become a skill in your personal space in minutes, available with `/name` from then on. If it is good, propose it to your team and it becomes the way everybody does it, after a curator has reviewed it.
 

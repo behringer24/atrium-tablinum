@@ -7,10 +7,10 @@ package edition
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/modelcontextprotocol/go-sdk/auth"
 )
 
 const (
@@ -39,6 +39,13 @@ type Running interface {
 	// MaxUsers is the number of active user accounts the instance may have; 0 = unlimited. It is
 	// asked whenever a new account would be created, so a change applies at once.
 	MaxUsers() int
+}
+
+// TokenVerifier is optionally implemented by an edition that accepts bearer tokens of its own on /mcp, next
+// to the OAuth tokens of the logins. The check it returns is asked first; for a token that is none of its own it
+// answers auth.ErrInvalidToken, and the OAuth check follows. The community edition has none.
+type TokenVerifier interface {
+	Verifier() auth.TokenVerifier
 }
 
 // Prober is optionally implemented by an edition to say more in admin_health than its name.
@@ -70,9 +77,16 @@ type community struct{}
 func (community) Name() string  { return Community }
 func (community) MaxUsers() int { return CommunityMaxUsers }
 
+// startCommunity never fails: a "license" section is not read, so one configuration file can serve
+// builds with and without licence support (a rollback, a test image). The log says that it was ignored.
 func startCommunity(_ context.Context, env Env) (Running, error) {
 	if env.HasSection {
-		return nil, errors.New("config: the \"license\" section is not supported by this build (remove the section)")
+		log := env.Log
+		if log == nil {
+			log = slog.Default()
+		}
+		log.Warn("The \"license\" section of the configuration is ignored: this build has no licence support",
+			"edition", Community, "max_users", CommunityMaxUsers)
 	}
 	return community{}, nil
 }

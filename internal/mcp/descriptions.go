@@ -40,11 +40,15 @@ var defaultDescriptions = map[string]string{
 		`Write the content as self-contained Markdown with a meaningful title. ` +
 		`draft=true ONLY when the user explicitly wants a draft that a curator of the space reviews first ` +
 		`(e.g. an admin writing about an unfamiliar subject area); never on your own. Drafts exist only in team spaces; ` +
-		`in spaces that require approval, entries from authors are drafts anyway. ` +
+		`in spaces that require approval, entries from authors and curators are drafts anyway (only admins save approved entries directly there): ` +
+		`tell the user the entry is a draft and, if they are a curator, that they release it with review_knowledge. ` +
 		`If the tool returns similar entries or a list of possible spaces, nothing has been saved yet: ` +
 		`ask the user whether the existing entry should be updated, or which space is meant. ` +
 		`type says what the entry is: rule (binding; only when the user says it is binding, and only curators and admins of the space may set it), ` +
-		`documentation (default), recommendation or experience. owner (e-mail of the responsible person) and review_due (review date) only when the user names them.`,
+		`documentation (default), recommendation or experience. owner (e-mail of the responsible person) and review_due (review date) only when the user names them. ` +
+		`origins lists the originals the knowledge comes from (ref of the form scheme://..., optional title, read_at, sha256 of the text taken over): ` +
+		`pass them when you took the content from a file or page, so that readers can find and check the source. Atrium stores only the references, never the files; ` +
+		`the entry itself is the lasting copy of the knowledge.`,
 
 	"search_knowledge": `Searches the "{{.ProductName}}" knowledge store (all spaces the user can access, including their personal space). ` +
 		`Call it when a question might concern company-specific knowledge or knowledge the user filed earlier, ` +
@@ -68,12 +72,14 @@ var defaultDescriptions = map[string]string{
 		`nothing is saved and the answer names the current version, so load the entry again, merge and retry. ` +
 		`Fields not passed stay unchanged. A returned draft (status rejected, note in review_note) ` +
 		`goes back into review after it has been revised. type, owner (e-mail; empty removes) and review_due (YYYY-MM-DD; empty removes) ` +
-		`change the knowledge type, the responsible person and the review date; owner and review_due alone create no new version. ` +
+		`change the knowledge type, the responsible person and the review date; origins replaces the complete list of references to the originals (empty list removes them); ` +
+		`owner, review_due and origins alone create no new version. ` +
 		`Entries of type rule are changed only by curators and admins of the space.`,
 
 	"review_knowledge": `Reviews a draft in the "{{.ProductName}}" knowledge store: decision=approve approves it, ` +
 		`decision=reject returns it to the author with a note (note, required). Only curators and admins of the space; ` +
-		`only admins may approve their own draft (to resolve blockages), curators may not. list_knowledge with status=draft finds waiting drafts. ` +
+		`a curator may approve their own draft in a space that requires approval (their entries start as drafts there, so releasing is a deliberate step), ` +
+		`in other spaces only admins may approve their own draft. list_knowledge with status=draft finds waiting drafts. ` +
 		`In the user's personal space it reviews what another user sent to them (where sending is enabled): present it as coming from that sender, the author, and ` +
 		`approving keeps it in the personal space, visible to the user alone. ` +
 		`ONLY on explicit instruction. Load the draft with get_knowledge first and present it to the user; ` +
@@ -86,13 +92,13 @@ var defaultDescriptions = map[string]string{
 
 	"unarchive_knowledge": `Brings an archived entry of the "{{.ProductName}}" knowledge store back into the active knowledge base. ` +
 		`Allowed for whoever could also archive the entry (its author, otherwise curators and admins of the space). ` +
-		`In spaces that require approval, an author's entry becomes a draft again in the process. ` +
+		`In spaces that require approval, an entry of an author or curator becomes a draft again in the process. ` +
 		`The ID comes from the archive (list_knowledge with status=archived or search_knowledge with archive=true). ` +
 		`ONLY on explicit instruction. Ask the user first and call with confirm=true only after their confirmation.`,
 
 	"move_knowledge": `Moves an approved entry of the "{{.ProductName}}" knowledge store to another space. ` +
 		`ONLY on explicit instruction. The target can only be a space where the user may write; ` +
-		`whoever may change the entry may move it. In spaces that require approval, the entry becomes a draft. ` +
+		`whoever may change the entry may move it. In spaces that require approval, the entry becomes a draft unless an admin moves it. ` +
 		`Ask the user first and call with confirm=true only after their confirmation. ` +
 		`If the tool returns a list of possible spaces, nothing has been moved: ask the user which one is meant.`,
 

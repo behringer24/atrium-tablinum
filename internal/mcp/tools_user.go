@@ -79,6 +79,12 @@ type docInfo struct {
 	// ReviewDue is the review date; ReviewOverdue is set once it has passed.
 	ReviewDue     string `json:"review_due,omitempty"`
 	ReviewOverdue bool   `json:"review_overdue,omitempty"`
+	// Origins are the references to the originals the knowledge was taken from (get_knowledge only).
+	Origins []originIO `json:"origins,omitempty"`
+	// ManagedBy names the account that keeps the entry up to date from an outside source, SyncKey its key
+	// there. Such an entry is changed at the source, not here.
+	ManagedBy string `json:"managed_by,omitempty"`
+	SyncKey   string `json:"sync_key,omitempty"`
 	// Indexing is set after saving or changing a long entry: part of it is still being embedded.
 	Indexing string `json:"indexing,omitempty"`
 }
@@ -125,6 +131,7 @@ func (s *Server) docInfo(ctx context.Context, d docs.Document, withContent bool)
 	di.Indexing = strings.TrimSpace(indexNote(d.IndexPending))
 	if withContent {
 		di.Content = d.Content
+		di.Origins = originsOut(d.Origins)
 	}
 	if d.ExpiresAt != nil {
 		di.ExpiresAt = d.ExpiresAt.Format(time.RFC3339)
@@ -134,6 +141,9 @@ func (s *Server) docInfo(ctx context.Context, d docs.Document, withContent bool)
 	}
 	if d.OwnerID != nil {
 		di.Owner, di.OwnerFormer = d.OwnerEmail, !d.OwnerActive
+	}
+	if d.ManagedBy != nil {
+		di.ManagedBy, di.SyncKey = d.ManagedByEmail, d.SyncKey
 	}
 	if d.ReviewDue != nil {
 		now := time.Now().UTC()
@@ -218,17 +228,36 @@ func (s *Server) spaceContacts(ctx context.Context, c *call, in contactsIn) (con
 		}
 	}
 	out := contactsOut{Spaces: make([]spaceContacts, 0, len(visible)), InstanceAdmins: []string{}}
+	links, err := s.spaceLinks(ctx)
+	if err != nil {
+		return contactsOut{}, err
+	}
+	cache := map[uuid.UUID][]spaces.Member{}
 	for _, sp := range visible {
 		ms, err := s.Spaces.Members(ctx, sp.ID)
 		if err != nil {
 			return contactsOut{}, err
 		}
+		cache[sp.ID] = ms
 		sc := spaceContacts{Space: sp.Name, Slug: sp.Slug, Contacts: []contactInfo{}}
 		// Only curators and admins: whoever reads here may ask whom to turn to, the list of
 		// all members stays with the space admins (space_members).
 		for _, m := range ms {
 			if m.Role >= authz.Curator {
 				sc.Contacts = append(sc.Contacts, contactInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former})
+			}
+		}
+		// A space below another one also has the curators and admins it takes over from above. They
+		// are named without the space they come from: a reader here need not see that space.
+		if links[sp.ID].parent != nil {
+			inherited, err := s.inheritedMembers(ctx, sp.ID, ms, links, cache)
+			if err != nil {
+				return contactsOut{}, err
+			}
+			for _, m := range inherited {
+				if m.Role >= authz.Curator {
+					sc.Contacts = append(sc.Contacts, contactInfo{Type: m.PrincipalType, Name: m.Name, Role: m.Role.String(), Former: m.Former})
+				}
 			}
 		}
 		out.Spaces = append(out.Spaces, sc)
@@ -278,7 +307,8 @@ type storeIn struct {
 	Type    string   `json:"type,omitempty" jsonschema:"Optional knowledge type: rule (binding; curators and admins of the space only), documentation (default), recommendation or experience"`
 	Owner   string   `json:"owner,omitempty" jsonschema:"Optional: e-mail of the person responsible for the entry (team spaces; they must be able to read the space). Only when the user names one"`
 	// ReviewDue is a date so that an assistant cannot pass a relative phrase.
-	ReviewDue string `json:"review_due,omitempty" jsonschema:"Optional: date (YYYY-MM-DD) by which the entry should be reviewed"`
+	ReviewDue string     `json:"review_due,omitempty" jsonschema:"Optional: date (YYYY-MM-DD) by which the entry should be reviewed"`
+	Origins   []originIO `json:"origins,omitempty" jsonschema:"Optional: references to the original documents the knowledge was taken from (up to 10). Atrium stores only the references, never the files"`
 }
 
 type similarInfo struct {
@@ -354,6 +384,7 @@ func (s *Server) storeKnowledge(ctx context.Context, c *call, in storeIn) (store
 			return storeOut{}, err
 		}
 	}
+	p.Origins = originsIn(in.Origins)
 	res, err := s.Docs.Store(ctx, a, p)
 	if err != nil {
 		return storeOut{}, err
@@ -528,7 +559,8 @@ type updateIn struct {
 	Type            *string   `json:"type,omitempty" jsonschema:"New knowledge type: rule (binding; curators and admins of the space only), documentation, recommendation or experience"`
 	Owner           *string   `json:"owner,omitempty" jsonschema:"E-mail of the new responsible person (team spaces; must be able to read the space); an empty string removes the responsible person"`
 	// ReviewDue is a date so that an assistant cannot pass a relative phrase.
-	ReviewDue *string `json:"review_due,omitempty" jsonschema:"New review date (YYYY-MM-DD); an empty string removes it"`
+	ReviewDue *string     `json:"review_due,omitempty" jsonschema:"New review date (YYYY-MM-DD); an empty string removes it"`
+	Origins   *[]originIO `json:"origins,omitempty" jsonschema:"The complete new list of references to the originals (replaces the old list; an empty list removes all). Atrium stores only the references"`
 }
 
 func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (docInfo, error) {
@@ -536,7 +568,7 @@ func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (doc
 	if err != nil {
 		return docInfo{}, err
 	}
-	if in.Title == nil && in.Content == nil && in.Tags == nil && in.Type == nil && in.Owner == nil && in.ReviewDue == nil {
+	if in.Title == nil && in.Content == nil && in.Tags == nil && in.Type == nil && in.Owner == nil && in.ReviewDue == nil && in.Origins == nil {
 		return docInfo{}, userErr("Nothing to change was passed.")
 	}
 	p := docs.UpdateParams{ID: id, Title: in.Title, Content: in.Content, Tags: in.Tags, ExpectedVersion: in.ExpectedVersion}
@@ -571,6 +603,10 @@ func (s *Server) updateKnowledge(ctx context.Context, c *call, in updateIn) (doc
 		} else if p.ReviewDue, err = parseReviewDue(*in.ReviewDue); err != nil {
 			return docInfo{}, err
 		}
+	}
+	if in.Origins != nil {
+		o := originsIn(*in.Origins)
+		p.Origins = &o
 	}
 	d, err := s.Docs.Update(ctx, c.Actor, p)
 	if err != nil {
