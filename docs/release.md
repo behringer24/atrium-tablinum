@@ -53,7 +53,7 @@ Things to know:
 
 ## Build from source (Community)
 
-This repository is complete: a build of it is the Community edition. You need Git and either Docker or Go (the version in `go.mod`, currently 1.26).
+This repository is complete: a build of it is the Community edition. You need Git and either Docker or Go (the version in `go.mod`, currently 1.27).
 
 With Docker, from a checkout of a release tag (use `main` or `dev` only for testing):
 
@@ -89,7 +89,7 @@ echo "$TOKEN" | docker login ghcr.io -u <user> --password-stdin
 
 What the build depends on is pinned and checked:
 
-- **Go toolchain:** `go.mod` names the patch release (`toolchain go1.26.11`), which a local `go` and the CI use (`setup-go` reads it from `go.mod`, and `govulncheck` runs with it). The image is built with the Go of its own base image (`golang:1.27.4-alpine`, see below), which Dependabot keeps current. The standard library is part of what you ship: update the patch release when `govulncheck` reports a fix, and keep the toolchain of `go.mod` and the Go of the base image in step, so that what the CI tests and checks is what the image contains.
+- **Go toolchain:** `go.mod` names the patch release (`toolchain go1.27.4`), so a local `go` and the CI use the same one (`setup-go` reads it from `go.mod`, and `govulncheck` runs with it), and the Dockerfile builds with `golang:1.27.4-alpine`. The standard library is part of what you ship: update the patch release when `govulncheck` reports a fix, in `go.mod` and in the base image together, so that what the CI tests and checks is what the image contains. Dependabot proposes a new base image; raise the toolchain of `go.mod` with it.
 - **Base images** are pinned by tag and digest (`golang:1.27.4-alpine@sha256:...`, `alpine:3.24@sha256:...`). To update one, take the new digest with `docker buildx imagetools inspect <image>`.
 - **GitHub Actions** are pinned to commit SHAs, with the tag in a comment. A moved tag in an action repository cannot run other code in the build. Get a SHA with `git ls-remote --tags https://github.com/<owner>/<repo> refs/tags/<tag>`.
 - **`govulncheck`** runs in the test job of `test.yml` and fails the build when a known vulnerability is reachable from the code. Run it locally with `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`.
