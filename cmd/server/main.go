@@ -243,13 +243,13 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 			Health: []mcpserver.HealthCheck{
 				{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }},
 				{Name: "embedder", Check: func(ctx context.Context) (string, error) {
-						if sr, ok := emb.(embed.StatusReporter); ok {
-							if c := sr.Circuit(); c.Open {
-								return "", fmt.Errorf("embedding is paused after repeated failures (%s); saving continues with the sections pending, search uses full text, next attempt in %s", c.LastError, c.RetryIn.Round(time.Second))
-							}
+					if sr, ok := emb.(embed.StatusReporter); ok {
+						if c := sr.Circuit(); c.Open {
+							return "", fmt.Errorf("embedding is paused after repeated failures (%s); search uses full text and background embedding waits, next attempt in %s", c.LastError, c.RetryIn.Round(time.Second))
 						}
-						return cfg.Embedding.Backend, emb.Ping(ctx)
-					}},
+					}
+					return cfg.Embedding.Backend, emb.Ping(ctx)
+				}},
 				// Informational: sections of another model are still found by full text.
 				{Name: "embeddings", Check: func(ctx context.Context) (string, error) {
 					st, err := reembedder.Status(ctx)
