@@ -197,3 +197,43 @@ func TestAuthErrorsAreNotRetriedAndAreExplained(t *testing.T) {
 		t.Fatalf("hits=%d err=%v", hits, err)
 	}
 }
+
+// More callers than max_concurrent wait for a free slot instead of all hitting the service at once.
+func TestMaxConcurrentLimitsParallelRequests(t *testing.T) {
+	var mu sync.Mutex
+	inflight, peak := 0, 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/embed" {
+			http.NotFound(w, r)
+			return
+		}
+		mu.Lock()
+		inflight++
+		peak = max(peak, inflight)
+		mu.Unlock()
+		time.Sleep(30 * time.Millisecond)
+		mu.Lock()
+		inflight--
+		mu.Unlock()
+		_ = json.NewEncoder(w).Encode([][]float32{make([]float32, 4)})
+	}))
+	t.Cleanup(srv.Close)
+	e, err := New(Settings{Backend: "tei", URL: srv.URL, Dimensions: 4, MaxConcurrent: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := e.Embed(context.Background(), []string{"x"}); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if peak > 2 || peak == 0 {
+		t.Errorf("peak of parallel requests = %d, want 1..2", peak)
+	}
+}

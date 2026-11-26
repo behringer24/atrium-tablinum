@@ -79,15 +79,7 @@ func postJSON(ctx context.Context, c *http.Client, endpoint string, headers map[
 	return last
 }
 
-func statusError(status int) error {
-	switch status {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Errorf("embedder rejects authentication (status %d), check credentials", status)
-	case http.StatusTooManyRequests:
-		return fmt.Errorf("embedder throttles requests (status 429)")
-	}
-	return fmt.Errorf("embedder responded with status %d", status)
-}
+func statusError(status int) error { return &StatusError{Code: status} }
 
 // stripURL drops the request URL from a transport error, keeping only the cause.
 func stripURL(err error) error {

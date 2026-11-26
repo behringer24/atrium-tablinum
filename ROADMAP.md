@@ -8,10 +8,12 @@ The guiding question for all knowledge features: does an assistant find the righ
 
 ## Next
 
-### Reliable knowledge (candidate for 0.6)
+### Reliable knowledge (candidate for 0.8)
 
+Order: first summarising (self-contained, rule decided), then review reminders together with the notifications they depend on.
+
+- **Summarising with `replaces` (next):** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported. The origins of an entry (references to external originals, built in 0.7.0) are a separate thing: `derived_from` points to other entries.
 - **Review reminders:** knowledge types, responsible people and review dates are built ([design](docs/design/knowledge-metadata.md)); overdue reviews show in entries, `list_knowledge review=due` and `whats_new`. Still open: telling responsible people and curators actively when a review falls due (needs the notifications below), and recording the last review as its own date.
-- **Summarising with `replaces`:** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported.
 
 ### Sending to a colleague, follow-ups
 
@@ -78,6 +80,7 @@ Atrium becomes the controlled registry and distribution service for company-wide
 - **A draft next to the released version:** authors of spaces that require approval cannot change approved entries today.
 - **Correction reports:** readers flag an entry as wrong, incomplete, unclear or outdated, with a reason and the place concerned. The owners get a reviewable item; reports never overwrite binding knowledge directly.
 - **Citations:** stable, resolvable references that name the version used and the section (the heading path is already stored per chunk and returned by search, the document version is not yet part of a hit), also for older versions and direct links, with the same rights checks. An answer should say "policy X, version 4, section 3.2".
+- **Duplicate hints after background embedding:** since new entries are embedded asynchronously, the check for entries of similar meaning cannot run while saving (title and text are still compared). The `index_pending` task should compare an entry as soon as it has its vectors and show curators the likely duplicates.
 - **Contradiction hints:** find semantically related entries and show a curator likely conflicts (for example two different hotel limits) with the entries and sections concerned. The assistant does the comparing on request, in the same way as summarising; the server stays free of a model of its own. Nothing is changed automatically, because context such as date or location may explain a difference. Duplicate detection at save time exists already.
 - **Import:** Markdown and structured data with titles, tags and provenance, for migration from wikis. Mind rights, duplicates and stable links. Export is built: admins export spaces and the whole instance, everybody their personal space, as Markdown files (`export_knowledge`). Not part of it yet: older versions of an entry, skills in bulk and the audit log.
 - **Connecting other systems, remainder:** service accounts, tokens (created on the server only) and the sync of a Git repository's Markdown files are built (a Pro feature, see [Connecting other systems](docs/pro/service-accounts.md)). Still open, on the same access:

@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -142,6 +144,10 @@ type Prepared struct {
 // so that the background task indexes new entries by itself but never starts a costly rebuild unasked.
 const PendingModel = "(pending)"
 
+// InlineBudget bounds how long saving waits for the embedding service; what is not embedded by then
+// is embedded in the background.
+const InlineBudget = 20 * time.Second
+
 // Prepare chunks and embeds a document completely. It does network I/O and must run before the
 // database transaction is opened.
 func (s *Service) Prepare(ctx context.Context, title, content string) (Prepared, error) {
@@ -151,21 +157,48 @@ func (s *Service) Prepare(ctx context.Context, title, content string) (Prepared,
 // PrepareUpTo chunks a document and embeds its first inline sections; the others are left without a
 // vector and counted in Pending. A document is embedded section by section at the speed of the
 // embedding service (about 2.5 seconds each on two cores), so embedding a long one before answering
-// outlasts the patience of the client, which then gives up and nothing is saved. inline <= 0 embeds
-// every section before returning.
+// outlasts the patience of the client, which then gives up and nothing is saved. inline == 0 embeds
+// every section before returning, inline < 0 none.
 func (s *Service) PrepareUpTo(ctx context.Context, title, content string, inline int) (Prepared, error) {
 	chunks := chunk.Split(title, content, s.cfg.Chunk)
 	now := len(chunks)
 	if inline > 0 && inline < now {
 		now = inline
 	}
+	if inline < 0 {
+		// Fully asynchronous: saving never waits for the embedding service.
+		out := Prepared{Model: s.emb.Model(), Chunks: make([]PreparedChunk, len(chunks)), Pending: len(chunks)}
+		for i, c := range chunks {
+			out.Chunks[i] = PreparedChunk{Chunk: c}
+		}
+		return out, nil
+	}
 	texts := make([]string, now)
 	for i := range texts {
 		texts[i] = chunks[i].Content
 	}
-	vecs, err := s.emb.Embed(ctx, texts)
+	// Saving must answer promptly even when the embedding service is slow: after the budget the
+	// entry is saved with its sections pending, as when the service is down.
+	ectx, cancel := context.WithTimeout(ctx, InlineBudget)
+	defer cancel()
+	vecs, err := s.emb.Embed(ectx, texts)
 	if err != nil {
-		return Prepared{}, err
+		// A slow or unreachable embedding service must not lose the entry: it is saved with every
+		// section pending (found by full text) and the background task embeds it later. A caller
+		// that gave up, and a service serving the wrong model (a configuration error), still fail.
+		if ctx.Err() != nil || errors.Is(err, embed.ErrModelMismatch) {
+			return Prepared{}, err
+		}
+		level := slog.LevelWarn
+		if errors.Is(err, embed.ErrUnavailable) {
+			level = slog.LevelDebug // the breaker is open; this repeats with every write
+		}
+		slog.Log(ctx, level, "embedding failed; saving the entry with its sections pending", "sections", len(chunks), "error", err)
+		out := Prepared{Model: s.emb.Model(), Chunks: make([]PreparedChunk, len(chunks)), Pending: len(chunks)}
+		for i, c := range chunks {
+			out.Chunks[i] = PreparedChunk{Chunk: c}
+		}
+		return out, nil
 	}
 	if len(vecs) != now {
 		return Prepared{}, fmt.Errorf("embedder returned %d vectors for %d chunks", len(vecs), now)
@@ -296,6 +329,32 @@ func (s *Service) FindDuplicates(ctx context.Context, pool *pgxpool.Pool, sc Sco
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Similarity > out[j].Similarity })
 	return out, nil
+}
+
+// FindExactDuplicates finds knowledge entries of the space with the same title (any case) or the
+// same text. It needs no vectors, so it also works while the embedding service is down and while
+// sibling entries still wait for their vector; it catches above all an agent that saves again after
+// a timeout. Visibility is the same as for FindDuplicates.
+func (s *Service) FindExactDuplicates(ctx context.Context, pool *pgxpool.Pool, sc Scope, space uuid.UUID, title, content string, exclude *uuid.UUID) ([]Duplicate, error) {
+	rows, err := pool.Query(ctx, `SELECT d.id, d.title, CASE WHEN d.content = $7 THEN 1.0::float8 ELSE 0.95::float8 END
+		FROM documents d
+		WHERE `+visibility.Clause("d", 2, 3, 4)+`
+		  AND d.kind = 'knowledge' AND d.space_id = $5 AND ($6::uuid IS NULL OR d.id <> $6::uuid)
+		  AND (lower(d.title) = lower($1) OR d.content = $7)
+		ORDER BY 3 DESC LIMIT 3`, title, nonNil(sc.Visible), sc.Actor, nonNil(sc.Curator), space, exclude, content)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Duplicate
+	for rows.Next() {
+		var d Duplicate
+		if err := rows.Scan(&d.ID, &d.Title, &d.Similarity); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
 
 func nonNil(ids []uuid.UUID) []uuid.UUID {

@@ -169,10 +169,20 @@ func (s *Service) Search(ctx context.Context, c Caller, p Params) ([]Result, err
 	return results, nil
 }
 
+// queryEmbedBudget bounds the wait for the embedding of a search query.
+const queryEmbedBudget = 5 * time.Second
+
 func (s *Service) run(ctx context.Context, c Caller, q string, visible []uuid.UUID, tags, types []string, limit int, archive bool) ([]Result, error) {
 	var vec *string
-	if v, err := embed.Query(ctx, s.emb, q); err != nil {
-		slog.Warn("query embedding failed, using full-text search only", "error", err)
+	// A slow embedding service must not hold up a search: full text answers without it.
+	qctx, cancel := context.WithTimeout(ctx, queryEmbedBudget)
+	defer cancel()
+	if v, err := embed.Query(qctx, s.emb, q); err != nil {
+		level := slog.LevelWarn
+		if errors.Is(err, embed.ErrUnavailable) {
+			level = slog.LevelDebug // the breaker is open; this repeats with every search
+		}
+		slog.Log(ctx, level, "query embedding failed, using full-text search only", "error", err)
 	} else {
 		lit := ingest.VectorLiteral(v)
 		vec = &lit
