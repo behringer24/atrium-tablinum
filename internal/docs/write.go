@@ -148,6 +148,13 @@ func (s *Store) Store(ctx context.Context, a Actor, p StoreParams) (StoreResult,
 		if err != nil {
 			return StoreResult{}, err
 		}
+		if len(dups) == 0 {
+			// The vector check cannot see entries whose sections are still pending, nor this
+			// one's if the embedding service did not answer: compare title and text as well.
+			if dups, err = s.ing.FindExactDuplicates(ctx, s.pool, a.Scope(), sp.ID, n.Title, n.Content, nil); err != nil {
+				return StoreResult{}, err
+			}
+		}
 		if len(dups) > 0 {
 			return StoreResult{Duplicates: dups}, nil
 		}

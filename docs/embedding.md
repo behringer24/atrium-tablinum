@@ -23,9 +23,16 @@ All backends share these fields in the `embedding` section:
 | `api_key` | `openai`: key (`"${EMBEDDING_API_KEY}"`). `tei`: only if the server runs with `--api-key`. |
 | `query_prefix`, `document_prefix` | Text placed in front of every search query or every section. Only for models that require it, e.g. E5 (`"query: "` and `"passage: "`). Applies to every backend. |
 | `timeout` | Maximum duration of a request, default `60s` |
+| `max_concurrent` | Requests to the embedding service that run at the same time, default `4`. Further ones wait, so many writers at once do not pile up in the service until it times out. Raise it only if the service has the capacity. |
 | `options` | Settings that only the chosen backend knows (below). Unknown keys and invalid values are rejected at startup, with a list of the valid keys. |
 
 On errors 429 and 5xx the server repeats the request up to twice with a growing pause. Error messages never contain the embedded text.
+
+A search waits at most 5 seconds for its query vector. If the service does not answer in time, is unreachable or reports an error, the search uses full text only. Saving with `inline_index_sections` above 0 waits at most 20 seconds and then behaves like the default: the entry is saved with its sections pending and the background task embeds them as soon as the service answers again.
+
+**Circuit breaker.** After 3 failed requests in a row (timeout, unreachable, status 429 or 5xx) Atrium stops sending requests to the service for 30 seconds. During that time a search uses full text only and nothing queues up behind an overloaded service; the background task waits and saving is not affected. After the pause one request is let through as a test: if it succeeds, normal operation resumes, otherwise the pause starts again. Bad credentials, a wrong model or a caller that gave up do not count. While the pause lasts `admin_health` (check `embedder`) says so and shows the last error; the background task waits quietly and is not reported as failed.
+
+**Duplicates.** The duplicate check by meaning can only compare sections that already have a vector, and by default a new entry has none while it is saved. So Atrium always compares title (ignoring case) and complete text with the entries of the space as well; this catches an assistant that saves the same entry again after a timeout. Entries that only differ in wording are compared by meaning only when the new entry's first sections are embedded while saving (`inline_index_sections` above 0) and the older entry has its vectors; otherwise they can be filed twice.
 
 ## `tei`
 
@@ -58,9 +65,11 @@ For values smaller than 8192, TEI requires `--auto-truncate`. Atrium's sections 
 TEI_ARGS=--model-id BAAI/bge-m3 --max-batch-tokens 1024 --auto-truncate
 ```
 
-### Saving long entries
+### Saving entries
 
-Every section of an entry needs its own vector, and the embedding service works through them one after the other (see the speed above). An entry of 70 KB has some 40 sections, so embedding all of them before answering could take minutes, longer than a client waits: it gives up, the save is cancelled and nothing is stored. Therefore Atrium embeds only the first `policy.inline_index_sections` sections (default 6) while saving. The entry is stored at once; the other sections are saved without a vector and embedded by the periodic task `index_pending`, which runs every 15 seconds and works in small batches of 4 sections (a search that arrives meanwhile waits for the batch in progress, about ten seconds on two cores), across restarts. Until a section has its vector it is found by full text; the duplicate check looks at the sections embedded so far, which are the first ones. `admin_health` (check `embeddings`) says how many sections are being embedded. This is no rebuild: sections whose vector was dropped by a change of the dimension still wait for `admin_reembed`. With `inline_index_sections: 0` every section is embedded before saving answers, as before. Whoever runs a very slow embedding service lowers the value, with a fast one it can be raised.
+Every section of an entry needs its own vector, and the embedding service works through them one after the other (see the speed above). An entry of 70 KB has some 40 sections. Embedding them while saving would make every write depend on the service: many writers at once, an import or a token client could overload it, and a client that waits too long gives up and nothing is stored. Therefore **saving does not embed by default** (`policy.inline_index_sections: -1`). The entry is stored at once with its sections pending; the periodic task `index_pending`, which runs every 15 seconds and works in small batches of 4 sections, embeds them one batch after the other, across restarts. That also caps the load on the service, however many entries are written. Until a section has its vector it is found by full text, by exact words. `admin_health` (check `embeddings`) says how many sections are being embedded. This is no rebuild: sections whose vector was dropped by a change of the dimension still wait for `admin_reembed`.
+
+With a number above 0 (for instance `6`) saving embeds that many sections first, so that the duplicate check can compare by meaning at once; with a slow service the wait is capped at 20 seconds. With `0` every section is embedded before saving answers, as in older versions.
 
 For a shared server there is an example with limits for CPU and memory: [deploy/examples/docker-compose.limits.yml](../deploy/examples/docker-compose.limits.yml). How to use it is described at the top of the file.
 

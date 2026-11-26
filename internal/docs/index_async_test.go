@@ -1,12 +1,15 @@
 package docs_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/chunk"
 	"github.com/behringer24/atrium-tablinum/internal/docs"
+	"github.com/behringer24/atrium-tablinum/internal/embed"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/reembed"
 )
@@ -125,5 +128,52 @@ func TestWithoutALimitNothingIsLeftPending(t *testing.T) {
 	}
 	if n := queryInt(t, e, `SELECT count(*) FROM chunks WHERE embedding IS NULL`); n != 0 {
 		t.Errorf("%d sections without a vector", n)
+	}
+}
+
+// downEmbedder is an embedding service behind an open circuit breaker.
+type downEmbedder struct{ fakeEmbedder }
+
+func (downEmbedder) Embed(context.Context, []string) ([][]float32, error) {
+	return nil, embed.ErrUnavailable
+}
+
+// While the embedding service is down, saving still answers at once and leaves the sections pending;
+// an agent that saves the same entry again (after a timeout, say) is caught by the title and text
+// check although no vector exists to compare.
+func TestSavingWhileTheEmbedderIsDownKeepsEntriesAndFindsExactDuplicates(t *testing.T) {
+	e := setup(t)
+	anna := e.actor(t, "anna@x.de")
+	sp := e.team(t, "wiki", false, authz.None)
+	e.member(t, sp, anna, authz.Author)
+	anna = e.refresh(t, anna)
+	first := mustStore(t, e, anna, sp.ID, "Erstes", "alpha text")
+
+	ing, err := ingest.New(ingest.Config{
+		MaxDocumentBytes: 2000,
+		Chunk:            chunk.Options{TargetTokens: 50, MaxTokens: 80},
+		FTSLanguages:     []string{"german", "english", "simple"},
+	}, downEmbedder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.docs = docs.New(e.pool, e.spaces, ing, docs.Options{Quota: e.quota, HandoffTTLDays: 14, DuplicateThreshold: 0.9})
+
+	res, err := e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: sp.ID, Title: "Neu", Content: "beta text"})
+	if err != nil || res.Document == nil || res.Document.IndexPending == 0 {
+		t.Fatalf("saving while the embedder is down: %v %+v", err, res)
+	}
+	if res, err = e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: sp.ID, Title: "Anderer Titel", Content: "alpha text"}); err != nil ||
+		res.Document != nil || len(res.Duplicates) != 1 || res.Duplicates[0].ID != first.ID {
+		t.Fatalf("same text not reported: %v %+v", err, res)
+	}
+	if res, err = e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: sp.ID, Title: "erstes", Content: "ganz anders"}); err != nil ||
+		res.Document != nil || len(res.Duplicates) != 1 {
+		t.Fatalf("same title not reported: %v %+v", err, res)
+	}
+	// The pending entry is a duplicate candidate as well, although it has no vector yet.
+	if res, err = e.docs.Store(e.ctx, anna, docs.StoreParams{SpaceID: sp.ID, Title: "Dritter", Content: "beta text"}); err != nil ||
+		res.Document != nil || len(res.Duplicates) != 1 {
+		t.Fatalf("pending sibling not reported: %v %+v", err, res)
 	}
 }

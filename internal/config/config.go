@@ -129,6 +129,9 @@ type Embedding struct {
 	DocumentPrefix string `yaml:"document_prefix"`
 	// Timeout bounds one request to the embedding backend.
 	Timeout time.Duration `yaml:"timeout"`
+	// MaxConcurrent bounds the requests to the embedding backend that run at the same time; further
+	// ones wait. Default 4.
+	MaxConcurrent int `yaml:"max_concurrent"`
 	// Options are the settings only one backend knows; see docs/embedding.md.
 	Options map[string]string `yaml:"options"`
 	// AllowDimensionChange lets one start with a dimension other than the database's rebuild the
@@ -141,7 +144,7 @@ type Embedding struct {
 func (e Embedding) Settings() embed.Settings {
 	return embed.Settings{
 		Backend: e.Backend, URL: e.URL, Model: e.Model, Dimensions: e.Dimensions, APIKey: e.APIKey,
-		QueryPrefix: e.QueryPrefix, DocumentPrefix: e.DocumentPrefix, Timeout: e.Timeout, Options: e.Options,
+		QueryPrefix: e.QueryPrefix, DocumentPrefix: e.DocumentPrefix, Timeout: e.Timeout, MaxConcurrent: e.MaxConcurrent, Options: e.Options,
 	}
 }
 
@@ -210,10 +213,11 @@ type Policy struct {
 	// RateLimitReadsPerMinute caps search, read and list calls per user (each search costs an
 	// embedding); 0 = unlimited.
 	RateLimitReadsPerMinute int `yaml:"rate_limit_reads_per_minute"`
-	// InlineIndexSections is how many sections of an entry are embedded while it is being saved. A long
-	// entry has many sections and the embedding service needs seconds for each, so the rest is embedded
-	// in the background; the entry is saved at once and found by full text until then. 0 = embed every
-	// section before answering (a long entry can then outlast the client's patience).
+	// InlineIndexSections is how many sections of an entry are embedded while it is being saved. The
+	// embedding service needs seconds for each section, so by default (-1) none is: the entry is saved at
+	// once and a background task embeds it; it is found by full text until then. A number above 0 embeds
+	// that many sections first (so the duplicate check can compare by meaning at once), 0 = every section
+	// before answering (a long entry can then outlast the client's patience).
 	InlineIndexSections int `yaml:"inline_index_sections"`
 }
 
@@ -263,7 +267,7 @@ func Defaults() Config {
 			SessionMaxAge:          2160 * time.Hour,
 			AllowLoopbackRedirects: true,
 		},
-		Embedding: Embedding{Backend: "tei", Model: "BAAI/bge-m3", Dimensions: 1024, Timeout: 60 * time.Second},
+		Embedding: Embedding{Backend: "tei", Model: "BAAI/bge-m3", Dimensions: 1024, Timeout: 60 * time.Second, MaxConcurrent: 4},
 		Reranker:  Reranker{Backend: "tei", Candidates: 30},
 		Search: Search{
 			FTSLanguages:        []string{"german", "english", "simple"},
@@ -292,7 +296,7 @@ func Defaults() Config {
 			RateLimitWritesPerMinute:        20,
 			RateLimitServiceWritesPerMinute: 600,
 			RateLimitReadsPerMinute:         120,
-			InlineIndexSections:             6,
+			InlineIndexSections:             -1,
 		},
 	}
 }
@@ -495,8 +499,8 @@ func (c *Config) Validate() error {
 	if c.Policy.MaxDocumentBytes < 1 {
 		add("policy.max_document_bytes must be positive")
 	}
-	if c.Policy.InlineIndexSections < 0 {
-		add("policy.inline_index_sections must not be negative")
+	if c.Policy.InlineIndexSections < -1 {
+		add("policy.inline_index_sections must be -1 (none), 0 (all) or a number of sections")
 	}
 	if c.Spaces.HandoffTTLDays < 1 {
 		add("spaces.handoff_ttl_days must be >= 1")
