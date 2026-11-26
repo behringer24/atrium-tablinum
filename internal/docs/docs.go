@@ -50,7 +50,7 @@ type Options struct {
 	// Share configures sending an entry to another user's personal space (see package share).
 	Share share.Options
 	// InlineIndexSections is how many sections of an entry are embedded before saving answers; the
-	// rest is embedded in the background (see ingest.PrepareUpTo). 0 = all of them, as before.
+	// rest is embedded in the background (see ingest.PrepareUpTo). -1 = none, 0 = all of them.
 	InlineIndexSections int
 }
 

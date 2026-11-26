@@ -175,6 +175,9 @@ func (s *Service) IndexPending(ctx context.Context) error {
 	done := 0
 	for time.Now().Before(deadline) {
 		n, last, err := s.batch(ctx, after, true)
+		if errors.Is(err, embed.ErrUnavailable) {
+			return nil // the breaker is open; the next run is the test request
+		}
 		if err != nil {
 			return err
 		}

@@ -47,7 +47,7 @@ What Atrium does when you file:
 2. **Checks.** Atrium checks size (about 200 KB per entry), tags (up to 20, 50 characters each, no line breaks) and rejects text that looks like passwords, keys or other credentials.
 3. **Duplicates.** If very similar entries already exist, nothing is saved yet. The assistant shows them and asks whether you want to update the existing entry or file a new one anyway.
 4. **Status.** In a space without approval your entry is *approved* immediately and every reader sees it. In a space with approval it becomes a *draft* (see [Drafts and approval](#drafts-and-approval)). Personal spaces have no drafts.
-5. **Index.** The entry is split into sections and indexed for search. A long entry is saved at once: its first sections are indexed right away and the rest a short while later in the background. Until then the rest is found by exact words, afterwards by meaning too. The assistant tells you when that applies; there is nothing to do.
+5. **Index.** The entry is split into sections and indexed for search. The entry is saved at once and indexed a short while later in the background. Until then it is found by exact words, afterwards by meaning too. The assistant tells you when that applies; there is nothing to do.
 
 Say *"as a draft"* if you want a curator to check it first even though the space does not require it, for example when you write about a subject outside your area.
 
@@ -239,7 +239,7 @@ Where your organisation has switched it on, you can send an entry or a skill to 
 
 **Can I attach files or images to entries?** No. Entries are Markdown text. Skills can carry text files only.
 
-**What if two people file the same thing?** The duplicate check catches very similar entries in the same space. Update the existing entry.
+**What if two people file the same thing?** The duplicate check catches very similar entries in the same space, and always entries with the same title or the same text. Update the existing entry. Entries that only differ in wording are compared by meaning, which works once Atrium has indexed the older entry (seconds, or a little longer when the search service is busy); a new entry is found by exact words at once and by meaning a short while after saving.
 
 **What if two assistants change the same entry at once?** The assistant passes the version it loaded (`expected_version`). If the entry has changed since, the save is refused and nothing is overwritten: the assistant loads the current text, merges your change into it and saves again.
 

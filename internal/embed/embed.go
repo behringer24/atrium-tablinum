@@ -61,12 +61,18 @@ type Settings struct {
 	DocumentPrefix string
 	// Timeout bounds one request to the backend; 0 = 60 seconds.
 	Timeout time.Duration
+	// MaxConcurrent bounds the requests to the backend that run at the same time; the others wait
+	// (as long as their context allows). 0 = 4.
+	MaxConcurrent int
 	// Options carries the settings that only one backend knows (batch_size, region, ...).
 	// Unknown keys are rejected so typos do not go unnoticed.
 	Options map[string]string
 }
 
-const defaultTimeout = 60 * time.Second
+const (
+	defaultTimeout       = 60 * time.Second
+	defaultMaxConcurrent = 4
+)
 
 // purpose says what a text is embedded for.
 type purpose int
@@ -132,7 +138,10 @@ func New(s Settings) (Embedder, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &wrapped{b: b, s: s}, nil
+	if s.MaxConcurrent <= 0 {
+		s.MaxConcurrent = defaultMaxConcurrent
+	}
+	return &wrapped{b: b, s: s, slots: make(chan struct{}, s.MaxConcurrent), br: newBreaker()}, nil
 }
 
 // wrapped adds what every backend needs: prefixes and a check that the backend returned
@@ -140,11 +149,18 @@ func New(s Settings) (Embedder, error) {
 type wrapped struct {
 	b backend
 	s Settings
+	// slots limits the concurrent requests: many writers at once would otherwise queue up in the
+	// embedding service until its requests time out.
+	slots chan struct{}
+	br    *breaker
 }
 
 func (w *wrapped) Model() string                  { return w.s.Model }
 func (w *wrapped) Dimensions() int                { return w.s.Dimensions }
 func (w *wrapped) Ping(ctx context.Context) error { return w.b.ping(ctx) }
+
+// Circuit reports the state of the circuit breaker.
+func (w *wrapped) Circuit() CircuitStatus { return w.br.status() }
 
 func (w *wrapped) Embed(ctx context.Context, texts []string) ([][]float32, error) {
 	return w.run(ctx, texts, forDocument)
@@ -162,6 +178,19 @@ func (w *wrapped) run(ctx context.Context, texts []string, p purpose) ([][]float
 	if len(texts) == 0 {
 		return [][]float32{}, nil
 	}
+	// While the service is known to be down nobody waits for a slot or for its timeout.
+	if err := w.br.peek(); err != nil {
+		return nil, err
+	}
+	select {
+	case w.slots <- struct{}{}:
+		defer func() { <-w.slots }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if err := w.br.allow(); err != nil {
+		return nil, err
+	}
 	prefix := w.s.DocumentPrefix
 	if p == forQuery {
 		prefix = w.s.QueryPrefix
@@ -174,6 +203,7 @@ func (w *wrapped) run(ctx context.Context, texts []string, p purpose) ([][]float
 		}
 	}
 	vecs, err := w.b.embed(ctx, in, p)
+	w.br.done(err)
 	if err != nil {
 		return nil, err
 	}

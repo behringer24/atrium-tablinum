@@ -4,6 +4,19 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Upgrade notes
+- **Saving no longer embeds by default.** `policy.inline_index_sections` now defaults to `-1`: `store_knowledge` and `update_knowledge` answer at once and the background task `index_pending` embeds the entry; until then it is found by exact words. Before, the first 6 sections were embedded while saving. Set `6` (or another number above 0) to get the old behaviour, `0` to embed everything before answering. No database migration. `admin_health` (check `embeddings`) names how many sections are still waiting.
+- **The duplicate check by meaning needs vectors.** A new entry has none while it is saved by default, so it is compared with the title and the complete text of the entries in the space (always, whatever the setting) and by meaning only if `inline_index_sections` is above 0.
+
+### Fixed
+- **Saving no longer fails when the embedding service is slow or unreachable.** The entry is saved with its sections pending (full-text search works at once) and embedded later by the background task. Before, the write failed and nothing was saved.
+- A search waits at most 5 seconds for the embedding of its query; after that it uses full text only.
+
+### Added
+- `embedding.max_concurrent` (default 4) limits the simultaneous requests to the embedding service, so many parallel writers do not overload it.
+- A circuit breaker for the embedding service: after 3 failed requests in a row Atrium pauses its requests for 30 seconds, so searches stay quick (full text) while the service recovers; `admin_health` (check `embedder`) shows the pause.
+- The duplicate check also compares title and complete text, so it works without vectors and while older entries still wait for theirs.
+
 ## [0.7.0] - 2026-11-23
 
 ### Upgrade notes

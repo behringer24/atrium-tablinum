@@ -96,7 +96,7 @@ func indexNote(pending int) string {
 	if pending <= 0 {
 		return ""
 	}
-	return fmt.Sprintf(" The entry is long: %d of its sections are still being indexed in the background and are found by exact words until then, by meaning a short while later.", pending)
+	return fmt.Sprintf(" %d of its sections are still being indexed in the background and are found by exact words until then, by meaning a short while later.", pending)
 }
 
 func (s *Server) spaceInfos(list []spaces.Space, a docs.Actor) []spaceInfo {
