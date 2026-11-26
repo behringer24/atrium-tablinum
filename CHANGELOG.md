@@ -4,6 +4,10 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-26
+
+A patch release for installations on which many assistants, an import or a service account write at once: the embedding service no longer decides whether saving works.
+
 ### Upgrade notes
 - **Saving no longer embeds by default.** `policy.inline_index_sections` now defaults to `-1`: `store_knowledge` and `update_knowledge` answer at once and the background task `index_pending` embeds the entry; until then it is found by exact words. Before, the first 6 sections were embedded while saving. Set `6` (or another number above 0) to get the old behaviour, `0` to embed everything before answering. No database migration. `admin_health` (check `embeddings`) names how many sections are still waiting.
 - **The duplicate check by meaning needs vectors.** A new entry has none while it is saved by default, so it is compared with the title and the complete text of the entries in the space (always, whatever the setting) and by meaning only if `inline_index_sections` is above 0.
@@ -228,7 +232,8 @@ Planned work is listed in the [ROADMAP.md](ROADMAP.md).
 
 First release: MCP server in Go with spaces and roles, hybrid search (pgvector and full text), OAuth 2.1 with Google, Entra and generic OIDC, approval workflow, audit log, offboarding and a selectable embedding backend (TEI, OpenAI compatible, Bedrock). The image is published to the GitHub Container Registry.
 
-[Unreleased]: https://github.com/behringer24/atrium-tablinum/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/behringer24/atrium-tablinum/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/behringer24/atrium-tablinum/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/behringer24/atrium-tablinum/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/behringer24/atrium-tablinum/compare/v0.5.0...v0.5.1
