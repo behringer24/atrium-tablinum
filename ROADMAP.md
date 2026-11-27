@@ -13,11 +13,18 @@ The guiding question for all knowledge features: does an assistant find the righ
 Order: first summarising (self-contained, rule decided), then review reminders together with the notifications they depend on.
 
 - **Summarising with `replaces` (next):** `store_knowledge` gets a `replaces` field (ids of sources in the same space) and `confirm=true`. The summary is stored and the sources are archived in the same transaction. Provenance is recorded as `derived_from`, and the sources carry the note "summarised in ...". Whoever may not archive the sources stores the summary as a draft; the curator archives the sources when releasing it, and a source that changed since the request is left alone. Replacing across spaces is deliberately not supported. The origins of an entry (references to external originals, built in 0.7.0) are a separate thing: `derived_from` points to other entries.
-- **Review reminders:** knowledge types, responsible people and review dates are built ([design](docs/design/knowledge-metadata.md)); overdue reviews show in entries, `list_knowledge review=due` and `whats_new`. Still open: telling responsible people and curators actively when a review falls due (needs the notifications below), and recording the last review as its own date.
+- **Review reminders:** knowledge types, responsible people and review dates are built ([design](docs/design/knowledge-metadata.md)); overdue reviews show in entries, `list_knowledge review=due` and `whats_new`. Still open: telling responsible people and curators actively when a review falls due (needs the [notifications](#notifications)), and recording the last review as its own date.
+
+### Notifications
+
+Nobody is told anything today: curators find waiting drafts by asking, authors learn of an approval or a return only by looking, administrators see a failing service only in `admin_health`. The design is written ([docs/design/notifications.md](docs/design/notifications.md)); nothing is built yet.
+
+- **First step:** a few events (draft waiting, approved, returned, item received, health changed), delivered by web hook (a generic signed form and the format of Slack incoming web hooks) and by e-mail to the people their role names, instantly or as a daily digest. Targets are set in `config.yaml`, everything is off by default, an outbox in the database keeps events until they are delivered, and a notice points to what waits instead of carrying content.
+- **Later:** rules per space, a notice when a review date has come, further chat formats, and direct messages to people. Notifications must not carry metadata to people who may not see the entry.
 
 ### Sending to a colleague, follow-ups
 
-Sending an entry or a skill to a colleague's personal space is built ([docs/sharing.md](docs/sharing.md)). Still open: a notice to the recipient when something arrives (needs the notifications above), the sender seeing the outcome and recalling an item that is still waiting (needs a small table of sent items, which the first version avoids on purpose), a switch for a single user to refuse items, and sending to a group of people or a team space (which would be an ordinary draft in that space, not a personal one).
+Sending an entry or a skill to a colleague's personal space is built ([docs/sharing.md](docs/sharing.md)). Still open: a notice to the recipient when something arrives (needs the [notifications](#notifications)), the sender seeing the outcome and recalling an item that is still waiting (needs a small table of sent items, which the first version avoids on purpose), a switch for a single user to refuse items, and sending to a group of people or a team space (which would be an ordinary draft in that space, not a personal one).
 
 ### Security, remainder of the audit of 2026-11-03
 
@@ -76,7 +83,6 @@ Atrium becomes the controlled registry and distribution service for company-wide
   - **Position in the lists:** `list_spaces` and the instructions of the assistant do not show where a space sits in the tree.
   - **Searching including sub-spaces** as a separate step: knowledge and skills stay in their space.
 - **Roles for customers with high protection needs:** instance admins are admin in every team space by default. The Pro edition can separate operations from content (instance admins then read only the spaces they are members of, see [Atrium Pro](docs/pro/pro-edition.md#separating-content-from-operations)). Still open: a waiting period with a second admin when transferring personal spaces, a separate right for reading the audit log, and notifications. Personal spaces are already closed to everyone except their owner.
-- **Review notifications:** curators already find waiting drafts with `list_knowledge status=draft` and see the counts of all their spaces in `whats_new`; authors learn of approvals and returns only by looking. Start with a review queue and an optional digest, later e-mail and chat integrations. Notifications must not carry metadata to people who may not see the entry.
 - **A draft next to the released version:** authors of spaces that require approval cannot change approved entries today.
 - **Correction reports:** readers flag an entry as wrong, incomplete, unclear or outdated, with a reason and the place concerned. The owners get a reviewable item; reports never overwrite binding knowledge directly.
 - **Citations:** stable, resolvable references that name the version used and the section (the heading path is already stored per chunk and returned by search, the document version is not yet part of a hit), also for older versions and direct links, with the same rights checks. An answer should say "policy X, version 4, section 3.2".
