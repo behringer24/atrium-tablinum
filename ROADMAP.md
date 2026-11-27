@@ -20,7 +20,7 @@ Order: first summarising (self-contained, rule decided), then review reminders t
 Nobody is told anything today: curators find waiting drafts by asking, authors learn of an approval or a return only by looking, administrators see a failing service only in `admin_health`. The design is written ([docs/design/notifications.md](docs/design/notifications.md)); nothing is built yet.
 
 - **First step:** a few events (draft waiting, approved, returned, item received, health changed), delivered by web hook (a generic signed form and the format of Slack incoming web hooks) and by e-mail to the people their role names, instantly or as a daily digest. Targets are set in `config.yaml`, everything is off by default, an outbox in the database keeps events until they are delivered, and a notice points to what waits instead of carrying content.
-- **Later:** rules per space, a notice when a review date has come, further chat formats, and direct messages to people. Notifications must not carry metadata to people who may not see the entry.
+- **Later:** further refinements, and a notice when a review date has come. Notifications must not carry metadata to people who may not see the entry.
 
 ### Sending to a colleague, follow-ups
 

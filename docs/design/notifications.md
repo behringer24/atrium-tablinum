@@ -4,7 +4,7 @@
 
 Today nobody is told anything. Curators find waiting drafts only by asking, authors learn of an approval or a return only by looking, and an administrator sees a failing embedding service only when they open `admin_health`. For an organisation that works through an assistant this is a real gap: the assistant is only consulted when somebody thinks of asking.
 
-The first step is small on purpose: a few events, two ways to deliver them (a web hook and e-mail), one place that decides where an event goes. Everything that makes notifications clever (rules per space, escalation, quiet hours, personal subscriptions) is left out.
+The first step is small on purpose: a few events, two ways to deliver them (a web hook and e-mail), one place that decides where an event goes. Anything beyond one global set of targets and events is left out.
 
 ## Principles
 
@@ -74,7 +74,7 @@ notifications:
 - **`generic`:** a JSON body with the delivery id, kind, time, instance name, space name and count; no titles. Headers `X-Atrium-Delivery` (the id), `X-Atrium-Timestamp` and `X-Atrium-Signature: sha256=<hex>`, an HMAC of `timestamp + "." + body` with the secret. A receiver rejects old timestamps and repeated ids.
 - **`slack`:** the format of a Slack incoming web hook, a single `text` field with the notice. No signature (Slack does not check one); the address is the secret. The host must be `hooks.slack.com`.
 - **Space names are metadata too.** A channel may have readers who are not in the space. `webhooks[].space_names` (default `false`) decides whether a message names the space or only says "a space".
-- Other chat systems (Teams, Mattermost) take the generic form through their own automation, or get a `kind` of their own later, once the first one has proved the shape.
+- Other chat systems (Teams, Mattermost) take the generic form through their own automation.
 
 ### E-mail
 
@@ -100,12 +100,11 @@ notifications:
 
 ## Not done, on purpose
 
-- **No per-space targets, no rules, no escalation, no quiet hours, no personal subscriptions.** One global set of targets and events is enough to make the review workflow live, and it is easy to explain.
-- **No direct messages in a chat system.** That needs an app registration, a mapping of Atrium users to chat users and more rights than a channel web hook. Roles in a channel ("the curators") are what the first step can say.
+- **Nothing beyond one global set of targets and events.** That is enough to make the review workflow live, and it is easy to explain.
+- **No direct messages in a chat system.** That needs an app registration and more rights than a channel web hook. A channel addresses roles ("the curators"), which is what the first step can say.
 - **No inbound web hooks and no feed of every change.** Those belong with the interface for other systems (see the roadmap).
 - **No push to the assistant.** An MCP client reads when it asks. `whats_new` stays the way to catch up.
 
 ## Open questions
 
-- Whether a `kind` for Teams belongs in the first step. Recommendation: no; the generic form plus a flow in Teams covers it until a customer asks.
 - The time zone of the digest. Recommendation: UTC in the configuration, as the other times of the server.
