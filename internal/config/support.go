@@ -67,6 +67,8 @@ func (c Config) SupportSummary() map[string]any {
 			"enabled": c.Sharing.Enabled, "max_pending_per_recipient": c.Sharing.MaxPendingPerRecipient,
 			"max_pending_per_sender": c.Sharing.MaxPendingPerSender,
 		},
-		"tools": map[string]any{"description_overrides": len(c.Tools.Descriptions)},
+		// Names and types only: an address or a secret never goes into a support bundle.
+		"notifications": map[string]any{"enabled": c.Notifications.Enabled, "connections": notificationNames(c.Notifications)},
+		"tools":         map[string]any{"description_overrides": len(c.Tools.Descriptions)},
 	}
 }

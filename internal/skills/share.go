@@ -110,5 +110,8 @@ func (s *Store) Share(ctx context.Context, a docs.Actor, skillID uuid.UUID, emai
 	if err := share.Audit(ctx, tx, a.Client, a.User.ID, "skill", to, v.Digest); err != nil {
 		return err
 	}
+	if err := share.Notice(ctx, s.opt.Share, tx, a.User.ID, "skill", to); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }

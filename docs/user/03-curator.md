@@ -32,7 +32,7 @@ A **curator** keeps the quality of a space. Curators review what authors submit,
 | Manage members | no, space admins do |
 | Read the audit log | no, instance admins do |
 
-The curator tools are in everybody's tool list, in a short form for those who are no curator yet, so you find them right away after you were made curator (a client that keeps an older list may need a reconnect, see the FAQ). Every call is checked per space; without the role it is refused. There is **no notification** yet: you find work by asking for the review queue.
+The curator tools are in everybody's tool list, in a short form for those who are no curator yet, so you find them right away after you were made curator (a client that keeps an older list may need a reconnect, see the FAQ). Every call is checked per space; without the role it is refused. If your instance admin switched notifications on, you are told by mail or in a chat channel that drafts wait; either way you find work by asking for the review queue.
 
 ## Reviewing knowledge
 
@@ -161,7 +161,7 @@ Only a **space admin or instance admin** can lift a block (`unblock_skill`), and
 
 **Daily (a few minutes).**
 1. *"Show drafts and skill drafts waiting in my spaces."* for each space you curate.
-2. Review the oldest first. Agree an expected turnaround with your authors (for example one working day) because there is no notification.
+2. Review the oldest first. Agree an expected turnaround with your authors (for example one working day) because a notice may not reach you (notifications are optional and a mail can go unread).
 3. If you cannot decide, return the draft with a question in the note.
 
 **Reviewing a skill, step by step.**

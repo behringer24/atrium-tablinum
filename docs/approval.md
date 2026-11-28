@@ -27,4 +27,4 @@ Rules:
 ## Known limits
 
 - Authors of a space with mandatory approval cannot change approved entries themselves (`update_knowledge` reports this); a draft alongside the approved version is not yet implemented.
-- There is no notification: curators find drafts only through `list_knowledge`.
+- Notifications are off by default. An instance admin can switch them on, and curators are then told by mail or chat that a draft waits, and authors that it was approved or returned (see [notifications](design/notifications.md)). Without them curators find drafts only through `list_knowledge`.

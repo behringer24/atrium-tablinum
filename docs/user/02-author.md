@@ -90,7 +90,7 @@ Spaces can require approval. Then everything an author files is a **draft** unti
 - **Your drafts are visible to you and the curators** of the space. Find them with *"Show my drafts in the Support space."* (`list_knowledge` with `status=draft`).
 - A curator **approves** the draft (it becomes visible to all readers) or **returns** it with a note. A returned entry shows `rejected` with the note in `review_note`.
 - To resubmit a returned entry, change it: *"Update that entry with the corrections."* (`update_knowledge`). It goes back into review as a draft and the note is deleted.
-- There is **no notification** yet. Ask your curator, or check later with `list_knowledge`.
+- If your instance admin switched notifications on, you get a mail when a curator approves or returns a draft. Otherwise ask your curator, or check later with `list_knowledge`.
 - A draft can also be requested explicitly in spaces without approval (*"file as a draft"*), for content you want checked.
 - Entries a non-curator **moves** into a space with approval become drafts there.
 
@@ -187,7 +187,7 @@ Where your organisation has switched it on, you can send an entry or a skill to 
 **Documenting a new procedure.**
 1. Ask the assistant to draft an entry from your notes or chat.
 2. Check title, date, owner, tags.
-3. *"File this in the Operations space."* If the space needs approval, tell the curator (no notification yet).
+3. *"File this in the Operations space."* If the space needs approval, the curators may be told by mail (if your instance sends notices); tell them yourself if it is urgent.
 4. Check later that it is approved: *"Show my drafts in Operations."*
 
 **Turning a document into entries.** If your organisation released the skill `knowledge-ingest`, attach or paste the source and say *"/knowledge-ingest: file this into Operations."* The assistant lists the knowledge in it, compares it with what Atrium already has and shows a plan (new, update, already covered, conflict). Nothing is saved before you confirm; conflicts are never resolved by the assistant. Without the skill, ask the same in your own words, one entry at a time.
@@ -202,7 +202,7 @@ Where your organisation has switched it on, you can send an entry or a skill to 
 3. File the same package in the team space. Message a curator.
 4. After approval, announce the skill to your team and collect feedback; ship fixes as new versions.
 
-**Passing something on to one colleague.** *"Send this entry to anna@example.com."* Confirm when asked, then tell the colleague that it waits in their personal space.
+**Passing something on to one colleague.** *"Send this entry to anna@example.com."* Confirm when asked, then tell the colleague that it waits in their personal space (if your instance sends notices, they may get a mail as well, without your name or the title).
 
 **Handing over before you leave or change teams.** Move your team-relevant entries to the right space (*"Move all entries about X to Operations"*, one at a time with confirmation). What stays in your personal space is deleted after you leave.
 

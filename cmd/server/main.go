@@ -31,6 +31,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
 	mcpserver "github.com/behringer24/atrium-tablinum/internal/mcp"
+	"github.com/behringer24/atrium-tablinum/internal/notify"
 	"github.com/behringer24/atrium-tablinum/internal/oauth"
 	"github.com/behringer24/atrium-tablinum/internal/product"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
@@ -163,6 +164,25 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	userStore.OnChange = checker.InvalidateAll
 	spaceStore.OnChange = checker.InvalidateAll
 
+	// Notifications are off unless config.yaml turns them on and names connections
+	// (docs/design/notifications.md). The edition decides how many connections are used.
+	var notifier *notify.Service
+	var emitter notify.Emitter
+	if cfg.Notifications.Enabled {
+		maxWebhooks, maxMail := edition.NotificationLimits(ed)
+		conns := make([]notify.Connection, 0, len(cfg.Notifications.Connections))
+		for _, c := range cfg.Notifications.Connections {
+			conns = append(conns, notify.Connection{Name: c.Name, Type: c.Type, URL: c.URL, Secret: c.Secret, Host: c.Host, Port: c.Port,
+				TLS: c.TLS, Username: c.Username, Password: c.Password, From: c.From})
+		}
+		notifier = notify.New(pool, userStore, checker, spaceStore, notify.Options{Enabled: true, Connections: conns,
+			MaxWebhooks: maxWebhooks, MaxMail: maxMail, AllowPrivateNetworks: cfg.Notifications.AllowPrivateNetworks, Instance: cfg.Instance.ShortName})
+		if _, left := notifier.Connections(); len(left) > 0 {
+			log.Warn("Connections for notifications are left out: this edition uses one web hook and one SMTP connection", "left_out", left)
+		}
+		emitter = notifier
+	}
+
 	ing, err := ingest.New(ingest.Config{
 		MaxDocumentBytes: cfg.Policy.MaxDocumentBytes,
 		Chunk:            chunk.Options{TargetTokens: cfg.Chunking.TargetTokens, MaxTokens: cfg.Chunking.MaxTokens},
@@ -179,15 +199,16 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 		Team: quota.Limits{Documents: cfg.Spaces.Team.MaxDocuments, Bytes: cfg.Spaces.Team.MaxBytes,
 			Skills: cfg.Skills.TeamMaxSkills, SkillBytes: cfg.Skills.TeamMaxBytes, SkillVersions: cfg.Skills.MaxVersionsPerSkill},
 	})
-	shareOpt := share.Options{Enabled: cfg.Sharing.Enabled, MaxPerRecipient: cfg.Sharing.MaxPendingPerRecipient, MaxPerSender: cfg.Sharing.MaxPendingPerSender}
+	shareOpt := share.Options{Enabled: cfg.Sharing.Enabled, MaxPerRecipient: cfg.Sharing.MaxPendingPerRecipient, MaxPerSender: cfg.Sharing.MaxPendingPerSender, Notify: emitter}
 	docStore := docs.New(pool, spaceStore, ing, docs.Options{
 		Quota:               quotaStore,
 		HandoffTTLDays:      cfg.Spaces.HandoffTTLDays,
 		DuplicateThreshold:  cfg.Policy.DuplicateThreshold,
 		InlineIndexSections: cfg.Policy.InlineIndexSections,
 		Share:               shareOpt,
+		Notify:              emitter,
 	})
-	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval, Quota: quotaStore, Share: shareOpt})
+	skillStore := skills.New(pool, spaceStore, skills.Options{AllowSelfApproval: cfg.Skills.AllowSelfApproval, Quota: quotaStore, Share: shareOpt, Notify: emitter})
 	searchSvc, err := search.New(pool, emb, search.Config{
 		FTSLanguages: cfg.Search.FTSLanguages, CandidatesPerMethod: cfg.Search.CandidatesPerMethod, RRFK: cfg.Search.RRFK,
 		DefaultLimit: cfg.Search.DefaultLimit, MaxLimit: cfg.Search.MaxLimit, HNSWEfSearch: cfg.Search.HNSWEfSearch,
@@ -214,6 +235,10 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	// A long entry is saved with its first sections embedded; this task embeds the rest, so that
 	// saving answers at once and does not depend on how long the embedding service needs.
 	runner.AddPeriodic(jobs.Periodic{Name: "index_pending", Every: 15 * time.Second, Run: reembedder.IndexPending})
+	if notifier != nil {
+		// Routes new events, sends what is due with retries, and cleans up.
+		runner.AddPeriodic(jobs.Periodic{Name: "notifications", Every: 10 * time.Second, Run: notifier.Run})
+	}
 	runner.AddPeriodic(jobs.Periodic{Name: "expire_handoffs", Every: time.Hour, Run: func(ctx context.Context) error {
 		n, err := docStore.ExpireHandoffs(ctx)
 		if n > 0 {
@@ -235,40 +260,55 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	if err != nil {
 		return err
 	}
+	healthChecks := []mcpserver.HealthCheck{
+		{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }},
+		{Name: "embedder", Check: func(ctx context.Context) (string, error) {
+			if sr, ok := emb.(embed.StatusReporter); ok {
+				if c := sr.Circuit(); c.Open {
+					return "", fmt.Errorf("embedding is paused after repeated failures (%s); search uses full text and background embedding waits, next attempt in %s", c.LastError, c.RetryIn.Round(time.Second))
+				}
+			}
+			return cfg.Embedding.Backend, emb.Ping(ctx)
+		}},
+		// Informational: sections of another model are still found by full text.
+		{Name: "embeddings", Check: func(ctx context.Context) (string, error) {
+			st, err := reembedder.Status(ctx)
+			if err != nil {
+				return "", err
+			}
+			switch {
+			case st.Stale == 0 && st.Pending > 0:
+				return fmt.Sprintf("%d of %d sections of new entries are being embedded in the background, found by full text meanwhile", st.Pending, st.Total), nil
+			case st.Stale == 0:
+				return fmt.Sprintf("all %d sections embedded with %s", st.Total, st.Model), nil
+			case st.Requested != nil:
+				return fmt.Sprintf("re-embedding under way: %d of %d sections left", st.Stale, st.Total), nil
+			}
+			return fmt.Sprintf("%d of %d sections not embedded with %s, found by full text only: start admin_reembed", st.Stale, st.Total, st.Model), nil
+		}},
+		// Informational: an edition problem never makes the instance unhealthy.
+		{Name: "edition", Check: func(ctx context.Context) (string, error) { return edition.Probe(ctx, ed) }},
+	}
+	if notifier != nil {
+		// Tell the instance admins when a check changes between ok and failing (the notifications check itself is left out).
+		watch := make([]notify.Check, 0, len(healthChecks))
+		for _, hc := range healthChecks {
+			watch = append(watch, notify.Check{Name: hc.Name, Run: hc.Check})
+		}
+		runner.AddPeriodic(jobs.Periodic{Name: "health_watch", Every: time.Minute, Run: notifier.WatchHealth(watch)})
+	}
+	healthChecks = append(healthChecks, mcpserver.HealthCheck{Name: "notifications", Check: func(ctx context.Context) (string, error) {
+		if notifier == nil {
+			return "off", nil
+		}
+		return notifier.Summary(ctx)
+	}})
 	mcpSrv := mcpserver.New(
 		mcpserver.Deps{
 			Users: userStore, Spaces: spaceStore, Docs: docStore, Skills: skillStore, Quota: quotaStore, Edition: ed, Search: searchSvc, Checker: checker,
 			Pool: pool, Jobs: runner, Reembed: reembedder, EmbeddingModel: cfg.Embedding.Model, EmbeddingDimensions: cfg.Embedding.Dimensions,
 			SupportConfig: cfg.SupportSummary(),
-			Health: []mcpserver.HealthCheck{
-				{Name: "database", Check: func(ctx context.Context) (string, error) { return "", pool.Ping(ctx) }},
-				{Name: "embedder", Check: func(ctx context.Context) (string, error) {
-					if sr, ok := emb.(embed.StatusReporter); ok {
-						if c := sr.Circuit(); c.Open {
-							return "", fmt.Errorf("embedding is paused after repeated failures (%s); search uses full text and background embedding waits, next attempt in %s", c.LastError, c.RetryIn.Round(time.Second))
-						}
-					}
-					return cfg.Embedding.Backend, emb.Ping(ctx)
-				}},
-				// Informational: sections of another model are still found by full text.
-				{Name: "embeddings", Check: func(ctx context.Context) (string, error) {
-					st, err := reembedder.Status(ctx)
-					if err != nil {
-						return "", err
-					}
-					switch {
-					case st.Stale == 0 && st.Pending > 0:
-						return fmt.Sprintf("%d of %d sections of new entries are being embedded in the background, found by full text meanwhile", st.Pending, st.Total), nil
-					case st.Stale == 0:
-						return fmt.Sprintf("all %d sections embedded with %s", st.Total, st.Model), nil
-					case st.Requested != nil:
-						return fmt.Sprintf("re-embedding under way: %d of %d sections left", st.Stale, st.Total), nil
-					}
-					return fmt.Sprintf("%d of %d sections not embedded with %s, found by full text only: start admin_reembed", st.Stale, st.Total, st.Model), nil
-				}},
-				// Informational: an edition problem never makes the instance unhealthy.
-				{Name: "edition", Check: func(ctx context.Context) (string, error) { return edition.Probe(ctx, ed) }},
-			},
+			Health:        healthChecks, Notify: notifier,
 		},
 		mcpserver.Settings{
 			ProductName: cfg.Instance.ProductName, ShortName: cfg.Instance.ShortName, OrganizationName: cfg.Instance.OrganizationName,

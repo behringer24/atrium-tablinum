@@ -15,6 +15,7 @@ The first instance admins are set in the server configuration (`auth.bootstrap_a
 - [Quotas](#quotas)
 - [Governing skills](#governing-skills)
 - [Sending between users](#sending-between-users)
+- [Notifications](#notifications)
 - [Audit log and monitoring](#audit-log-and-monitoring)
 - [Operating the system](#operating-the-system)
 - [Security responsibilities and incidents](#security-responsibilities-and-incidents)
@@ -259,6 +260,53 @@ Users can send a knowledge entry or a skill to a colleague (`share_knowledge`, `
 - **No content in the log.** Every sending is `share_send` with the sender, the recipient (id), the kind and a digest; nothing says what was sent. Ask *"Who sent something to others this week?"* with the filter `action: share_send`.
 - **Not covered yet:** the sender is not told the decision, there is no recall and no per-user switch to refuse items (see the [roadmap](../../ROADMAP.md)).
 
+## Notifications
+
+Notifications tell people that something waits for them. They are **off by default**; the reasons and the details are in the [design note](../design/notifications.md).
+
+| Event | Who is told by mail |
+|---|---|
+| `draft_waiting`: an entry or skill waits for review | the curators and admins of the space |
+| `draft_approved`, `draft_returned`: a curator decided on a draft | its author |
+| `item_received`: somebody sent an entry or skill to a personal space | the owner of that space |
+| `health_changed`: a check of `admin_health` changed between ok and failing | the instance admins |
+
+A notice says that something waits ("3 drafts wait for review in the space Operations") and names no title, no text and no review note: people ask their assistant for the rest. Nobody is told of their own action, and locked accounts get nothing. Who counts as curator is worked out from the rights at the moment the notice is made (groups, inherited roles and instance admins included).
+
+**Set up the connections once, in `config.yaml`.** A connection is a web hook or an SMTP server. Its address and password are secrets, so they are set in the file (as `${ENV_VAR}` references) and nowhere else: no tool shows an address, and no tool creates or changes a connection.
+
+```yaml
+notifications:
+  enabled: true
+  connections:
+    - name: curators-chat
+      type: slack              # the format of a Slack incoming web hook
+      url: ${SLACK_WEBHOOK_URL}
+    - name: mail
+      type: smtp
+      host: mail.example.org
+      username: ${SMTP_USER}
+      password: ${SMTP_PASSWORD}
+      from: atrium@example.org
+```
+
+- **Slack:** create an app with *Incoming Webhooks*, pick the channel and keep the address like a password: whoever knows it can post to the channel. Other chat systems take the `webhook` type (a signed JSON body, a `secret` of at least 16 characters) through their own automation.
+- **Mail:** TLS is required (`starttls` is the default, or `tls`); `tls: none` works only for a server on the same host.
+- **Addresses must be HTTPS and public.** A web hook to a private or local address is refused unless you set `notifications.allow_private_networks: true` knowingly.
+- **This edition uses one web hook and one SMTP connection** (the first of each kind in the file). Further entries do no harm; `admin_notifications` and `admin_health` say they are not used.
+- Restart after a change of the file.
+
+**Then choose what goes where, any time and without a restart.** *"Show the notifications."* (`admin_notifications`, action `get`) lists the connections, what goes through each, what was sent and given up, and the events. *"Send the notices about waiting drafts to the connection curators-chat."* sets them (`set` with `events` and `enabled`; your assistant asks you to confirm). Further settings: `mode` `instant` (a notice goes out within about a minute, and notices of one kind are merged, so a bulk import is one message) or `digest` (one mail per person and day at `digest_at`, UTC, default 08:00), and `space_names` for a web hook. *"Send a test notice through the connection mail."* (`test`) sends a mail to your own address or posts to the channel. A connection without a choice sends nothing.
+
+**Data protection.**
+- **A mailbox and a chat channel are other systems.** A web hook message names the space only if you set `space_names`, because the readers of a channel may not be members of the space. Mails go to people who are curators or authors of the space, so they name it.
+- **A change is audited** as `admin_notifications_set` (with the old and new events) and a test as `admin_notifications_test`.
+- **Delivery data is kept for 30 days.** The database holds events (kind, space, ids) and deliveries (counts, state, the last error), never a title or text.
+
+**Watching it.** `admin_health` has a check `notifications`: it says how many connections are on and how many notices wait, and turns `degraded` when notices were given up in the last day or have waited more than 15 minutes with an error. A web hook is retried (30 seconds, 2 minutes, 10 minutes, 1 hour, 6 hours) and then given up; an address that answers 404 or 410 was probably revoked and is given up at once. `admin_notifications` shows the last error per connection, without the address.
+
+**Not covered yet:** reminders that a review date has come, titles in a notice, direct messages to a person in a chat system, and different connections per space (see the [roadmap](../../ROADMAP.md)).
+
 ## Audit log and monitoring
 
 *"Show the last audit entries."* (`admin_audit_log`). Filters: `user` (e-mail), `action` (exact or a prefix with `*`, for example `skill_*`), `space`, `document_id`, `skill` (skill name), `client`, `since`, `until` (RFC 3339 or `YYYY-MM-DD`), `limit` (default 50, at most 200).
@@ -384,7 +432,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 | A curator or author misbehaves | Remove their role (space admin or you); review their recent changes in the audit log |
 | An instance admin leaves or should lose the right | A granted right: `admin_instance_admins` with `revoke`, or offboarding. A right from the configuration: edit `auth.bootstrap_admins` and restart |
 
-**Known limits (be honest with your organisation).** No notifications or alerts yet; the audit log is not tamper-proof against database administrators; unless you set up the [separate database accounts](#separate-database-accounts) the application connects to the database with a powerful account; and embedding services may process content outside your network if you choose a cloud backend. These points are on the roadmap.
+**Known limits (be honest with your organisation).** Notifications cover the review workflow and the health checks only, with no reminders for review dates; the audit log is not tamper-proof against database administrators; unless you set up the [separate database accounts](#separate-database-accounts) the application connects to the database with a powerful account; and embedding services may process content outside your network if you choose a cloud backend. These points are on the roadmap.
 
 ## Routines
 
@@ -461,7 +509,7 @@ Search uses an embedding service you choose (your own TEI server, OpenAI-compati
 
 **Can I export the audit log?** Not as a file yet. Query it with filters (at most 200 entries per call, narrow by time or action).
 
-**Is there a notification when drafts wait for review?** Not yet. Agree turnaround times with curators.
+**Is there a notification when drafts wait for review?** Yes, if you switch it on: see [Notifications](#notifications). Even then, agree turnaround times with curators; a mail can go unread.
 
 **I have more users than Community allows. Are they locked out?** No. Every active account keeps working; only new accounts and reactivations are refused until there is room.
 

@@ -27,6 +27,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/guard"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
 	"github.com/behringer24/atrium-tablinum/internal/jobs"
+	"github.com/behringer24/atrium-tablinum/internal/notify"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/reembed"
 	"github.com/behringer24/atrium-tablinum/internal/search"
@@ -104,6 +105,8 @@ type Deps struct {
 	// Embedding describes the configured embedding model for admin_health.
 	EmbeddingModel      string
 	EmbeddingDimensions int
+	// Notify serves admin_notifications; nil = notifications are off.
+	Notify *notify.Service
 	// Reembed serves admin_reembed; nil = not managed.
 	Reembed *reembed.Service
 	// SupportConfig is the part of the configuration admin_support_bundle shows

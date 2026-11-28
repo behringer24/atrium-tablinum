@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/behringer24/atrium-tablinum/internal/audit"
+	"github.com/behringer24/atrium-tablinum/internal/notify"
 )
 
 var (
@@ -46,6 +47,8 @@ type Options struct {
 	// quota. 0 = the default.
 	MaxPerRecipient int
 	MaxPerSender    int
+	// Notify records the event that tells the recipient; nil = none.
+	Notify notify.Emitter
 }
 
 // WithDefaults replaces unset limits by the defaults.
@@ -109,6 +112,13 @@ SELECT
 		return ErrUndeliverable
 	}
 	return nil
+}
+
+// Notice tells the owner of the personal space that something was sent to it (notifications). The event
+// names no sender and nothing of the item.
+func Notice(ctx context.Context, o Options, tx pgx.Tx, sender uuid.UUID, kind string, to Recipient) error {
+	return notify.Emit(ctx, o.Notify, tx, notify.Event{Kind: notify.ItemReceived, SpaceID: &to.SpaceID, SubjectKind: kind,
+		ActorID: &sender, RecipientID: &to.UserID})
 }
 
 // Audit records the sending. It is an event of the sender, outside any space, and names the

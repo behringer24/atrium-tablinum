@@ -34,6 +34,7 @@ import (
 	"github.com/behringer24/atrium-tablinum/internal/docs"
 	"github.com/behringer24/atrium-tablinum/internal/guard"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/notify"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -99,6 +100,8 @@ type Options struct {
 	Quota *quota.Store
 	// Share configures sending a skill to another user's personal space (see package share).
 	Share share.Options
+	// Notify records events for notifications (see package notify); nil = none.
+	Notify notify.Emitter
 }
 
 type Store struct {
@@ -437,7 +440,8 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 
 	var versionID uuid.UUID
 	version := latest + 1
-	if err == nil && latestStatus == StatusDraft && latestBy != nil && *latestBy == a.User.ID {
+	revised := err == nil && latestStatus == StatusDraft && latestBy != nil && *latestBy == a.User.ID
+	if revised {
 		// The author revises their own draft: same version, new content.
 		versionID, version = latestID, latest
 		if _, err := tx.Exec(ctx, `DELETE FROM skill_resources WHERE version_id = $1`, versionID); err != nil {
@@ -468,6 +472,12 @@ func (s *Store) Save(ctx context.Context, a docs.Actor, spaceID uuid.UUID, name 
 	}
 	if err := record(ctx, tx, a, action, sp, map[string]any{"skill": name, "version": version, "digest": p.digest}); err != nil {
 		return Version{}, err
+	}
+	if sp.Type == "team" && !revised { // a new draft waits for a curator
+		if err := notify.Emit(ctx, s.opt.Notify, tx, notify.Event{Kind: notify.DraftWaiting, SpaceID: &sp.ID, SubjectID: &skillID,
+			SubjectKind: "skill", ActorID: &a.User.ID}); err != nil {
+			return Version{}, err
+		}
 	}
 	v, err := loadVersion(ctx, tx, versionID)
 	if err != nil {
@@ -510,7 +520,9 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 	if p.Approve && risk != "A" && risk != "B" && risk != "C" {
 		return Version{}, invalid("approving needs a risk class: A (instructions only), B (uses tools), C (critical actions)")
 	}
+	var team bool
 	return s.transition(ctx, a, p.Ref, authz.Curator, func(v Version, sp spaces.Space) (string, map[string]any, error) {
+		team = sp.Type == "team"
 		if v.Archived {
 			return "", nil, ErrArchived
 		}
@@ -539,14 +551,23 @@ func (s *Store) Review(ctx context.Context, a docs.Actor, p ReviewParams) (Versi
 		}
 		return "skill_approve", details, nil
 	}, func(ctx context.Context, tx pgx.Tx, v Version, action string) error {
+		kind := notify.DraftApproved
 		if action == "skill_reject" {
-			_, err := tx.Exec(ctx, `UPDATE skill_versions SET status = 'rejected', reviewed_by = $2, reviewed_at = now(), review_note = $3 WHERE id = $1`,
-				v.VersionID, a.User.ID, note)
+			kind = notify.DraftReturned
+			if _, err := tx.Exec(ctx, `UPDATE skill_versions SET status = 'rejected', reviewed_by = $2, reviewed_at = now(), review_note = $3 WHERE id = $1`,
+				v.VersionID, a.User.ID, note); err != nil {
+				return err
+			}
+		} else if _, err := tx.Exec(ctx, `UPDATE skill_versions SET status = 'approved', risk_class = $4, reviewed_by = $2, reviewed_at = now(), review_note = NULLIF($3, '') WHERE id = $1`,
+			v.VersionID, a.User.ID, note, risk); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `UPDATE skill_versions SET status = 'approved', risk_class = $4, reviewed_by = $2, reviewed_at = now(), review_note = NULLIF($3, '') WHERE id = $1`,
-			v.VersionID, a.User.ID, note, risk)
-		return err
+		// The author hears of the decision, except for a draft in a personal space (sent by somebody who has no access to it) or their own.
+		if team && v.CreatedBy != nil && *v.CreatedBy != a.User.ID {
+			return notify.Emit(ctx, s.opt.Notify, tx, notify.Event{Kind: kind, SpaceID: &v.SpaceID, SubjectID: &v.SkillID,
+				SubjectKind: "skill", ActorID: &a.User.ID, RecipientID: v.CreatedBy})
+		}
+		return nil
 	})
 }
 
