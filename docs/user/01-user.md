@@ -176,7 +176,7 @@ You can create your own private skills. Say *"File this as a skill called weekly
 
 **Before answering a question about the organisation.** Ask your assistant: *"Check Atrium first: what is our policy on …?"* Verify the entry's date and space in the answer.
 
-**Staying up to date.** Once a week, or after time off, ask *"What is new in Atrium since …?"* and open what concerns you. There are no notifications yet; this is the way to catch up.
+**Staying up to date.** Once a week, or after time off, ask *"What is new in Atrium since …?"* and open what concerns you. Your instance admin may also have switched on notices by mail, but this is the way to catch up in any case.
 
 **Reporting a wrong or outdated entry.**
 1. Ask *"Who are the curators of the space this entry is in?"* (`space_contacts`).

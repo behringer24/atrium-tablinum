@@ -168,5 +168,35 @@ sharing:
   max_pending_per_recipient: 20
   max_pending_per_sender: 3
 
+notifications:
+  # true: tell people that something waits for them: curators that a draft waits for review, authors
+  # that it was approved or returned, the owner of a personal space that something was sent to it,
+  # instance admins that a health check changed. A notice names no title and no text. Off by default.
+  # What goes through which connection is chosen afterwards by an instance admin with the tool
+  # admin_notifications, without a restart. docs/user/05-instance-admin.md, docs/design/notifications.md.
+  enabled: false
+  # true: a web hook may reach private and local addresses (a chat system inside the own network).
+  # Off, such an address is refused.
+  allow_private_networks: false
+  # The places a notice can go. Addresses and passwords are secrets: set them here as ${ENV_VAR}
+  # references, nowhere else. This edition uses one web hook and one SMTP connection (the first of each
+  # kind); the others are not used.
+  connections: []
+  #  - name: curators-chat        # lower-case letters, digits, - and _
+  #    type: slack                # slack: the format of a Slack incoming web hook
+  #    url: ${SLACK_WEBHOOK_URL}  # https; whoever knows the address can post to the channel
+  #  - name: automation
+  #    type: webhook              # a signed JSON body for other receivers
+  #    url: ${AUTOMATION_URL}
+  #    secret: ${AUTOMATION_SECRET}   # at least 16 characters; signs the body (HMAC-SHA256)
+  #  - name: mail
+  #    type: smtp
+  #    host: mail.example.org
+  #    port: 587                  # default 587 (starttls), 465 (tls), 25 (none)
+  #    tls: starttls              # starttls | tls | none (none only for a server on this host)
+  #    username: ${SMTP_USER}
+  #    password: ${SMTP_PASSWORD}
+  #    from: atrium@example.org
+
 tools:
   descriptions: {}

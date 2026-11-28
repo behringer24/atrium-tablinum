@@ -102,5 +102,8 @@ VALUES ($1, 'knowledge', $2, $3, $4, 'draft', $5, $6, $5, $7, $8) RETURNING id`,
 	if err := share.Audit(ctx, tx, source(a), a.User.ID, "knowledge", to, hex.EncodeToString(sum[:])); err != nil {
 		return err
 	}
+	if err := share.Notice(ctx, s.opt.Share, tx, a.User.ID, "knowledge", to); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }

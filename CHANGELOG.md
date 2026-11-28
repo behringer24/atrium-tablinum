@@ -4,6 +4,12 @@ All notable changes to Atrium Tablinum. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+### Added
+- **Notifications:** people are told that something waits for them, by mail or by web hook. The events are a draft waiting for review (told: the curators and admins of the space), a draft approved or returned (the author), something sent to a personal space (its owner) and a health check that changed (the instance admins). A notice says that something waits and names no title, no text and no review note. The connections (a web hook for Slack or another receiver, an SMTP server) are set in `config.yaml` under `notifications`, with their secrets; the new tool `admin_notifications` (instance admins) chooses which events go through which connection, instant or as a daily digest, tests a connection and shows what was sent and given up. Delivery goes through an outbox in the database with retries; web hooks are HTTPS only, refuse private addresses and follow no redirects. This edition uses one web hook and one SMTP connection. Off by default; `admin_health` gets a check `notifications`. Design: [docs/design/notifications.md](docs/design/notifications.md); guide: [Notifications](docs/user/05-instance-admin.md#notifications).
+
+### Upgrade notes
+- **One database migration, forward only.** 00019 adds the tables of the notification outbox and the choices of the instance admin. They stay empty while `notifications.enabled` is off, which is the default; nothing changes without the new section in `config.yaml`.
+
 ## [0.7.1] - 2026-11-26
 
 A patch release for installations on which many assistants, an import or a service account write at once: the embedding service no longer decides whether saving works.

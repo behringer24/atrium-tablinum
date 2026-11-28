@@ -36,6 +36,8 @@ Drafts, mandatory approval and review by curators: [docs/approval.md](docs/appro
 
 Sending an entry or a skill to a colleague's personal space, where the recipient reviews it (off by default): [docs/sharing.md](docs/sharing.md).
 
+Notifications by mail and web hook (Slack and others) when a draft waits, was approved or returned, or a health check changes (off by default): [docs/design/notifications.md](docs/design/notifications.md) and the [instance admin guide](docs/user/05-instance-admin.md#notifications).
+
 Company-wide skills (approved working instructions for assistants) with their own review and immutable versions: [docs/skills.md](docs/skills.md). Two skills for filing sources and checking spaces ship with Atrium, to be installed and reviewed by each organisation: [skills/README.md](skills/README.md).
 
 ## Development

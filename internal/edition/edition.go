@@ -19,6 +19,12 @@ const (
 
 	// CommunityMaxUsers is the number of active user accounts the Community edition is for.
 	CommunityMaxUsers = 8
+
+	// CommunityMaxWebhooks and CommunityMaxMail are the number of web hook connections and of SMTP
+	// connections the Community edition sends notices through. More may be configured; the first of
+	// each kind is used.
+	CommunityMaxWebhooks = 1
+	CommunityMaxMail     = 1
 )
 
 // Env is what the server hands to the edition at start-up.
@@ -46,6 +52,20 @@ type Running interface {
 // answers auth.ErrInvalidToken, and the OAuth check follows. The community edition has none.
 type TokenVerifier interface {
 	Verifier() auth.TokenVerifier
+}
+
+// NotificationLimiter is optionally implemented by an edition that sends notices through more
+// connections than the Community edition does. 0 = unlimited.
+type NotificationLimiter interface {
+	NotificationLimits() (webhooks, mail int)
+}
+
+// NotificationLimits is the number of web hook and of SMTP connections the edition uses.
+func NotificationLimits(r Running) (webhooks, mail int) {
+	if l, ok := r.(NotificationLimiter); ok {
+		return l.NotificationLimits()
+	}
+	return CommunityMaxWebhooks, CommunityMaxMail
 }
 
 // Prober is optionally implemented by an edition to say more in admin_health than its name.

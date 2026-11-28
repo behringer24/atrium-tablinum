@@ -184,6 +184,11 @@ VALUES ($1, 'knowledge', $2, $3, $4, $5, $6, $7, $6, $8, $9, $10, $11, NULLIF($1
 	if err := record(ctx, tx, a, "store", sp, id, map[string]any{"status": status, "type": p.Type}); err != nil {
 		return StoreResult{}, err
 	}
+	if status == "draft" {
+		if err := s.noticeDraft(ctx, tx, a, sp, id); err != nil {
+			return StoreResult{}, err
+		}
+	}
 	doc, err := fetch(ctx, tx, a, id, false)
 	if err != nil {
 		return StoreResult{}, err
@@ -373,6 +378,11 @@ func (s *Store) Update(ctx context.Context, a Actor, p UpdateParams) (Document, 
 	if err := record(ctx, tx, a, "update", sp, p.ID, details); err != nil {
 		return Document{}, err
 	}
+	if status == "draft" && cur.Status != "draft" { // a returned entry that was revised goes back to review
+		if err := s.noticeDraft(ctx, tx, a, sp, p.ID); err != nil {
+			return Document{}, err
+		}
+	}
 	doc, err := fetch(ctx, tx, a, p.ID, false)
 	if err != nil {
 		return Document{}, err
@@ -475,6 +485,11 @@ func (s *Store) Unarchive(ctx context.Context, a Actor, id uuid.UUID) (Document,
 	}
 	if err := writeVersion(ctx, tx, id, version, sp.ID, locked.Title, locked.Content, locked.Tags, status, a.User.ID); err != nil {
 		return Document{}, err
+	}
+	if status == "draft" {
+		if err := s.noticeDraft(ctx, tx, a, sp, id); err != nil {
+			return Document{}, err
+		}
 	}
 	if err := record(ctx, tx, a, "unarchive", sp, id, map[string]any{"version": version}); err != nil {
 		return Document{}, err

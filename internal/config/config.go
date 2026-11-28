@@ -33,6 +33,8 @@ type Config struct {
 	Tools     Tools     `yaml:"tools"`
 	Skills    Skills    `yaml:"skills"`
 	Sharing   Sharing   `yaml:"sharing"`
+	// Notifications are the connections that notices go through; off by default.
+	Notifications Notifications `yaml:"notifications"`
 	// License is opaque here: only the edition that supports a licence knows its keys (internal/edition).
 	License yaml.Node `yaml:"license"`
 }
@@ -353,6 +355,7 @@ func Parse(raw []byte, lookup func(string) (string, bool)) (*Config, error) {
 			cfg.Instance.ShortName = product.DefaultShortName
 		}
 	}
+	cfg.Notifications.defaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -511,6 +514,7 @@ func (c *Config) Validate() error {
 	if c.Sharing.Enabled && !c.Spaces.Personal.Enabled {
 		add("sharing.enabled needs spaces.personal.enabled: received items land in the personal space")
 	}
+	c.Notifications.validate(add)
 
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid configuration:\n  - %s", strings.Join(errs, "\n  - "))

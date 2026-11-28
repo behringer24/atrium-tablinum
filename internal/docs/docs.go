@@ -14,6 +14,7 @@ import (
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/notify"
 	"github.com/behringer24/atrium-tablinum/internal/quota"
 	"github.com/behringer24/atrium-tablinum/internal/share"
 	"github.com/behringer24/atrium-tablinum/internal/spaces"
@@ -52,6 +53,14 @@ type Options struct {
 	// InlineIndexSections is how many sections of an entry are embedded before saving answers; the
 	// rest is embedded in the background (see ingest.PrepareUpTo). -1 = none, 0 = all of them.
 	InlineIndexSections int
+	// Notify records events for notifications (see package notify); nil = none.
+	Notify notify.Emitter
+}
+
+// noticeDraft records that an entry waits for review in a team space.
+func (s *Store) noticeDraft(ctx context.Context, db notify.Execer, a Actor, sp spaces.Space, id uuid.UUID) error {
+	return notify.Emit(ctx, s.opt.Notify, db, notify.Event{Kind: notify.DraftWaiting, SpaceID: &sp.ID, SubjectID: &id,
+		SubjectKind: "knowledge", ActorID: &a.User.ID})
 }
 
 type Document struct {

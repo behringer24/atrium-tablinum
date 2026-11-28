@@ -10,6 +10,7 @@ import (
 
 	"github.com/behringer24/atrium-tablinum/internal/authz"
 	"github.com/behringer24/atrium-tablinum/internal/ingest"
+	"github.com/behringer24/atrium-tablinum/internal/notify"
 )
 
 const maxReviewNoteLen = 1000
@@ -87,6 +88,18 @@ func (s *Store) Review(ctx context.Context, a Actor, p ReviewParams) (Document, 
 	}
 	if err := record(ctx, tx, a, action, sp, p.ID, details); err != nil {
 		return Document{}, err
+	}
+	// The author hears of the decision. In a personal space the draft was sent by somebody else, who
+	// has no access to the copy and is told nothing.
+	if sp.Type == "team" && !own {
+		kind := notify.DraftReturned
+		if p.Approve {
+			kind = notify.DraftApproved
+		}
+		if err := notify.Emit(ctx, s.opt.Notify, tx, notify.Event{Kind: kind, SpaceID: &sp.ID, SubjectID: &p.ID, SubjectKind: "knowledge",
+			ActorID: &a.User.ID, RecipientID: &locked.AuthorID}); err != nil {
+			return Document{}, err
+		}
 	}
 	doc, err := fetch(ctx, tx, a, p.ID, false)
 	if err != nil {

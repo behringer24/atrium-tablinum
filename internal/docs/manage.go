@@ -90,6 +90,11 @@ func (s *Store) Move(ctx context.Context, a Actor, p MoveParams) (Document, erro
 	if err := record(ctx, tx, a, "move", dst, p.ID, map[string]any{"from": from, "status": status}); err != nil {
 		return Document{}, err
 	}
+	if status == "draft" {
+		if err := s.noticeDraft(ctx, tx, a, dst, p.ID); err != nil {
+			return Document{}, err
+		}
+	}
 	doc, err := fetch(ctx, tx, a, p.ID, false)
 	if err != nil {
 		return Document{}, err

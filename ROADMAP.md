@@ -17,14 +17,13 @@ Order: first summarising (self-contained, rule decided), then review reminders t
 
 ### Notifications
 
-Nobody is told anything today: curators find waiting drafts by asking, authors learn of an approval or a return only by looking, administrators see a failing service only in `admin_health`. The design is written ([docs/design/notifications.md](docs/design/notifications.md)); nothing is built yet.
+A first step is built, off by default: a few events (draft waiting, approved, returned, item received, health changed), delivered by web hook (Slack and a signed generic form) and by e-mail to the people their role names, instantly or as a daily digest ([design](docs/design/notifications.md), [guide](docs/user/05-instance-admin.md#notifications)).
 
-- **First step:** a few events (draft waiting, approved, returned, item received, health changed), delivered by web hook (a generic signed form and the format of Slack incoming web hooks) and by e-mail to the people their role names, instantly or as a daily digest. Targets are set in `config.yaml`, everything is off by default, an outbox in the database keeps events until they are delivered, and a notice points to what waits instead of carrying content.
-- **Later:** further refinements, and a notice when a review date has come. Notifications must not carry metadata to people who may not see the entry.
+- **Still open:** a notice when a review date has come, and further refinements. Notifications must not carry metadata to people who may not see the entry.
 
 ### Sending to a colleague, follow-ups
 
-Sending an entry or a skill to a colleague's personal space is built ([docs/sharing.md](docs/sharing.md)). Still open: a notice to the recipient when something arrives (needs the [notifications](#notifications)), the sender seeing the outcome and recalling an item that is still waiting (needs a small table of sent items, which the first version avoids on purpose), a switch for a single user to refuse items, and sending to a group of people or a team space (which would be an ordinary draft in that space, not a personal one).
+Sending an entry or a skill to a colleague's personal space is built ([docs/sharing.md](docs/sharing.md)). Still open: the sender seeing the outcome and recalling an item that is still waiting (needs a small table of sent items, which the first version avoids on purpose), a switch for a single user to refuse items, and sending to a group of people or a team space (which would be an ordinary draft in that space, not a personal one).
 
 ### Security, remainder of the audit of 2026-11-03
 
