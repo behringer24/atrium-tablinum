@@ -40,7 +40,7 @@ func defaultSetting(name string) Setting {
 // Settings returns the setting of every connection in use (the defaults where none was chosen).
 func (s *Service) Settings(ctx context.Context) (map[string]Setting, error) {
 	out := map[string]Setting{}
-	for _, c := range s.active {
+	for _, c := range s.inUse() {
 		out[c.Name] = defaultSetting(c.Name)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT connection, enabled, mode, digest_at, space_names FROM notification_settings`)

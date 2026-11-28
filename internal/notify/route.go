@@ -45,7 +45,7 @@ func (r globalRouter) Route(ctx context.Context, ev RoutedEvent) ([]Planned, err
 	var out []Planned
 	var recipients []uuid.UUID
 	resolved := false
-	for _, c := range r.s.active {
+	for _, c := range r.s.inUse() {
 		st := ev.settings[c.Name]
 		if !st.Enabled || !hasEvent(st.Events, ev.Event.Kind) {
 			continue

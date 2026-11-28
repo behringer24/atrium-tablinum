@@ -196,3 +196,22 @@ func TestBackoffGrowsAndStops(t *testing.T) {
 		t.Errorf("limits: %v %v", retryAfter(0), retryAfter(99))
 	}
 }
+
+// The limits of the edition are asked each time, so a licence installed or ended applies at once.
+func TestLimitsAreAskedEachTime(t *testing.T) {
+	webhooks, mail := 1, 1
+	s := New(nil, nil, nil, nil, Options{Enabled: true, Limits: func() (int, int) { return webhooks, mail },
+		Connections: []Connection{{Name: "a", Type: "slack"}, {Name: "b", Type: "webhook"}, {Name: "m1", Type: "smtp"}, {Name: "m2", Type: "smtp"}}})
+	check := func(wantActive, wantLeft int) {
+		t.Helper()
+		active, left := s.Connections()
+		if len(active) != wantActive || len(left) != wantLeft {
+			t.Errorf("limits %d/%d: active %v, left out %v", webhooks, mail, active, left)
+		}
+	}
+	check(2, 2)
+	webhooks, mail = 0, 0 // unlimited
+	check(4, 0)
+	webhooks, mail = 2, 1
+	check(3, 1)
+}

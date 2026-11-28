@@ -20,7 +20,7 @@ type Stats struct {
 // Stats returns the figures of every connection in use.
 func (s *Service) Stats(ctx context.Context) (map[string]Stats, error) {
 	out := map[string]Stats{}
-	for _, c := range s.active {
+	for _, c := range s.inUse() {
 		out[c.Name] = Stats{}
 	}
 	rows, err := s.pool.Query(ctx, `SELECT connection,
@@ -62,9 +62,10 @@ func (s *Service) Summary(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	active := s.inUse()
 	var on, pending int
 	var problem string
-	for _, c := range s.active {
+	for _, c := range active {
 		st := stats[c.Name]
 		if settings[c.Name].Enabled {
 			on++
@@ -80,7 +81,7 @@ func (s *Service) Summary(ctx context.Context) (string, error) {
 			return "", errors.New(problem)
 		}
 	}
-	return itoa(on) + " of " + itoa(len(s.active)) + " connections on, " + itoa(pending) + " notices waiting", nil
+	return itoa(on) + " of " + itoa(len(active)) + " connections on, " + itoa(pending) + " notices waiting", nil
 }
 
 func itoa(n int) string {

@@ -109,6 +109,9 @@ type Options struct {
 	Connections []Connection
 	MaxWebhooks int
 	MaxMail     int
+	// Limits, if set, is asked whenever the connections in use are needed and replaces MaxWebhooks and
+	// MaxMail, so that a change of the edition (a licence installed or ended) applies at once.
+	Limits func() (webhooks, mail int)
 	// AllowPrivateNetworks lets a web hook reach private addresses.
 	AllowPrivateNetworks bool
 	// Instance is the name shown in a notice.
@@ -126,9 +129,6 @@ type Service struct {
 	opt     Options
 	router  Router
 
-	active  []Connection // in use
-	ignored []string     // configured but not used by this edition
-
 	http *http.Client
 	// mail sends one message; replaced in tests.
 	mail func(ctx context.Context, c Connection, to string, msg []byte) error
@@ -142,24 +142,6 @@ type Service struct {
 // New builds the service. It never fails: a connection that cannot be used is reported, not fatal.
 func New(pool *pgxpool.Pool, u *users.Store, checker *authz.Checker, sp *spaces.Store, opt Options) *Service {
 	s := &Service{pool: pool, users: u, checker: checker, spaces: sp, opt: opt, now: time.Now}
-	var webhooks, mail int
-	for _, c := range opt.Connections {
-		switch c.Type {
-		case "smtp":
-			if opt.MaxMail > 0 && mail >= opt.MaxMail {
-				s.ignored = append(s.ignored, c.Name)
-				continue
-			}
-			mail++
-		default:
-			if opt.MaxWebhooks > 0 && webhooks >= opt.MaxWebhooks {
-				s.ignored = append(s.ignored, c.Name)
-				continue
-			}
-			webhooks++
-		}
-		s.active = append(s.active, c)
-	}
 	s.router = globalRouter{s}
 	s.http = newHTTPClient(opt.AllowPrivateNetworks)
 	s.mail = sendSMTP
@@ -170,7 +152,7 @@ func New(pool *pgxpool.Pool, u *users.Store, checker *authz.Checker, sp *spaces.
 }
 
 // Enabled reports whether notices are sent at all.
-func (s *Service) Enabled() bool { return s != nil && s.opt.Enabled && len(s.active) > 0 }
+func (s *Service) Enabled() bool { return s != nil && s.opt.Enabled && len(s.inUse()) > 0 }
 
 // Emit records an event in the transaction of the change that caused it. It writes nothing while
 // notifications are off, so an instance that does not use them keeps no rows.
@@ -186,12 +168,46 @@ func (s *Service) Emit(ctx context.Context, db Execer, ev Event) error {
 
 // Connections returns the connections in use and the names of those left out.
 func (s *Service) Connections() (active []Connection, ignored []string) {
-	return append([]Connection(nil), s.active...), append([]string(nil), s.ignored...)
+	return s.resolve()
+}
+
+// resolve applies the limits of the edition: the first web hooks and the first SMTP connections in the order
+// of the file are in use (0 = all), the others are left out.
+func (s *Service) resolve() (active []Connection, ignored []string) {
+	maxWebhooks, maxMail := s.opt.MaxWebhooks, s.opt.MaxMail
+	if s.opt.Limits != nil {
+		maxWebhooks, maxMail = s.opt.Limits()
+	}
+	var webhooks, mail int
+	for _, c := range s.opt.Connections {
+		switch c.Type {
+		case "smtp":
+			if maxMail > 0 && mail >= maxMail {
+				ignored = append(ignored, c.Name)
+				continue
+			}
+			mail++
+		default:
+			if maxWebhooks > 0 && webhooks >= maxWebhooks {
+				ignored = append(ignored, c.Name)
+				continue
+			}
+			webhooks++
+		}
+		active = append(active, c)
+	}
+	return active, ignored
+}
+
+// inUse is the connections in use now.
+func (s *Service) inUse() []Connection {
+	active, _ := s.resolve()
+	return active
 }
 
 // connection finds an active connection by name.
 func (s *Service) connection(name string) (Connection, bool) {
-	for _, c := range s.active {
+	for _, c := range s.inUse() {
 		if c.Name == name {
 			return c, true
 		}

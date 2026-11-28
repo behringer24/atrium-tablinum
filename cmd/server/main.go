@@ -169,14 +169,13 @@ func run(cfgPath string, log *slog.Logger, level *slog.LevelVar) error {
 	var notifier *notify.Service
 	var emitter notify.Emitter
 	if cfg.Notifications.Enabled {
-		maxWebhooks, maxMail := edition.NotificationLimits(ed)
 		conns := make([]notify.Connection, 0, len(cfg.Notifications.Connections))
 		for _, c := range cfg.Notifications.Connections {
 			conns = append(conns, notify.Connection{Name: c.Name, Type: c.Type, URL: c.URL, Secret: c.Secret, Host: c.Host, Port: c.Port,
 				TLS: c.TLS, Username: c.Username, Password: c.Password, From: c.From})
 		}
 		notifier = notify.New(pool, userStore, checker, spaceStore, notify.Options{Enabled: true, Connections: conns,
-			MaxWebhooks: maxWebhooks, MaxMail: maxMail, AllowPrivateNetworks: cfg.Notifications.AllowPrivateNetworks, Instance: cfg.Instance.ShortName})
+			Limits: func() (int, int) { return edition.NotificationLimits(ed) }, AllowPrivateNetworks: cfg.Notifications.AllowPrivateNetworks, Instance: cfg.Instance.ShortName})
 		if _, left := notifier.Connections(); len(left) > 0 {
 			log.Warn("Connections for notifications are left out: this edition uses one web hook and one SMTP connection", "left_out", left)
 		}
